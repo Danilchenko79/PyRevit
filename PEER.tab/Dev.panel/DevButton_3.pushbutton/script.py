@@ -157,7 +157,7 @@ for col in all_columns:
     width_value = width.AsDouble() if width else 0
     height_value = height.AsDouble() if height else 0
     rebar_qty_param = col.LookupParameter(PARAM_REBAR_QTY)
-    rebar_qty_value = rebar_qty_param.AsInteger() if rebar_qty_param and rebar_qty_param.HasValue else 0
+    rebar_qty_value = rebar_qty_param.AsDouble() if rebar_qty_param and rebar_qty_param.HasValue else 0
     rebar_diam_param = col.LookupParameter("Rebar_Diameter")
     rebar_diam_value = rebar_diam_param.AsDouble() if rebar_diam_param and rebar_diam_param.HasValue else 0
 
@@ -237,9 +237,13 @@ with Transaction(doc, "Place Columns") as t:
 
             # Новый параметр армирования
             p_rebar_qty = instance.LookupParameter(PARAM_REBAR_QTY)
+            print("col_data['rebar_qty'] =", col_data["rebar_qty"], "type:", type(col_data["rebar_qty"]))
+            print("p_rebar_qty found:", p_rebar_qty is not None, "StorageType:", p_rebar_qty.StorageType if p_rebar_qty else "None")
             if p_rebar_qty:
                 try:
-                    p_rebar_qty.Set(int(col_data["rebar_qty"]))
+                    p_rebar_qty.Set(float(col_data["rebar_qty"]))
+                except Exception as e:
+                    print("Error setting {}: {}".format(PARAM_REBAR_QTY, e))
                 except Exception as e:
                     print("Error setting {}: {}".format(PARAM_REBAR_QTY, e))
             # Устанавливаем Rebar_Diameter

@@ -1,0 +1,10 @@
+Spacing      (H - 2 * 40 mm) / (Column_Quantity_Long - 1)
+
+LONG     if(H = B, roundup(Rebar_Quantity / 4) + 1, Rebar_Quantity / 2 - Column_Quantity_Short + 2)
+SHORT  if(H = B, roundup(Rebar_Quantity / 4) + 1, roundup((B - 100 mm) / 300 mm) + 1)
+Vis_REbar                   and(Column_Quantity_Long > 1, Column_Quantity_Short > 1)
+
+
+Vis_Clamra   and(and(H > 400 mm, 2 * Clamra_Spacing > 300 mm), ((Column_Quantity_Long - 2) / 2) > 1)
+
+Clamra_Quantity H    if((Column_Quantity_Long - 2) / 2 < 2, 2, (Column_Quantity_Long - 2) / 2)
