@@ -28,7 +28,7 @@ def build_marks_and_ranges(marks):
     """
     Возвращает список dict:
     - одиночная марка: {num: str, num2: None, num_plus: False, width: 21}
-    - диапазон: {num: str, num2: str, num_plus: True, width: 50}
+    - диапазон: {num: str, num2: str, num_plus: True, width: 50} — только если подряд 3 и более!
     """
     nums = []
     others = []
@@ -46,14 +46,16 @@ def build_marks_and_ranges(marks):
         while i + 1 < len(nums) and nums[i + 1] == nums[i] + 1:
             i += 1
             seq.append(nums[i])
-        if len(seq) == 1:
-            result.append({'num': str(start), 'num2': None, 'num_plus': False, 'width': 21})
-        else:
+        if len(seq) >= 3:
             result.append({'num': str(seq[0]), 'num2': str(seq[-1]), 'num_plus': True, 'width': 50})
+        else:
+            for n in seq:
+                result.append({'num': str(n), 'num2': None, 'num_plus': False, 'width': 21})
         i += 1
     for m in sorted(others):
         result.append({'num': m, 'num2': None, 'num_plus': False, 'width': 21})
     return result
+
 
 doc = revit.doc
 
@@ -237,8 +239,7 @@ with Transaction(doc, "Place Columns") as t:
 
             # Новый параметр армирования
             p_rebar_qty = instance.LookupParameter(PARAM_REBAR_QTY)
-            print("col_data['rebar_qty'] =", col_data["rebar_qty"], "type:", type(col_data["rebar_qty"]))
-            print("p_rebar_qty found:", p_rebar_qty is not None, "StorageType:", p_rebar_qty.StorageType if p_rebar_qty else "None")
+
             if p_rebar_qty:
                 try:
                     p_rebar_qty.Set(float(col_data["rebar_qty"]))
