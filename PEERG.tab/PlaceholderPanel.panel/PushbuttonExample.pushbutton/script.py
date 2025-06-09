@@ -5,28 +5,57 @@ from Autodesk.Revit.DB import UnitUtils, UnitTypeId
 
 doc = revit.doc
 
-# Получаем активный вид
-active_view = revit.active_view
-
 # Имя семейства аннотации
 ANNOTATION_FAMILY_NAME = "PEER_Rebar TAG"
 
-# Собираем все аннотации на активном виде
-annotation_instances = []
-collector = FilteredElementCollector(doc, active_view.Id)\
-    .OfCategory(BuiltInCategory.OST_DetailComponents)\
-    .WhereElementIsNotElementType()
+# 1. Определяем лист, с которым работаем
+active_view = revit.active_view
+sheet = None
 
-for fi in collector:
-    if isinstance(fi, FamilyInstance):
-        try:
-            if fi.Symbol.Family.Name == ANNOTATION_FAMILY_NAME:
-                annotation_instances.append(fi)
-        except Exception:
-            continue
+# Если находимся на листе — берём его напрямую
+if isinstance(active_view, ViewSheet):
+    sheet = active_view
+else:
+    # Если активный вид размещён на листе — ищем этот лист через Viewport
+    viewports = FilteredElementCollector(doc).OfClass(Viewport).ToElements()
+    for vp in viewports:
+        if vp.ViewId == active_view.Id:
+            sheet = doc.GetElement(vp.SheetId)
+            break
+
+if not sheet:
+    forms.alert("Активный вид не размещён на листе, или лист не найден.")
+    script.exit()
+
+# 2. Находим все виды, размещённые на этом листе
+views_on_sheet = []
+viewports = FilteredElementCollector(doc).OfClass(Viewport).ToElements()
+for vp in viewports:
+    if vp.SheetId == sheet.Id:
+        view = doc.GetElement(vp.ViewId)
+        if view:
+            views_on_sheet.append(view)
+
+if not views_on_sheet:
+    forms.alert("На листе нет размещённых видов.")
+    script.exit()
+
+# 3. Собираем все аннотации на всех видах листа
+annotation_instances = []
+for view in views_on_sheet:
+    collector = FilteredElementCollector(doc, view.Id)\
+        .OfCategory(BuiltInCategory.OST_DetailComponents)\
+        .WhereElementIsNotElementType()
+    for fi in collector:
+        if isinstance(fi, FamilyInstance):
+            try:
+                if fi.Symbol.Family.Name == ANNOTATION_FAMILY_NAME:
+                    annotation_instances.append(fi)
+            except Exception:
+                continue
 
 if not annotation_instances:
-    forms.alert("На активном виде не найдено аннотационных семейств '{}'.".format(ANNOTATION_FAMILY_NAME))
+    forms.alert("На выбранном листе не найдено аннотационных семейств '{}' на размещённых видах.".format(ANNOTATION_FAMILY_NAME))
     script.exit()
 
 # Функция для получения значения параметра
