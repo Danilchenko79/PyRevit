@@ -64,7 +64,8 @@ FAMILY_NAME = "Create Column"
 PARAM_B = "B"
 PARAM_H = "H"
 PARAM_MARK = "Mark"
-PARAM_REBAR_QTY = "Rebar_Quantity"
+PARAM_REBAR_QTY_X = "Rebar_QuantityX"
+PARAM_REBAR_QTY_Y = "Rebar_QuantityY"
 PARAM_LEVEL = "PR_Level"
 
 COLUMN_NUMBER_FAMILY_NAME = "PR_Column Number"
@@ -146,7 +147,7 @@ from collections import defaultdict
 
 low_rebar_marks = []  # Список марок колонн с малым армированием
 
-grouped_columns = defaultdict(lambda: {"marks": [], "width": 0, "height": 0, "rebar_qty": 0})
+grouped_columns = defaultdict(lambda: {"marks": [], "width": 0, "height": 0, "rebar_qty_x": 0, "rebar_qty_y": 0, "rebar_diam": 0})
 for col in all_columns:
     level_param = col.LookupParameter(PARAM_LEVEL)
     if not (level_param and level_param.HasValue and level_param.AsString() == selected_level):
@@ -158,18 +159,20 @@ for col in all_columns:
     height = col_type.LookupParameter(PARAM_H)
     width_value = width.AsDouble() if width else 0
     height_value = height.AsDouble() if height else 0
-    rebar_qty_param = col.LookupParameter(PARAM_REBAR_QTY)
-    rebar_qty_value = rebar_qty_param.AsDouble() if rebar_qty_param and rebar_qty_param.HasValue else 0
+    rebar_qty_x = col.LookupParameter(PARAM_REBAR_QTY_X)
+    rebar_qty_y = col.LookupParameter(PARAM_REBAR_QTY_Y)
+    qty_x = rebar_qty_x.AsDouble() if rebar_qty_x and rebar_qty_x.HasValue else 0
+    qty_y = rebar_qty_y.AsDouble() if rebar_qty_y and rebar_qty_y.HasValue else 0
     rebar_diam_param = col.LookupParameter("Rebar_Diameter")
     rebar_diam_value = rebar_diam_param.AsDouble() if rebar_diam_param and rebar_diam_param.HasValue else 0
 
-    if rebar_qty_value < 5:
-        low_rebar_marks.append(col_mark)
-    key = (round(width_value, 6), round(height_value, 6), rebar_qty_value)
+
+    key = (round(width_value, 6), round(height_value, 6), qty_x, qty_y)
     grouped_columns[key]["marks"].append(col_mark)
     grouped_columns[key]["width"] = width_value
     grouped_columns[key]["height"] = height_value
-    grouped_columns[key]["rebar_qty"] = rebar_qty_value
+    grouped_columns[key]["rebar_qty_x"] = qty_x
+    grouped_columns[key]["rebar_qty_y"] = qty_y
     grouped_columns[key]["rebar_diam"] = rebar_diam_value
 
 columns_data = []
@@ -178,10 +181,11 @@ for data in grouped_columns.values():
         "marks": data["marks"],
         "width": data["width"],
         "height": data["height"],
-        "rebar_qty": data["rebar_qty"],
+        "rebar_qty_x": data["rebar_qty_x"],
+        "rebar_qty_y": data["rebar_qty_y"],
         "rebar_diam": data["rebar_diam"]
     })
-columns_data.sort(key=lambda c: (-c["width"] * c["height"], -c["rebar_qty"]))
+columns_data.sort(key=lambda c: (-c["width"] * c["height"], -c["rebar_qty_x"]-c["rebar_qty_y"]))
 
 spacing_ft = 200 * 0.0328084
 max_row_width_ft = MAX_ROW_WIDTH_CM / 100.0 * 3.28084  # из см в футы
@@ -238,15 +242,19 @@ with Transaction(doc, "Place Columns") as t:
                 doc.Create.NewDimension(drafting_view, dim_line_v, ref_array_v)
 
             # Новый параметр армирования
-            p_rebar_qty = instance.LookupParameter(PARAM_REBAR_QTY)
-
-            if p_rebar_qty:
+            p_rebar_qty_x = instance.LookupParameter(PARAM_REBAR_QTY_X)
+            if p_rebar_qty_x:
                 try:
-                    p_rebar_qty.Set(float(col_data["rebar_qty"]))
+                    p_rebar_qty_x.Set(col_data["rebar_qty_x"])
                 except Exception as e:
-                    print("Error setting {}: {}".format(PARAM_REBAR_QTY, e))
+                    print("Error setting {}: {}".format(PARAM_REBAR_QTY_X, e))
+
+            p_rebar_qty_y = instance.LookupParameter(PARAM_REBAR_QTY_Y)
+            if p_rebar_qty_y:
+                try:
+                    p_rebar_qty_y.Set(col_data["rebar_qty_y"])
                 except Exception as e:
-                    print("Error setting {}: {}".format(PARAM_REBAR_QTY, e))
+                    print("Error setting {}: {}".format(PARAM_REBAR_QTY_Y, e))
             # Устанавливаем Rebar_Diameter
             p_rebar_diam = instance.LookupParameter("Rebar_Diameter")
             if p_rebar_diam:
