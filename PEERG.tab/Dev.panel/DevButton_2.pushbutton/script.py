@@ -1,32 +1,78 @@
 # -*- coding: utf-8 -*-
-from pyrevit import revit, DB, forms
-doc, view = revit.doc, revit.doc.ActiveView
-if not isinstance(view, DB.ViewSchedule):
-    forms.alert(u"Активный вид — не спецификация!")
-    raise SystemExit
 
-param_name = "Rebar_Number"
-start = 1
+__title__ = "Numbering"
+__author__ = "Dima D"
+__doc__ = "Нумерует элементы в активной спецификации, сортируя их как в таблице, и записывает в выбранный параметр из выпадающего списка, начиная с 1."
 
-# Собираем все строки таблицы — используют API 2023+
-table = view.GetTableData().GetSectionData(DB.SectionType.Body)
-rows = range(1, table.NumberOfRows)          # 0 — заголовок
-elements = [doc.GetElement(table.GetRowElementId(r))
-            for r in rows
-            if table.GetRowElementId(r) != DB.ElementId.InvalidElementId]
+from pyrevit import script, forms
+from Autodesk.Revit.DB import (
+    ViewSchedule,
+    TableData,
+    SectionType,
+    Transaction
+)
 
-old_nums = [ (el.Id.IntegerValue,
-              (el.LookupParameter(param_name) or None).AsString())
-             for el in elements ]
-forms.alert(u"Найдено {} элементов.\nСтарые номера:\n{}".format(
-            len(old_nums),
-            "\n".join("ID {} → {}".format(i,n) for i,n in old_nums)))
+doc = __revit__.ActiveUIDocument.Document
+active_view = doc.ActiveView
 
-with DB.Transaction(doc, "Schedule Renumber") as t:
+# Проверяем, что активный вид — это спецификация
+if not isinstance(active_view, ViewSchedule):
+    forms.alert("Активный вид должен быть спецификацией.", exitscript=True)
+
+
+# Получаем список доступных параметров из спецификации
+schedule_definition = active_view.Definition
+field_count = schedule_definition.GetFieldCount()
+
+param_names = []
+
+for i in range(field_count):
+    field = schedule_definition.GetField(i)
+    param_name = field.GetName()
+    if param_name not in param_names:
+        param_names.append(param_name)
+
+if not param_names:
+    forms.alert("Не удалось найти параметры в спецификации.", exitscript=True)
+
+# Спрашиваем у пользователя, какой параметр использовать
+selected_param = forms.SelectFromList.show(
+    param_names,
+    title="Выберите параметр для нумерации",
+    multiselect=False
+)
+
+if not selected_param:
+    script.exit("Параметр не выбран.")
+
+# Собираем все элементы из строки спецификации
+table_data = active_view.GetTableData()
+section_data = table_data.GetSectionData(SectionType.Body)
+row_count = section_data.NumberOfRows
+
+element_ids = []
+
+for row in range(row_count):
+    try:
+        el_id = active_view.GetCellElementId(SectionType.Body, row, 0)
+        if el_id and el_id.IntegerValue > 0:
+            element_ids.append(el_id)
+    except Exception:
+        pass  # строка без элемента, например итоги
+
+if not element_ids:
+    forms.alert("Не найдено элементов в таблице.", exitscript=True)
+
+# Нумерация элементов
+with Transaction(doc, "Number Elements from Active Schedule") as t:
     t.Start()
-    for i, el in enumerate(elements, start):
-        p = el.LookupParameter(param_name)
-        if p and not p.IsReadOnly:
-            p.Set(str(i))
+    counter = 1
+    for el_id in element_ids:
+        element = doc.GetElement(el_id)
+        param = element.LookupParameter(selected_param)
+        if param and not param.IsReadOnly:
+            param.Set(str(counter))
+            counter += 1
     t.Commit()
-forms.alert(u"Готово! Пронумеровано: {}".format(len(elements)))
+
+forms.alert("Нумерация завершена!", exitscript=True)

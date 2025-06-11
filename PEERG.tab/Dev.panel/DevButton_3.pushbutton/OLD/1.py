@@ -83,6 +83,7 @@ TEXT_NOTE_TYPE_NAME = "Stractural 2.6"  # <-- Укажи здесь нужное
 MAX_ROW_WIDTH_CM = 2300  # Максимальная ширина ряда в см на самом виде
 
 # 🔹 Drafting View
+# === Получение/создание Drafting View ===
 view_name = forms.ask_for_string(default="Column 150", prompt="Enter a name for Drafting View")
 if not view_name:
     forms.alert("Drafting View name not specified. Script stopped.", exitscript=True)
@@ -92,32 +93,14 @@ for view in FilteredElementCollector(doc).OfClass(ViewDrafting):
     if view.Name == view_name:
         drafting_view = view
         break
-
 if not drafting_view:
-    # Если вида нет — создаём новый
+    # --- Если не найден, создаём новый ---
     with Transaction(doc, "Create Drafting View") as t:
         t.Start()
-        # Получаем любой существующий тип Drafting View
-        view_types = list(FilteredElementCollector(doc).OfClass(ViewDrafting))
-        if view_types:
-            vt = view_types[0].GetTypeId()
-        else:
-            vt = None
-        drafting_view = ViewDrafting.Create(doc, vt)
+        view_type_id = FilteredElementCollector(doc).OfClass(ViewDrafting).FirstElement().GetTypeId()
+        drafting_view = ViewDrafting.Create(doc, view_type_id)
         drafting_view.Name = view_name
         t.Commit()
-else:
-    # Если вид есть — очищаем только нужные элементы (созданные скриптом)
-    with Transaction(doc, "Очистка текущего вида") as t:
-        t.Start()
-        to_delete = []
-        for inst in FilteredElementCollector(doc, drafting_view.Id).WhereElementIsNotElementType():
-            if hasattr(inst, "Symbol") and inst.Symbol.FamilyName in [FAMILY_NAME, COLUMN_NUMBER_FAMILY_NAME, STIRRUP_FAMILY_NAME]:
-                to_delete.append(inst.Id)
-        for eid in to_delete:
-            doc.Delete(eid)
-        t.Commit()
-
 
 family_symbol = None
 for symbol in FilteredElementCollector(doc).OfClass(FamilySymbol):
@@ -135,6 +118,38 @@ for symbol in FilteredElementCollector(doc).OfClass(FamilySymbol):
         break
 if stirrup_symbol is None:
     forms.alert("Family '{}' not found.".format(STIRRUP_FAMILY_NAME), exitscript=True)
+
+
+# --- Поиск нужных семейств ---
+def get_symbol_by_family(family_name):
+    for symbol in FilteredElementCollector(doc).OfClass(FamilySymbol):
+        if symbol.FamilyName == family_name:
+            return symbol
+    return None
+
+family_symbol = get_symbol_by_family(FAMILY_NAME)
+if not family_symbol:
+    forms.alert("Family '{}' not found.".format(FAMILY_NAME), exitscript=True)
+
+stirrup_symbol = get_symbol_by_family(STIRRUP_FAMILY_NAME)
+if not stirrup_symbol:
+    forms.alert("Family '{}' not found.".format(STIRRUP_FAMILY_NAME), exitscript=True)
+
+column_number_symbol = get_symbol_by_family(COLUMN_NUMBER_FAMILY_NAME)
+if not column_number_symbol:
+    print("Family PR_Column Number not found")
+
+# --- Поиск типа тэга ---
+stirrup_tag_type = None
+for tag_type in FilteredElementCollector(doc).OfClass(FamilySymbol).OfCategory(BuiltInCategory.OST_DetailComponentTags):
+    name_param = tag_type.get_Parameter(BuiltInParameter.SYMBOL_NAME_PARAM)
+    tag_type_name = name_param.AsString() if name_param else None
+    if tag_type.FamilyName == STIRRUP_TAG_FAMILY_NAME and tag_type_name == STIRRUP_TAG_TYPE_NAME:
+        stirrup_tag_type = tag_type
+        break
+if not stirrup_tag_type:
+    forms.alert("Tag type '{}' in family '{}' not found.".format(STIRRUP_TAG_TYPE_NAME, STIRRUP_TAG_FAMILY_NAME), exitscript=True)
+
 
 # Поиск типа тэга для хомутов
 stirrup_tag_type = None
