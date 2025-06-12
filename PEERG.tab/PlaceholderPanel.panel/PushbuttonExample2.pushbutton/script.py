@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-__title__ = "Rebar Tag - Выбор"
+__title__ = "Rebar Tag Select"
 __doc__ = """Version = 5.1
 Date = 02.06.2025
 Author: Erik Frits
@@ -14,35 +14,35 @@ uidoc = revit.uidoc
 
 # 1️⃣ Выбираем семейство на активном виде
 try:
-    ref = uidoc.Selection.PickObject(ObjectType.Element, "Выберите семейство для обновления")
+    ref = uidoc.Selection.PickObject(ObjectType.Element, "Select a family to update")
     selected_elem = doc.GetElement(ref.ElementId)
 except Exception as e:
     if "cancelled" in str(e).lower():
-        forms.alert("Операция выбора отменена.")
+        forms.alert("Selection operation cancelled.")
         script.exit()
     else:
         raise
 
 # Проверяем, что выбрано именно Detail Item
 if not isinstance(selected_elem, FamilyInstance):
-    forms.alert("Выбранный элемент не является Detail Item.")
+    forms.alert("The selected element is not a Detail Item.")
     script.exit()
 
 # 2️⃣ Запрашиваем у пользователя номер арматуры
 rebar_number_input = forms.ask_for_string(
     default='',
-    prompt='Введите номер арматуры для поиска:',
-    title='Поиск арматуры'
+    prompt="Enter the rebar number to search for:",
+    title="Rebar Search"
 )
 
 if not rebar_number_input:
-    forms.alert("Номер арматуры не введен. Скрипт остановлен.")
+    forms.alert("Rebar number not entered. Script stopped.")
     script.exit()
 
 try:
     user_input_number = int(rebar_number_input.strip())
 except:
-    forms.alert("Введите корректное число для номера арматуры.")
+    forms.alert("Please enter a valid number for the rebar number.")
     script.exit()
 
 # 3️⃣ Ищем лист, на который размещён активный вид
@@ -55,7 +55,7 @@ for vp in viewport_collector:
         break
 
 if not sheet_id:
-    forms.alert("Активный вид не размещён ни на одном листе.")
+    forms.alert("The active view is not placed on any sheet.")
     script.exit()
 
 sheet = doc.GetElement(sheet_id)
@@ -92,7 +92,7 @@ for view in placed_views:
                     detail_items.append(item)
 
 if not detail_items:
-    forms.alert("Detail Item с номером '{}' не найден на листе.".format(user_input_number))
+    forms.alert("Detail Item with number '{}' was not found on the sheet.".format(user_input_number))
     script.exit()
 
 first_item = detail_items[0]
@@ -105,8 +105,8 @@ def get_param(elem, param_name):
         elif param.StorageType == StorageType.Double:
             return param.AsValueString()
         else:
-            return param.AsString() or "(пусто)"
-    return "(не найдено)"
+            return param.AsString() or "(empty)"
+    return "(not found)"
 
 rebar_number = get_param(first_item, 'Rebar_Number')
 rebar_diameter = get_param(first_item, 'Rebar_Diameter')
@@ -129,7 +129,7 @@ with revit.Transaction("Установка параметров"):
                     else:
                         param.Set(str(value))
                 except Exception as e:
-                    forms.alert("Ошибка: параметр '{}' требует число. {}".format(param_name, str(e)))
+                    forms.alert("Error: Parameter '{}' requires a number. {}".format(param_name, str(e)))
 
 
     set_param(selected_elem, 'Rebar_Number', rebar_number)
@@ -137,4 +137,4 @@ with revit.Transaction("Установка параметров"):
     set_param(selected_elem, 'Rebar_Length', rebar_length)
     set_param(selected_elem, 'PR_Rebar_ID', element_id)
 
-forms.alert("Значения успешно перенесены в выбранное семейство!")
+forms.alert("Values successfully transferred to the selected family!")

@@ -212,13 +212,7 @@ def place_views_on_sheets_align_centers(doc, base_numbers):
                 viewport = DB.Viewport.Create(doc, sheet.Id, view.Id, pt)
                 viewports.append(viewport)
             # Если оба вида размещены, совмещаем их центры
-            if len(viewports) == 2:
-                # Первый — опорный, второй подгоняем под центр первого
-                vport0, vport1 = viewports
-                center0 = vport0.GetBoxCenter()
-                center1 = vport1.GetBoxCenter()
-                shift = center0 - center1
-                vport1.SetBoxCenter(center0)  # просто для совместимости, можно и сдвигать на shift
+
         t.Commit()
 
 base_numbers_for_sheets = [

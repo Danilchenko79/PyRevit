@@ -11,14 +11,15 @@ import os
 import re  # модуль для работы с регулярными выражениями
 
 # Путь к папке с семействами
-FAMILIES_FOLDER = r"C:\Users\Dmitry\Desktop\Revit 2024\Families"
+FAMILIES_FOLDER = r"F:\P-O-S-T\DIMA.D\Revit\Familiy\Rebar"
 
 # Получаем активный документ
 doc = revit.doc
 
 # Проверяем, существует ли папка
 if not os.path.exists(FAMILIES_FOLDER):
-    forms.alert("Папка с семействами не найдена: {}".format(FAMILIES_FOLDER), exitscript=True)
+    forms.alert("Family folder not found: {}".format(FAMILIES_FOLDER), exitscript=True)
+
 
 # Получаем список файлов в папке (без подпапок)
 family_files = [
@@ -30,7 +31,8 @@ family_files = [
 
 # Проверяем, есть ли семейства для загрузки
 if not family_files:
-    forms.alert("В папке '{}' не найдено подходящих файлов семейств (.rfa).".format(FAMILIES_FOLDER), exitscript=True)
+    forms.alert("No suitable family (.rfa) files found in folder '{}'.".format(FAMILIES_FOLDER), exitscript=True)
+
 
 # Загружаем семейства (с заменой существующих)
 loaded_count = 0
@@ -50,9 +52,11 @@ with revit.Transaction("Load Families from Folder"):
             continue
 
 # Выводим результат
-result_message = "Загружено (или обновлено) {} семейств из папки '{}'.\n".format(loaded_count, FAMILIES_FOLDER)
+result_message = "{} families loaded (or updated) from folder '{}'.\n".format(loaded_count, FAMILIES_FOLDER)
+
 
 if skipped_files:
-    result_message += "\nНе удалось загрузить следующие файлы:\n" + "\n".join(skipped_files)
+    result_message += "\nThe following files could not be loaded:\n" + "\n".join(skipped_files)
+
 
 forms.alert(result_message)
