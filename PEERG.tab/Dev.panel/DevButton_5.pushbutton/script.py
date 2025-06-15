@@ -1,69 +1,80 @@
 # -*- coding: utf-8 -*-
-__title__ = "New View"
-__author__ = "Dmitry D"
+__title__   = "Beams Cross Sections (Active View)"
+__version__ = 'Version = 0.3 (Beta)'
+__doc__ = """Date    = 31.03.2024"""
+from pyrevit import revit, DB, forms, script
+from Autodesk.Revit.DB import *
+from Autodesk.Revit.UI.Selection import ObjectType
+
+doc = revit.doc
+uidoc = revit.uidoc
+def get_section_box_perpendicular_to_beam(beam):
+    lc = beam.Location
+    if not isinstance(lc, DB.LocationCurve):
+        forms.alert("Выбранный элемент не содержит LocationCurve (не балка)", exitscript=True)
+    curve = lc.Curve
+
+    curve_transform = curve.ComputeDerivatives(0.5, True)
+    origin = curve_transform.Origin
+    viewdir = curve_transform.BasisX.Normalize()
+    up = DB.XYZ.BasisZ
+    right = up.CrossProduct(viewdir)
+
+    transform = DB.Transform.Identity
+    transform.Origin = origin
+    transform.BasisX = right
+    transform.BasisY = up
+    transform.BasisZ = viewdir
+
+    beam_type = beam.Symbol
+    width_param = beam_type.LookupParameter("b") or beam_type.LookupParameter("Width")
+    height_param = beam_type.LookupParameter("h") or beam_type.LookupParameter("Height")
+    if width_param and height_param:
+        width = width_param.AsDouble()
+        height = height_param.AsDouble()
+    else:
+        bb = beam.get_BoundingBox(None)
+        width = bb.Max.Y - bb.Min.Y
+        height = bb.Max.Z - bb.Min.Z
+
+    section_box = DB.BoundingBoxXYZ()
+    section_box.Transform = transform
+    section_box.Min = DB.XYZ(-2 * width, -height * 0.2, 0)
+    section_box.Max = DB.XYZ(2 * width, height * 1.2, 5)
+    return section_box
+# --- Выбор балки через стандартный диалог Revit ---
 
 
-from pyrevit import forms
-from Autodesk.Revit.DB import FilteredElementCollector, BuiltInCategory, ViewFamilyType, ViewFamily, ViewPlan
-
-doc = __revit__.ActiveUIDocument.Document
-
-# 1. Собираем все уровни
-levels = list(FilteredElementCollector(doc)
-              .OfCategory(BuiltInCategory.OST_Levels)
-              .WhereElementIsNotElementType()
-              .ToElements())
-
-if not levels:
-    forms.alert("В проекте нет уровней.")
-    script.exit()
-
-# 2. Выводим список названий уровней для выбора
-level_dict = {lvl.Name: lvl for lvl in levels}
-level_names = sorted(level_dict.keys())
-selected_level_name = forms.SelectFromList.show(level_names,
-                                                title="Выберите уровень",
-                                                button_name='Создать Structural Plan RE')
-
-if not selected_level_name:
-    script.exit()
-
-selected_level = level_dict[selected_level_name]
-
-# 3. Находим тип вида "Structural Plan RE"
-view_family_types = FilteredElementCollector(doc).OfClass(ViewFamilyType)
-structural_plan_re_type = None
-
-from Autodesk.Revit.DB import BuiltInParameter
-
-for vft in view_family_types:
-    try:
-        type_name = vft.get_Parameter(BuiltInParameter.SYMBOL_NAME_PARAM).AsString()
-        if (vft.ViewFamily == ViewFamily.StructuralPlan) and (type_name == "Structural Plan RE"):
-            structural_plan_re_type = vft
-            break
-    except Exception as e:
-        forms.alert("Ошибка при обработке ViewFamilyType: {}".format(e))
-
-# 4. Проверяем, есть ли уже вид на этом уровне такого типа
-existing_views = FilteredElementCollector(doc).OfClass(ViewPlan).ToElements()
-for vp in existing_views:
-    if (vp.ViewType == ViewFamily.StructuralPlan
-        and vp.ViewFamilyType.Name == "Structural Plan RE"
-        and vp.GenLevel.Id == selected_level.Id):
-        forms.alert("Вид 'Structural Plan RE' для этого уровня уже существует: '{}'.".format(vp.Name))
-        script.exit()
-
-# 5. Создаём вид
-from Autodesk.Revit.DB import Transaction
-
-t = Transaction(doc, "Создать Structural Plan RE")
-t.Start()
 try:
-    new_view = ViewPlan.Create(doc, structural_plan_re_type.Id, selected_level.Id)
-    new_view.Name = ("{}RE.".format(selected_level.Name ))
-    forms.alert("Вид успешно создан: '{}'.".format(new_view.Name))
-    t.Commit()
+    ref = uidoc.Selection.PickObject(ObjectType.Element, "Select a family to update")
+    beam = doc.GetElement(ref.ElementId)
 except Exception as e:
-    t.RollBack()
-    forms.alert("Ошибка: {}".format(e))
+    forms.alert("Балка не выбрана. Скрипт завершён.", exitscript=True)
+
+
+section_box = get_section_box_perpendicular_to_beam(beam)
+
+# Находим тип разреза (Section Type) — используем первый попавшийся или нужный по имени
+collector = DB.FilteredElementCollector(doc).OfClass(DB.ViewFamilyType)
+section_type = None
+for vft in collector:
+    if vft.ViewFamily == DB.ViewFamily.Section:
+        section_type = vft
+        break
+
+if not section_type:
+    forms.alert("Не найден тип разреза (Section ViewFamilyType)", exitscript=True)
+
+# Создаём разрез
+t = DB.Transaction(doc, "Создать разрез поперёк балки")
+t.Start()
+section_view = DB.ViewSection.CreateSection(doc, section_type.Id, section_box)
+t.Commit()
+
+if section_view:
+    forms.alert("Разрез успешно создан: {}".format(section_view.Name))
+    # Можно сразу переключиться на созданный разрез
+    uidoc.ActiveView = section_view
+else:
+    forms.alert("Не удалось создать разрез.", exitscript=True)
+
