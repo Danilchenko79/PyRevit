@@ -1,80 +1,111 @@
 # -*- coding: utf-8 -*-
-__title__   = "Beams Cross Sections (Active View)"
-__version__ = 'Version = 0.3 (Beta)'
-__doc__ = """Date    = 31.03.2024"""
-from pyrevit import revit, DB, forms, script
+__title__ = "Auto Beam Sections from Windows Approach"
+__author__ = "ChatGPT, 2025"
+
+from pyrevit import revit, DB, script
 from Autodesk.Revit.DB import *
-from Autodesk.Revit.UI.Selection import ObjectType
+
+output = script.get_output()
+log = []
 
 doc = revit.doc
-uidoc = revit.uidoc
-def get_section_box_perpendicular_to_beam(beam):
-    lc = beam.Location
-    if not isinstance(lc, DB.LocationCurve):
-        forms.alert("Выбранный элемент не содержит LocationCurve (не балка)", exitscript=True)
-    curve = lc.Curve
+view = doc.ActiveView
 
-    curve_transform = curve.ComputeDerivatives(0.5, True)
-    origin = curve_transform.Origin
-    viewdir = curve_transform.BasisX.Normalize()
-    up = DB.XYZ.BasisZ
-    right = up.CrossProduct(viewdir)
+# Получаем все балки на активном виде
+beams = FilteredElementCollector(doc, view.Id) \
+        .OfCategory(BuiltInCategory.OST_StructuralFraming) \
+        .WhereElementIsNotElementType().ToElements()
 
-    transform = DB.Transform.Identity
-    transform.Origin = origin
-    transform.BasisX = right
-    transform.BasisY = up
-    transform.BasisZ = viewdir
+dict_beams = {}  # Создаём пустой словарь
 
-    beam_type = beam.Symbol
-    width_param = beam_type.LookupParameter("b") or beam_type.LookupParameter("Width")
-    height_param = beam_type.LookupParameter("h") or beam_type.LookupParameter("Height")
-    if width_param and height_param:
-        width = width_param.AsDouble()
-        height = height_param.AsDouble()
-    else:
-        bb = beam.get_BoundingBox(None)
-        width = bb.Max.Y - bb.Min.Y
-        height = bb.Max.Z - bb.Min.Z
+for b in beams:
+    family_name = b.Symbol.Family.Name
+    type_name = Element.Name.GetValue(b.Symbol) # Исправлено!
+    key_name = '{}_{}'.format(family_name, type_name)
+    dict_beams[key_name] = b  # Добавляем в словарь
 
-    section_box = DB.BoundingBoxXYZ()
-    section_box.Transform = transform
-    section_box.Min = DB.XYZ(-2 * width, -height * 0.2, 0)
-    section_box.Max = DB.XYZ(2 * width, height * 1.2, 5)
-    return section_box
-# --- Выбор балки через стандартный диалог Revit ---
+# Выводим результат (лучше для pyRevit через output)
+for k, v in dict_beams.items():
+    output.print_md("**{}** : {}".format(k, v.Id))
 
-
-try:
-    ref = uidoc.Selection.PickObject(ObjectType.Element, "Select a family to update")
-    beam = doc.GetElement(ref.ElementId)
-except Exception as e:
-    forms.alert("Балка не выбрана. Скрипт завершён.", exitscript=True)
-
-
-section_box = get_section_box_perpendicular_to_beam(beam)
-
-# Находим тип разреза (Section Type) — используем первый попавшийся или нужный по имени
-collector = DB.FilteredElementCollector(doc).OfClass(DB.ViewFamilyType)
-section_type = None
-for vft in collector:
-    if vft.ViewFamily == DB.ViewFamily.Section:
-        section_type = vft
-        break
-
-if not section_type:
-    forms.alert("Не найден тип разреза (Section ViewFamilyType)", exitscript=True)
-
-# Создаём разрез
-t = DB.Transaction(doc, "Создать разрез поперёк балки")
+t=Transaction(doc,'Generate Section')
 t.Start()
-section_view = DB.ViewSection.CreateSection(doc, section_type.Id, section_box)
+for beam_name, beam in dict_beams.items():
+
+    curve = beam.Location.Curve
+    pt_start = curve.GetEndPoint(0)
+    pt_end = curve.GetEndPoint(1)
+    vector = pt_end - pt_start
+    mid = curve.Evaluate(0.5, True)
+    tangent = curve.Direction.Normalize()
+    # height = beam.Symbol.get_Parameter(BuiltInParameter.GeneralHeight).AsDouble()
+    # width = beam.Symbol.get_Parameter(BuiltInParameter.GeneralWidth).AsDouble()
+    # print(height)
+    param_height = beam.Symbol.LookupParameter("H") or beam.Symbol.LookupParameter("Height")
+    param_width = beam.Symbol.LookupParameter("B") or beam.Symbol.LookupParameter("Width")
+    height = param_height.AsDouble() if param_height else None
+    width = param_width.AsDouble() if param_width else None
+    offset = UnitUtils.ConvertToInternalUnits(40, UnitTypeId.Centimeters)
+    b_depth = UnitUtils.ConvertToInternalUnits(5, UnitTypeId.Centimeters)
+
+    #     # Ориентация: секущий разрез
+    vector = tangent
+    X = XYZ(-vector.Y, vector.X, 0).Normalize()
+    Y = XYZ.BasisZ
+    Z = X.CrossProduct(Y).Normalize()
+    trans = Transform.Identity
+    trans.Origin = mid
+    trans.BasisX = X
+    trans.BasisY = Y
+    trans.BasisZ = Z
+    #
+    box = DB.BoundingBoxXYZ()
+    box.Min = DB.XYZ(-width / 2 - offset, -offset, -b_depth)
+    box.Max = DB.XYZ(width / 2 + offset, offset + height, b_depth)
+    box.Transform = trans
+
+    section_type_id = doc.GetDefaultElementTypeId(ElementTypeGroup.ViewTypeSection)
+    sec = DB.ViewSection.CreateSection(doc, section_type_id, box)
+    new_name = 'py_{} (Elevation)'.format(beam_name)
+
+    sec.Name = new_name
+
+    for i in range(10):
+        try:
+            sec.Name = new_name
+            print('Creadted Section {}'.format(new_name))
+            break
+        except:
+            new_name += '*'
+
 t.Commit()
 
-if section_view:
-    forms.alert("Разрез успешно создан: {}".format(section_view.Name))
-    # Можно сразу переключиться на созданный разрез
-    uidoc.ActiveView = section_view
-else:
-    forms.alert("Не удалось создать разрез.", exitscript=True)
 
+#     if sec is None:
+#         raise Exception("CreateSection returned None")
+#
+#     mark = beam.LookupParameter("Mark").AsString() if beam.LookupParameter("Mark") else "noMark"
+#     sec.Name = "Section_{}_{}".format(mark, beam.Id.IntegerValue)
+#
+#
+# def main():
+#     beams = FilteredElementCollector(doc, view.Id)\
+#         .OfCategory(BuiltInCategory.OST_StructuralFraming)\
+#         .WhereElementIsNotElementType().ToElements()
+#
+#     with Transaction(doc, "Beam Sections") as t:
+#         t.Start()
+#         for b in beams:
+#             try:
+#
+#                 process_beam(b)
+#                 log.append("Создан разрез для балки {}".format(b.Id))
+#             except Exception as e:
+#                 log.append("Ошибка {}: {}".format(b.Id, e))
+#         t.Commit()
+#
+#     for line in log:
+#         output.print_md(line)
+#
+# if __name__ == "__main__":
+#     main()
