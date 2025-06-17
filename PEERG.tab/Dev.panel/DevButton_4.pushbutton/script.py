@@ -157,6 +157,8 @@ if not (re_type and gr_type):
     exit()
 
 created_views = []
+desired_scale = 50  # 1:50
+
 with DB.Transaction(doc, "Create Structural Plan Views for Levels") as t:
     t.Start()
     for current_level in selected_levels:
@@ -168,6 +170,8 @@ with DB.Transaction(doc, "Create Structural Plan Views for Levels") as t:
         if view_name_re not in all_view_names:
             new_view_re = DB.ViewPlan.Create(doc, re_type.Id, current_level.Id)
             new_view_re.Name = view_name_re
+            # Устанавливаем масштаб
+            new_view_re.Scale = desired_scale
             created_views.append(new_view_re)
             all_view_names.add(view_name_re)
         # Structural Plan GR
@@ -175,51 +179,117 @@ with DB.Transaction(doc, "Create Structural Plan Views for Levels") as t:
         if view_name_gr not in all_view_names:
             new_view_gr = DB.ViewPlan.Create(doc, gr_type.Id, current_level.Id)
             new_view_gr.Name = view_name_gr
+            # Устанавливаем масштаб
+            new_view_gr.Scale = desired_scale
             created_views.append(new_view_gr)
             all_view_names.add(view_name_gr)
     t.Commit()
 
+
 # --- РАЗМЕЩЕНИЕ ВИДОВ НА ЛИСТАХ ---
-def place_views_on_sheets_align_centers(doc, base_numbers):
+def get_scopebox_bbox(doc, view):
+    param = view.get_Parameter(DB.BuiltInParameter.VIEWER_VOLUME_OF_INTEREST_CROP)
+    if not param or not param.HasValue:
+        return None
+    scopebox_elem = doc.GetElement(param.AsElementId())
+    if not scopebox_elem:
+        return None
+    # BoundingBox всегда в координатах проекта (ModelSpace)
+    return scopebox_elem.get_BoundingBox(None)
+
+
+def get_titleblock_bbox(doc, sheet):
+    titleblocks = [
+        inst for inst in DB.FilteredElementCollector(doc, sheet.Id)
+        .OfCategory(DB.BuiltInCategory.OST_TitleBlocks)
+        .WhereElementIsNotElementType()
+    ]
+    if not titleblocks:
+        return None
+    return titleblocks[0].get_BoundingBox(sheet)
+
+def get_scopebox_bbox_by_name(doc, scopebox_name):
+    # ScopeBox — это элемент класса ViewSection, но в Revit API — Category OST_VolumeOfInterest
+    scopeboxes = DB.FilteredElementCollector(doc)\
+        .OfCategory(DB.BuiltInCategory.OST_VolumeOfInterest)\
+        .WhereElementIsNotElementType()\
+        .ToElements()
+    for sb in scopeboxes:
+        if hasattr(sb, "Name") and sb.Name == scopebox_name:
+            return sb.get_BoundingBox(None)
+    return None
+def place_views_by_reference_scopebox(doc, base_numbers, reference_scopebox_bbox):
     all_sheets = {s.SheetNumber: s for s in DB.FilteredElementCollector(doc).OfClass(DB.ViewSheet)}
     all_views = {v.Name: v for v in DB.FilteredElementCollector(doc).OfClass(DB.View)
                  if hasattr(v, 'Name') and not v.IsTemplate}
 
-    with DB.Transaction(doc, "Place & Align Views on Sheets") as t:
+    with DB.Transaction(doc, "Place Views by Reference Scope Box (top-left)") as t:
         t.Start()
         for base_number in base_numbers:
             sheet_number = str(base_number)
             sheet = all_sheets.get(sheet_number)
             if not sheet:
                 continue
-            # Имена нужных видов
+
+            tb_bbox = get_titleblock_bbox(doc, sheet)
+            if not tb_bbox:
+                continue
+            tb_left_top = DB.XYZ(tb_bbox.Min.X, tb_bbox.Max.Y, 0)
+            ref_left_top = DB.XYZ(reference_scopebox_bbox.Min.X, reference_scopebox_bbox.Max.Y, 0)
+
             view_names = ["{}RE".format(base_number), "{}GR".format(base_number)]
-            viewports = []
-            # Ставим оба вида в одну точку (например, центр листа)
-            # Координата центра листа (0.5, 0.5, 0) — можно менять
-            pt = DB.XYZ(0.5, 0.5, 0)
             for view_name in view_names:
                 view = all_views.get(view_name)
                 if not view:
                     continue
-                # Уже размещён? Проверяем по листу
+
                 already_placed = any(
+                    vp.ViewId == view.Id and vp.SheetId == sheet.Id
+                    for vp in DB.FilteredElementCollector(doc)
+                    .OfClass(DB.Viewport).WhereElementIsNotElementType()
+                )
+                if already_placed:
+                    continue  # этот вид уже есть на листе
+
+                # Если у вида есть Scope Box — берём его, если нет — эталонный
+                sb_bbox = get_scopebox_bbox(doc, view)
+                if sb_bbox:
+                    sb_left_top = DB.XYZ(sb_bbox.Min.X, sb_bbox.Max.Y, 0)
+                else:
+                    sb_left_top = ref_left_top
+
+                # Временный Viewport для вычисления сдвига
+                temp_vp = DB.Viewport.Create(doc, sheet.Id, view.Id, DB.XYZ(0, 0, 0))
+                vp_box = temp_vp.GetBoxOutline()
+                center_vp = temp_vp.GetBoxCenter()
+                vp_left_top = DB.XYZ(vp_box.MinimumPoint.X, vp_box.MaximumPoint.Y, 0)
+                shift = vp_left_top - center_vp
+                doc.Delete(temp_vp.Id)
+
+                # Итоговая точка для размещения
+                place_point = tb_left_top + (sb_left_top - ref_left_top) - shift
+
+                # Проверяем, размещён ли вид
+                is_already_placed = any(
                     vp.ViewId == view.Id for vp in DB.FilteredElementCollector(doc)
                     .OfClass(DB.Viewport).WhereElementIsNotElementType() if vp.SheetId == sheet.Id
                 )
-                if already_placed:
-                    continue
-                viewport = DB.Viewport.Create(doc, sheet.Id, view.Id, pt)
-                viewports.append(viewport)
-            # Если оба вида размещены, совмещаем их центры
-
+                if not is_already_placed:
+                    DB.Viewport.Create(doc, sheet.Id, view.Id, place_point)
         t.Commit()
 
-base_numbers_for_sheets = [
-    extract_base_from_name(lvl.Name) for lvl in selected_levels
-    if extract_base_from_name(lvl.Name) is not None
-]
-place_views_on_sheets_align_centers(doc, base_numbers_for_sheets)
+
+
+reference_scopebox_bbox = get_scopebox_bbox_by_name(doc, "Building")
+if not reference_scopebox_bbox:
+    alert(u"Scope Box с именем 'Building' не найден в проекте!")
+else:
+    base_numbers_for_sheets = [
+        extract_base_from_name(lvl.Name) for lvl in selected_levels
+        if extract_base_from_name(lvl.Name) is not None
+    ]
+    place_views_by_reference_scopebox(doc, base_numbers_for_sheets, reference_scopebox_bbox)
+
 
 
 

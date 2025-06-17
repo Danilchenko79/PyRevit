@@ -1,69 +1,111 @@
 # -*- coding: utf-8 -*-
-__title__ = "New View"
-__author__ = "Dmitry D"
+__title__ = "Auto Beam Sections from Windows Approach"
+__author__ = "ChatGPT, 2025"
 
+from pyrevit import revit, DB, script
+from Autodesk.Revit.DB import *
 
-from pyrevit import forms
-from Autodesk.Revit.DB import FilteredElementCollector, BuiltInCategory, ViewFamilyType, ViewFamily, ViewPlan
+output = script.get_output()
+log = []
 
-doc = __revit__.ActiveUIDocument.Document
+doc = revit.doc
+view = doc.ActiveView
 
-# 1. Собираем все уровни
-levels = list(FilteredElementCollector(doc)
-              .OfCategory(BuiltInCategory.OST_Levels)
-              .WhereElementIsNotElementType()
-              .ToElements())
+# Получаем все балки на активном виде
+beams = FilteredElementCollector(doc, view.Id) \
+        .OfCategory(BuiltInCategory.OST_StructuralFraming) \
+        .WhereElementIsNotElementType().ToElements()
 
-if not levels:
-    forms.alert("В проекте нет уровней.")
-    script.exit()
+dict_beams = {}  # Создаём пустой словарь
 
-# 2. Выводим список названий уровней для выбора
-level_dict = {lvl.Name: lvl for lvl in levels}
-level_names = sorted(level_dict.keys())
-selected_level_name = forms.SelectFromList.show(level_names,
-                                                title="Выберите уровень",
-                                                button_name='Создать Structural Plan RE')
+for b in beams:
+    family_name = b.Symbol.Family.Name
+    type_name = Element.Name.GetValue(b.Symbol) # Исправлено!
+    key_name = '{}_{}'.format(family_name, type_name)
+    dict_beams[key_name] = b  # Добавляем в словарь
 
-if not selected_level_name:
-    script.exit()
+# Выводим результат (лучше для pyRevit через output)
+for k, v in dict_beams.items():
+    output.print_md("**{}** : {}".format(k, v.Id))
 
-selected_level = level_dict[selected_level_name]
-
-# 3. Находим тип вида "Structural Plan RE"
-view_family_types = FilteredElementCollector(doc).OfClass(ViewFamilyType)
-structural_plan_re_type = None
-
-from Autodesk.Revit.DB import BuiltInParameter
-
-for vft in view_family_types:
-    try:
-        type_name = vft.get_Parameter(BuiltInParameter.SYMBOL_NAME_PARAM).AsString()
-        if (vft.ViewFamily == ViewFamily.StructuralPlan) and (type_name == "Structural Plan RE"):
-            structural_plan_re_type = vft
-            break
-    except Exception as e:
-        forms.alert("Ошибка при обработке ViewFamilyType: {}".format(e))
-
-# 4. Проверяем, есть ли уже вид на этом уровне такого типа
-existing_views = FilteredElementCollector(doc).OfClass(ViewPlan).ToElements()
-for vp in existing_views:
-    if (vp.ViewType == ViewFamily.StructuralPlan
-        and vp.ViewFamilyType.Name == "Structural Plan RE"
-        and vp.GenLevel.Id == selected_level.Id):
-        forms.alert("Вид 'Structural Plan RE' для этого уровня уже существует: '{}'.".format(vp.Name))
-        script.exit()
-
-# 5. Создаём вид
-from Autodesk.Revit.DB import Transaction
-
-t = Transaction(doc, "Создать Structural Plan RE")
+t=Transaction(doc,'Generate Section')
 t.Start()
-try:
-    new_view = ViewPlan.Create(doc, structural_plan_re_type.Id, selected_level.Id)
-    new_view.Name = ("{}RE.".format(selected_level.Name ))
-    forms.alert("Вид успешно создан: '{}'.".format(new_view.Name))
-    t.Commit()
-except Exception as e:
-    t.RollBack()
-    forms.alert("Ошибка: {}".format(e))
+for beam_name, beam in dict_beams.items():
+
+    curve = beam.Location.Curve
+    pt_start = curve.GetEndPoint(0)
+    pt_end = curve.GetEndPoint(1)
+    vector = pt_end - pt_start
+    mid = curve.Evaluate(0.5, True)
+    tangent = curve.Direction.Normalize()
+    # height = beam.Symbol.get_Parameter(BuiltInParameter.GeneralHeight).AsDouble()
+    # width = beam.Symbol.get_Parameter(BuiltInParameter.GeneralWidth).AsDouble()
+    # print(height)
+    param_height = beam.Symbol.LookupParameter("H") or beam.Symbol.LookupParameter("Height")
+    param_width = beam.Symbol.LookupParameter("B") or beam.Symbol.LookupParameter("Width")
+    height = param_height.AsDouble() if param_height else None
+    width = param_width.AsDouble() if param_width else None
+    offset = UnitUtils.ConvertToInternalUnits(40, UnitTypeId.Centimeters)
+    b_depth = UnitUtils.ConvertToInternalUnits(5, UnitTypeId.Centimeters)
+
+    #     # Ориентация: секущий разрез
+    vector = tangent
+    X = XYZ(-vector.Y, vector.X, 0).Normalize()
+    Y = XYZ.BasisZ
+    Z = X.CrossProduct(Y).Normalize()
+    trans = Transform.Identity
+    trans.Origin = mid
+    trans.BasisX = X
+    trans.BasisY = Y
+    trans.BasisZ = Z
+    #
+    box = DB.BoundingBoxXYZ()
+    box.Min = DB.XYZ(-width / 2 - offset, -offset, -b_depth)
+    box.Max = DB.XYZ(width / 2 + offset, offset + height, b_depth)
+    box.Transform = trans
+
+    section_type_id = doc.GetDefaultElementTypeId(ElementTypeGroup.ViewTypeSection)
+    sec = DB.ViewSection.CreateSection(doc, section_type_id, box)
+    new_name = 'py_{} (Elevation)'.format(beam_name)
+
+    sec.Name = new_name
+
+    for i in range(10):
+        try:
+            sec.Name = new_name
+            print('Creadted Section {}'.format(new_name))
+            break
+        except:
+            new_name += '*'
+
+t.Commit()
+
+
+#     if sec is None:
+#         raise Exception("CreateSection returned None")
+#
+#     mark = beam.LookupParameter("Mark").AsString() if beam.LookupParameter("Mark") else "noMark"
+#     sec.Name = "Section_{}_{}".format(mark, beam.Id.IntegerValue)
+#
+#
+# def main():
+#     beams = FilteredElementCollector(doc, view.Id)\
+#         .OfCategory(BuiltInCategory.OST_StructuralFraming)\
+#         .WhereElementIsNotElementType().ToElements()
+#
+#     with Transaction(doc, "Beam Sections") as t:
+#         t.Start()
+#         for b in beams:
+#             try:
+#
+#                 process_beam(b)
+#                 log.append("Создан разрез для балки {}".format(b.Id))
+#             except Exception as e:
+#                 log.append("Ошибка {}: {}".format(b.Id, e))
+#         t.Commit()
+#
+#     for line in log:
+#         output.print_md(line)
+#
+# if __name__ == "__main__":
+#     main()
