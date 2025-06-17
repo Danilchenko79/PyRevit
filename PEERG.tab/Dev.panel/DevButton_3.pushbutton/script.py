@@ -13,6 +13,7 @@ from Autodesk.Revit.DB import (
     Line,
     ReferenceArray,
     Dimension,
+    DimensionType,
     BuiltInParameter,
     TextNoteType,
     TextNote,
@@ -79,13 +80,34 @@ PARAM_REBAR_B = "Rebar_B"  # высота хомута
 PARAM_REBAR_NUMBER = "Rebar_Number"  # диаметр хомута (мм)
 
 TEXT_NOTE_TYPE_NAME = "Stractural 2.6"  # <-- Укажи здесь нужное название типа текста!
+DIMENSION_TYPE_NAME = "PEER-Linear"  # Например: "1.00", "2.5mm"
+
+dimension_type = None
+for dim_type in FilteredElementCollector(doc).OfClass(DimensionType):
+    param = dim_type.get_Parameter(BuiltInParameter.SYMBOL_NAME_PARAM)
+    if param and param.AsString() == DIMENSION_TYPE_NAME:
+        dimension_type = dim_type
+        break
+
+if not dimension_type:
+    dimension_type = FilteredElementCollector(doc).OfClass(DimensionType).FirstElement()
+
+
+
 
 MAX_ROW_WIDTH_CM = 2300  # Максимальная ширина ряда в см на самом виде
+
+
+
 
 # 🔹 Drafting View
 view_name = forms.ask_for_string(default="Column 150", prompt="Enter a name for Drafting View")
 if not view_name:
     forms.alert("Drafting View name not specified. Script stopped.", exitscript=True)
+
+
+
+
 
 drafting_view = None
 for view in FilteredElementCollector(doc).OfClass(ViewDrafting):
@@ -233,7 +255,7 @@ with Transaction(doc, "Place Columns") as t:
                 current_row_width = 0
                 current_row_y -= (height + spacing_ft)
             location_point = XYZ(current_row_width, current_row_y, 0)
-            instance = doc.Create.NewFamilyInstance(location_point, family_symbol, drafting_view)
+            instance = doc.Create.NewFamilyInstance(location_point, family_symbol, drafting_view,)
             # Устанавливаем B и H
             p_b = instance.LookupParameter(PARAM_B)
             if p_b: p_b.Set(width)
@@ -253,7 +275,7 @@ with Transaction(doc, "Place Columns") as t:
                 pt1 = location_point + offset_horizontal
                 pt2 = XYZ(location_point.X + width, location_point.Y, 0) + offset_horizontal
                 dim_line_h = Line.CreateBound(pt1, pt2)
-                doc.Create.NewDimension(drafting_view, dim_line_h, ref_array_h)
+                doc.Create.NewDimension(drafting_view, dim_line_h, ref_array_h,dimension_type)
             # Вертикальный размер (высота)
             if ref_top and ref_bottom:
                 ref_array_v = ReferenceArray()
@@ -263,7 +285,7 @@ with Transaction(doc, "Place Columns") as t:
                 pt3 = location_point + offset_vertical
                 pt4 = XYZ(location_point.X, location_point.Y + height, 0) + offset_vertical
                 dim_line_v = Line.CreateBound(pt3, pt4)
-                doc.Create.NewDimension(drafting_view, dim_line_v, ref_array_v)
+                doc.Create.NewDimension(drafting_view, dim_line_v, ref_array_v,dimension_type)
 
             # Новый параметр армирования
             p_rebar_qty_x = instance.LookupParameter(PARAM_REBAR_QTY_X)
