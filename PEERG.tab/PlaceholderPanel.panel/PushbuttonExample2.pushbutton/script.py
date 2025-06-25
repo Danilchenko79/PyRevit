@@ -70,7 +70,7 @@ for vp_id in viewport_ids:
         view = doc.GetElement(vp.ViewId)
         placed_views.append(view)
 
-# 5️⃣ Ищем Detail Item с этим номером
+# 5️⃣ Ищем Detail Item с этим номером и именем семейства PEER_Rebar_Shape*
 detail_items = []
 
 for view in placed_views:
@@ -79,6 +79,11 @@ for view in placed_views:
         .WhereElementIsNotElementType()
     for item in collector:
         if isinstance(item, FamilyInstance):
+            # Проверяем имя семейства
+            family_name = item.Symbol.Family.Name
+            if not family_name.startswith("PEER_Rebar_Shape"):
+                continue  # Пропускаем не те семейства
+
             param = item.LookupParameter('Rebar_Number')
             if param:
                 val = None
@@ -90,6 +95,7 @@ for view in placed_views:
                     val = param.AsString()
                 if val and str(val).strip() == rebar_number_input.strip():
                     detail_items.append(item)
+
 
 if not detail_items:
     forms.alert("Detail Item with number '{}' was not found on the sheet.".format(user_input_number))
