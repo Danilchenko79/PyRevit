@@ -5,7 +5,7 @@ __author__ = "ChatGPT and You"
 from Autodesk.Revit.DB import FilteredElementCollector, BuiltInCategory, Transaction
 from pyrevit import revit, forms
 from Autodesk.Revit.UI import TaskDialog
-
+from operator import attrgetter
 doc = revit.doc
 
 try:
@@ -50,6 +50,19 @@ try:
             .WhereElementIsNotElementType()\
             .ToElements()
 
+
+        def is_rebar_detail(item):
+            try:
+                symbol = item.Symbol
+                family = symbol.Family
+                name = family.Name
+                return name.startswith("PEER_Rebar_Shape")
+            except AttributeError:
+                return False
+
+
+        detail_items = [item for item in detail_items if is_rebar_detail(item)]
+
         # 8. Обновляем параметр Mark
         t = Transaction(doc, "Assign Sheet Number to Mark")
         t.Start()
@@ -78,5 +91,10 @@ try:
         TaskDialog.Show("Assign Sheet Number to Mark",
                         "Обновлено элементов: {}\nПропущено (уже совпадает): {}".format(updated_count, skipped_count))
 
+
+
+
 except Exception as e:
     TaskDialog.Show("Ошибка выполнения", str(e))
+
+
