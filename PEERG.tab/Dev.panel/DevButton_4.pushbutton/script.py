@@ -112,7 +112,7 @@ for current_level in selected_levels:
     relative_elevation = ft_to_m(current_level.Elevation)
 
     sheet_data = [
-        (u"תכנית תבניות במפלס {}".format(elevation_str(relative_elevation)), str(base_number)),
+        (u"תכנית קומה במפלס {}".format(elevation_str(relative_elevation)), str(base_number)),
         (u"תכנית זיון תקרה במפלס {}".format(elevation_str(relative_elevation)), str(base_number + 2))
     ]
 

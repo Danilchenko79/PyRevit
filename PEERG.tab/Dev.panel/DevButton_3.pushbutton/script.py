@@ -74,7 +74,7 @@ PARAM_NUMBER = "Num"  # первое значение
 PARAM_NUMBER2 = "Num2"  # второе значение (для диапазона)
 PARAM_NUMBER_PLUS = "Num+"  # булевый (True, если диапазон)
 
-STIRRUP_FAMILY_NAME = "PEER_Rebar_Shape 52(x)"
+STIRRUP_FAMILY_NAME = "PEER_Rebar_Shape 52"
 PARAM_REBAR_A = "Rebar_A"  # ширина хомута
 PARAM_REBAR_B = "Rebar_B"  # высота хомута
 PARAM_REBAR_NUMBER = "Rebar_Number"  # диаметр хомута (мм)
