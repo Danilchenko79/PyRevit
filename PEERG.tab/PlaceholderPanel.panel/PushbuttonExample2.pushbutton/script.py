@@ -107,16 +107,22 @@ def get_param(elem, param_name):
     param = elem.LookupParameter(param_name)
     if param:
         if param.StorageType == StorageType.Integer:
-            return str(param.AsInteger())
+            val = param.AsInteger()
+            return str(val) if val is not None else None
         elif param.StorageType == StorageType.Double:
-            return param.AsValueString()
+            val = param.AsValueString()
+            return val if val not in [None, ""] else None
         else:
-            return param.AsString() or "(empty)"
-    return "(not found)"
+            val = param.AsString()
+            return val if val not in [None, ""] else None
+    return None
+
 
 rebar_number = get_param(first_item, 'Rebar_Number')
 rebar_diameter = get_param(first_item, 'Rebar_Diameter')
 rebar_length = get_param(first_item, 'Rebar_Length')
+rebar_quantity_text = get_param(first_item, 'Rebar_Quantity Text')
+rebar_spacing = get_param(first_item, 'Rebar_Spacing')
 element_id = str(first_item.Id.IntegerValue)
 
 # 6️⃣ Записываем параметры в выбранное семейство
@@ -125,15 +131,26 @@ with revit.Transaction("Установка параметров"):
         for param in elem.Parameters:
             if param.Definition.Name == param_name:
                 try:
-                    if param.StorageType == StorageType.Integer:
-                        cleaned_value = ''.join(c for c in str(value) if c.isdigit() or c in ['.', ','])
-                        param.Set(int(float(cleaned_value)))
-                    elif param.StorageType == StorageType.Double:
-                        cleaned_value = ''.join(c for c in str(value) if c.isdigit() or c in ['.', ','])
-                        converted_value = UnitUtils.ConvertToInternalUnits(float(cleaned_value), UnitTypeId.Millimeters)
-                        param.Set(converted_value)
+                    if value in [None, "", "(empty)", "(not found)"]:
+                        # Очищаем параметр
+                        if param.StorageType == StorageType.Integer:
+                            param.Set(0)
+                        elif param.StorageType == StorageType.Double:
+                            param.Set(0.0)
+                        else:
+                            param.Set("")
                     else:
-                        param.Set(str(value))
+                        # Записываем значение как обычно
+                        if param.StorageType == StorageType.Integer:
+                            cleaned_value = ''.join(c for c in str(value) if c.isdigit() or c in ['.', ','])
+                            param.Set(int(float(cleaned_value)))
+                        elif param.StorageType == StorageType.Double:
+                            cleaned_value = ''.join(c for c in str(value) if c.isdigit() or c in ['.', ','])
+                            converted_value = UnitUtils.ConvertToInternalUnits(float(cleaned_value),
+                                                                               UnitTypeId.Millimeters)
+                            param.Set(converted_value)
+                        else:
+                            param.Set(str(value))
                 except Exception as e:
                     forms.alert("Error: Parameter '{}' requires a number. {}".format(param_name, str(e)))
 
@@ -142,5 +159,7 @@ with revit.Transaction("Установка параметров"):
     set_param(selected_elem, 'Rebar_Diameter', rebar_diameter)
     set_param(selected_elem, 'Rebar_Length', rebar_length)
     set_param(selected_elem, 'PR_Rebar_ID', element_id)
+    set_param(selected_elem, 'Rebar_Quantity Text', rebar_quantity_text)
+    set_param(selected_elem, 'Rebar_Spacing', rebar_spacing)
 
 forms.alert("Values successfully transferred to the selected family!")
