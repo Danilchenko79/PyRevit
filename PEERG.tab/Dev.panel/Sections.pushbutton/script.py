@@ -1,91 +1,70 @@
 # -*- coding: utf-8 -*-
-__title__ = "TypeSections"
-__author__ = "Your Name"
+__title__ = "SectionLocalCoords"
+__author__ = "Dim Petrov + ChatGPT"
 
 from pyrevit import revit, script
-from Autodesk.Revit.DB import FilteredElementCollector, BuiltInCategory
+from Autodesk.Revit.DB import FilteredElementCollector, BuiltInCategory, XYZ
 
 output = script.get_output()
 view = revit.active_view
+FT_TO_MM = 304.8
 
-def get_center(element, view):
-    bbox = element.get_BoundingBox(view)
-    if bbox:
-        center = bbox.Min + 0.5 * (bbox.Max - bbox.Min)
-        return center
-    return None
+# Вспомогательная функция векторного произведения для XYZ
+def cross_product(a, b):
+    return XYZ(
+        a.Y * b.Z - a.Z * b.Y,
+        a.Z * b.X - a.X * b.Z,
+        a.X * b.Y - a.Y * b.X
+    )
 
-def world_to_view_coords(point, view):
-    transform = view.CropBox.Transform
-    origin = transform.Origin
-    right = transform.BasisX
-    up = transform.BasisY
+# Универсальная функция перевода глобальных координат в локальные координаты вида
+# origin — базовая точка (CropBox.Transform.Origin)
+# dir_axis — направление вида (CropBox.Transform.BasisX)
+# up_axis — вертикаль вида (CropBox.Transform.BasisY)
+def to_local(point, origin, dir_axis, up_axis):
+    e1 = dir_axis.Normalize()     # X локальной СК
+    e2 = up_axis.Normalize()      # Y локальной СК
+    e3 = cross_product(e1, e2).Normalize() # Z локальной СК
     rel = point - origin
-    x = rel.DotProduct(right)
-    y = rel.DotProduct(up)
-    return x, y
+    return rel.DotProduct(e1), rel.DotProduct(e2), rel.DotProduct(e3)
 
-# --- Поиск первой балки на активном виде ---
-beam = FilteredElementCollector(revit.doc, view.Id) \
-    .OfCategory(BuiltInCategory.OST_StructuralFraming) \
-    .WhereElementIsNotElementType() \
-    .FirstElement()
+# Получаем балку и плиту на виде
+beams = list(FilteredElementCollector(revit.doc, view.Id).OfCategory(BuiltInCategory.OST_StructuralFraming).WhereElementIsNotElementType())
+floors = list(FilteredElementCollector(revit.doc, view.Id).OfCategory(BuiltInCategory.OST_Floors).WhereElementIsNotElementType())
 
-# --- Поиск первой плиты на активном виде ---
-floor = FilteredElementCollector(revit.doc, view.Id) \
-    .OfCategory(BuiltInCategory.OST_Floors) \
-    .WhereElementIsNotElementType() \
-    .FirstElement()
-
-if not beam or not floor:
-    output.print_md(u"❗ На активном виде не найдены и балка, и плита.")
+if len(beams) != 1 or len(floors) != 1:
+    output.print_md(u"❗ Должна быть одна балка и одна плита. Сейчас: Балок = {}, Плит = {}".format(len(beams), len(floors)))
 else:
+    beam = beams[0]
+    floor = floors[0]
+
     beam_bbox = beam.get_BoundingBox(view)
     floor_bbox = floor.get_BoundingBox(view)
     if not beam_bbox or not floor_bbox:
-        output.print_md(u"❗ Не удалось получить bounding box балки или плиты.")
+        output.print_md(u"❗ Не удалось получить границы элементов.")
     else:
-        bx_min, by_min = world_to_view_coords(beam_bbox.Min, view)
-        bx_max, by_max = world_to_view_coords(beam_bbox.Max, view)
-        fx_min, fy_min = world_to_view_coords(floor_bbox.Min, view)
-        fx_max, fy_max = world_to_view_coords(floor_bbox.Max, view)
+        transform = view.CropBox.Transform
+        origin = transform.Origin
+        right = transform.BasisX
+        up = transform.BasisY
 
-        # Новый блок: анализ пересечений и выступающих частей
-        result = []
-        # Проверка: есть ли пересечение по X и Y
-        intersect_x = not (bx_max < fx_min or bx_min > fx_max)
-        intersect_y = not (by_max < fy_min or by_min > fy_max)
-        # Балка полностью внутри плиты по X и по Y
-        beam_inside_plate_x = bx_min >= fx_min and bx_max <= fx_max
-        beam_inside_plate_y = by_min >= fy_min and by_max <= fy_max
-        # Выступающие части балки за плиту
-        beam_outside_plate_left = bx_min < fx_min
-        beam_outside_plate_right = bx_max > fx_max
-        beam_outside_plate_top = by_max > fy_max
-        beam_outside_plate_bottom = by_min < fy_min
+        # Пример перевода ключевых точек балки и плиты в локальные координаты
+        points = {
+            "Beam Min": beam_bbox.Min,
+            "Beam Max": beam_bbox.Max,
+            "Floor Min": floor_bbox.Min,
+            "Floor Max": floor_bbox.Max
+        }
 
-        if intersect_x and intersect_y:
-            if beam_inside_plate_x and beam_inside_plate_y:
-                result.append(u"🟪 Балка полностью внутри перекрытия")
-            else:
-                edge_notes = []
-                if beam_outside_plate_left:
-                    edge_notes.append(u"слева")
-                if beam_outside_plate_right:
-                    edge_notes.append(u"справа")
-                if beam_outside_plate_top:
-                    edge_notes.append(u"выше")
-                if beam_outside_plate_bottom:
-                    edge_notes.append(u"ниже")
-                if edge_notes:
-                    result.append(u"⬛ Балка в перекрытии, выступает: " + ", ".join(edge_notes))
-                else:
-                    result.append(u"🟫 Балка частично вложена в перекрытие (пересечение)")
-        else:
-            result.append(u"⬜ Балка вне перекрытия (нет пересечения)")
+        output.print_md(u"### 🔄 Перевод точек в локальную СК разреза:")
+        for label, pt in points.items():
+            x, y, z = to_local(pt, origin, right, up)
+            output.print_md(u"{}: x={:.1f} мм, y={:.1f} мм, z={:.1f} мм".format(
+                label,
+                x * FT_TO_MM,
+                y * FT_TO_MM,
+                z * FT_TO_MM
+            ))
 
-        output.print_md(u"---\n".join(result))
-        output.print_md(u"**Координаты балки:** X=({:.2f}, {:.2f}), Y=({:.2f}, {:.2f})".format(bx_min, bx_max, by_min, by_max))
-        output.print_md(u"**Координаты плиты:** X=({:.2f}, {:.2f}), Y=({:.2f}, {:.2f})".format(fx_min, fx_max, fy_min, fy_max))
-output.print_md(u"**Минимальные значения плиты:** Xmin={:.2f}, Ymin={:.2f}".format(fx_min, fy_min))
-output.print_md(u"**Максимальные значения плиты:** Xmax={:.2f}, Ymax={:.2f}".format(fx_max, fy_max))
+        # Теперь ты можешь сравнивать x, y координаты этих точек в локальной системе
+        # и определять тип сечения по более универсальной логике, независимо от угла разреза.
