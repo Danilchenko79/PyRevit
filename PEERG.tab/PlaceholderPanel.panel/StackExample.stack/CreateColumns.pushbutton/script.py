@@ -236,9 +236,8 @@ for view in views_on_sheet:
             except Exception:
                 continue
 
-if not annotation_instances:
-    forms.alert("No annotation families '{}' found on the selected sheet views.".format(ANNOTATION_FAMILY_NAME))
-    script.exit()
+
+
 
 # Function to get parameter value
 def get_param_value(elem, param_name):
@@ -278,35 +277,36 @@ updated_count = 0
 missing_elements = []
 
 with revit.Transaction("Update rebar annotation parameters"):
-    for tag in annotation_instances:
-        source_id_param = tag.LookupParameter("PR_Rebar_ID")
-        if source_id_param:
-            try:
-                raw_id = source_id_param.AsString() or source_id_param.AsValueString()
-                if not raw_id:
-                    continue
-                source_id_str = "".join(c for c in raw_id if c.isdigit())
-                if not source_id_str:
-                    continue
-                source_elem_id = int(source_id_str)
-                source_elem = doc.GetElement(ElementId(source_elem_id))
-                if not source_elem:
-                    missing_elements.append(source_id_str)
-                    continue
+    if annotation_instances:
+        for tag in annotation_instances:
+            source_id_param = tag.LookupParameter("PR_Rebar_ID")
+            if source_id_param:
+                try:
+                    raw_id = source_id_param.AsString() or source_id_param.AsValueString()
+                    if not raw_id:
+                        continue
+                    source_id_str = "".join(c for c in raw_id if c.isdigit())
+                    if not source_id_str:
+                        continue
+                    source_elem_id = int(source_id_str)
+                    source_elem = doc.GetElement(ElementId(source_elem_id))
+                    if not source_elem:
+                        missing_elements.append(source_id_str)
+                        continue
 
-                # Read parameters from source element
-                rebar_number = get_param_value(source_elem, "Rebar_Number")
-                rebar_diameter = get_param_value(source_elem, "Rebar_Diameter")
-                rebar_length = get_param_value(source_elem, "Rebar_Length")
+                    # Read parameters from source element
+                    rebar_number = get_param_value(source_elem, "Rebar_Number")
+                    rebar_diameter = get_param_value(source_elem, "Rebar_Diameter")
+                    rebar_length = get_param_value(source_elem, "Rebar_Length")
 
-                # Write parameters back into annotation
-                set_param_value(tag, "Rebar_Number", rebar_number)
-                set_param_value(tag, "Rebar_Diameter", rebar_diameter)
-                set_param_value(tag, "Rebar_Length", rebar_length)
+                    # Write parameters back into annotation
+                    set_param_value(tag, "Rebar_Number", rebar_number)
+                    set_param_value(tag, "Rebar_Diameter", rebar_diameter)
+                    set_param_value(tag, "Rebar_Length", rebar_length)
 
-                updated_count += 1
-            except Exception as e:
-                forms.alert("Error processing element ID {}: {}".format(raw_id, e))
+                    updated_count += 1
+                except Exception as e:
+                    forms.alert("Error processing element ID {}: {}".format(raw_id, e))
 
 # Show results
 result_message = "Updated {} rebar annotations.".format(updated_count)
