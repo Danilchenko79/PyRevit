@@ -8,7 +8,7 @@ import re
 
 doc = revit.doc
 output = script.get_output()
-output.print_md("### Rebar list by selected sheets")
+
 
 # 1️⃣ User selects sheets (MULTISELECT!)
 sheets = FilteredElementCollector(doc).OfCategory(BuiltInCategory.OST_Sheets).WhereElementIsNotElementType().ToElements()
@@ -148,7 +148,7 @@ sorted_grouped = sorted(
 
 # 5️⃣ Numbering and output result (table with quantities)
 # Numbers to skip
-skip_numbers = set([8,10,12,14,16,18,20,22,25,28,30])
+skip_numbers = set([8,10,12,14,16,18,20,22,25,28,30,32])
 # Request starting number from user
 start_number = forms.ask_for_string(
     default="1",
