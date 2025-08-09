@@ -25,6 +25,10 @@ STIRRUP_TAG_FAMILY_NAME = "Detail items_Tag Rebar(Text Quantity)"  # Имя се
 STIRRUP_TAG_TYPE_NAME = "Tag Rebar"  # Имя типа тэга
 TAG_OFFSET_DOWN_CM = 25  # см вниз от центра хомута
 
+SECOND_REBAR_OFFSET_MM = 550      # сдвиг шпильки вправо от хомута
+TAG_OFFSET_X_MM = 300             # зазор для тега по X
+TAG_EXTRA_DOWN_MM = 350           # опускание тега ниже низа формы
+
 def build_marks_and_ranges(marks):
     """
     Возвращает список dict:
@@ -79,6 +83,8 @@ PARAM_REBAR_A = "Rebar_A"  # ширина хомута
 PARAM_REBAR_B = "Rebar_B"  # высота хомута
 PARAM_REBAR_NUMBER = "Rebar_Number"  # диаметр хомута (мм)
 
+
+STAPLE_FAMILY_NAME_CANDIDATES = ["PEER_Rebar Shape 61", "PEER_Rebar_Shape 61"]  # поддержка обоих вариантов имени
 TEXT_NOTE_TYPE_NAME = "Stractural 2.6"  # <-- Укажи здесь нужное название типа текста!
 DIMENSION_TYPE_NAME = "PEER-Linear"  # Например: "1.00", "2.5mm"
 
@@ -158,10 +164,17 @@ for symbol in FilteredElementCollector(doc).OfClass(FamilySymbol):
 if stirrup_symbol is None:
     forms.alert("Family '{}' not found.".format(STIRRUP_FAMILY_NAME), exitscript=True)
 
+# Поиск семейства шпильки (Shape 61)
+staple_symbol = None
+for symbol in FilteredElementCollector(doc).OfClass(FamilySymbol):
+    if symbol.FamilyName in STAPLE_FAMILY_NAME_CANDIDATES:
+        staple_symbol = symbol
+        break
+if staple_symbol is None:
+    forms.alert("Family '{}' not found.".format(" / ".join(STAPLE_FAMILY_NAME_CANDIDATES)), exitscript=True)
+
 # Поиск типа тэга для хомутов
 stirrup_tag_type = None
-
-
 for tag_type in FilteredElementCollector(doc).OfClass(FamilySymbol).OfCategory(BuiltInCategory.OST_DetailComponentTags):
     name_param = tag_type.get_Parameter(BuiltInParameter.SYMBOL_NAME_PARAM)
     tag_type_name = name_param.AsString() if name_param else None
@@ -375,8 +388,13 @@ with Transaction(doc, "Place Columns") as t:
             current_row_width += width + spacing_ft
 
     # После расстановки всех колонн и аннотаций — расставляем хомуты
+
     def mm_to_ft(mm):
         return mm / 304.8
+
+
+    def ft_to_mm(ft):
+        return ft * 304.8
 
     for stirrup_info in stirrups_to_place:
         loc = stirrup_info["location_point"]
@@ -430,6 +448,45 @@ with Transaction(doc, "Place Columns") as t:
         )
         stirrup_tag.ChangeTypeId(stirrup_tag_type.Id)
 
+        # ============================
+        # ВТОРАЯ ФОРМА: ШПИЛЬКА (Shape 61)
+        # ============================
+        staple_x = stirrup_location.X + mm_to_ft(SECOND_REBAR_OFFSET_MM)+mm_to_ft(stirrup_a/2)  # правее хомута
+        staple_y = stirrup_location.Y -mm_to_ft(stirrup_b/2)
+        staple_pt = XYZ(staple_x, staple_y, 0)
+
+        staple_instance = doc.Create.NewFamilyInstance(staple_pt, staple_symbol, drafting_view)
+
+        # Размеры шпильки: по высоте H - 50 мм, по ширине B - 50 мм (как у хомута)
+        # width/height тут в футах; переводим в мм → вычитаем 50 → обратно в футы
+
+        staple_b_mm = max(0.0, ft_to_mm(height) - 50.0)  # высота по Y
+
+        pA_s = staple_instance.LookupParameter(PARAM_REBAR_B)
+
+        if pA_s: pA_s.Set(mm_to_ft(staple_b_mm))
+
+
+        p_diam_s = staple_instance.LookupParameter("Rebar_Diameter")
+        if p_diam_s: p_diam_s.Set(mm_to_ft(8))
+        p_step_s = staple_instance.LookupParameter("Rebar_Spacing")
+        if p_step_s: p_step_s.Set(mm_to_ft(200))
+
+        # Тег под шпилькой (тот же тип тэга)
+        staple_tag_y = tag_y + mm_to_ft(staple_b_mm/2)
+        staple_tag_x = staple_pt.X + mm_to_ft(TAG_OFFSET_X_MM)
+        staple_tag_pt = XYZ(staple_tag_x, staple_tag_y, 0)
+
+        staple_tag = IndependentTag.Create(
+            doc,
+            drafting_view.Id,
+            Reference(staple_instance),
+            False,
+            TagMode.TM_ADDBY_CATEGORY,
+            TagOrientation.Horizontal,
+            staple_tag_pt
+        )
+        staple_tag.ChangeTypeId(stirrup_tag_type.Id)
     t.Commit()
 
 if low_rebar_marks:
