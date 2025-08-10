@@ -22,7 +22,8 @@ from Autodesk.Revit.DB import (
 
 # Параметры для размещения тэга под хомутом
 STIRRUP_TAG_FAMILY_NAME = "Detail items_Tag Rebar(Text Quantity)"  # Имя семейства тэга
-STIRRUP_TAG_TYPE_NAME = "Tag Rebar"  # Имя типа тэга
+
+STIRRUP_TAG_TYPE_NAME = "Tag Rebar + L"  # Имя типа тэга
 TAG_OFFSET_DOWN_CM = 25  # см вниз от центра хомута
 
 SECOND_REBAR_OFFSET_MM = 550      # сдвиг шпильки вправо от хомута
@@ -269,11 +270,15 @@ with Transaction(doc, "Place Columns") as t:
                 current_row_y -= (height + spacing_ft)
             location_point = XYZ(current_row_width, current_row_y, 0)
             instance = doc.Create.NewFamilyInstance(location_point, family_symbol, drafting_view,)
+            eid = instance.Id
             # Устанавливаем B и H
             p_b = instance.LookupParameter(PARAM_B)
-            if p_b: p_b.Set(width)
+            if p_b:
+                p_b.Set(width)
+
             p_h = instance.LookupParameter(PARAM_H)
-            if p_h: p_h.Set(height)
+            if p_h:
+                p_h.Set(height)
             # Получаем Reference границ из семейства
             ref_left = instance.GetReferenceByName("Left")
             ref_right = instance.GetReferenceByName("Right")
@@ -378,11 +383,17 @@ with Transaction(doc, "Place Columns") as t:
             else:
                 print("Family PR_Column Number not found")
 
+
             # Данные для размещения хомута сохраняем для второго прохода
+            doc.Regenerate()
+            inst = doc.GetElement(eid)
+            hasVerticalSpacer_param = inst.LookupParameter("HasVerticalSpacer")
+            hasVerticalSpacer= hasVerticalSpacer_param.AsInteger()
             stirrups_to_place.append({
                 "location_point": location_point,
                 "width": width,
-                "height": height
+                "height": height,
+                "hasVerticalSpacer":hasVerticalSpacer
             })
 
             current_row_width += width + spacing_ft
@@ -400,6 +411,7 @@ with Transaction(doc, "Place Columns") as t:
         loc = stirrup_info["location_point"]
         width = stirrup_info["width"]
         height = stirrup_info["height"]
+        hasVerticalSpacer = stirrup_info["hasVerticalSpacer"]
         # Смещение: центр хомута на 30 см правее ПРАВОГО края колонны
         center_x = loc.X+width/2
         center_y = loc.Y + height / 2
@@ -451,42 +463,45 @@ with Transaction(doc, "Place Columns") as t:
         # ============================
         # ВТОРАЯ ФОРМА: ШПИЛЬКА (Shape 61)
         # ============================
-        staple_x = stirrup_location.X + mm_to_ft(SECOND_REBAR_OFFSET_MM)+mm_to_ft(stirrup_a/2)  # правее хомута
-        staple_y = stirrup_location.Y -mm_to_ft(stirrup_b/2)
-        staple_pt = XYZ(staple_x, staple_y, 0)
 
-        staple_instance = doc.Create.NewFamilyInstance(staple_pt, staple_symbol, drafting_view)
+        if hasVerticalSpacer==1:
 
-        # Размеры шпильки: по высоте H - 50 мм, по ширине B - 50 мм (как у хомута)
-        # width/height тут в футах; переводим в мм → вычитаем 50 → обратно в футы
+            staple_x = stirrup_location.X + mm_to_ft(SECOND_REBAR_OFFSET_MM)+mm_to_ft(stirrup_a/2)  # правее хомута
+            staple_y = stirrup_location.Y
+            staple_pt = XYZ(staple_x, staple_y, 0)
 
-        staple_b_mm = max(0.0, ft_to_mm(height) - 50.0)  # высота по Y
+            staple_instance = doc.Create.NewFamilyInstance(staple_pt, staple_symbol, drafting_view)
 
-        pA_s = staple_instance.LookupParameter(PARAM_REBAR_B)
+            # Размеры шпильки: по высоте H - 50 мм, по ширине B - 50 мм (как у хомута)
+            # width/height тут в футах; переводим в мм → вычитаем 50 → обратно в футы
 
-        if pA_s: pA_s.Set(mm_to_ft(staple_b_mm))
+            staple_b_mm = max(0.0, ft_to_mm(height) - 50.0)  # высота по Y
+
+            pA_s = staple_instance.LookupParameter(PARAM_REBAR_B)
+
+            if pA_s: pA_s.Set(mm_to_ft(staple_b_mm))
 
 
-        p_diam_s = staple_instance.LookupParameter("Rebar_Diameter")
-        if p_diam_s: p_diam_s.Set(mm_to_ft(8))
-        p_step_s = staple_instance.LookupParameter("Rebar_Spacing")
-        if p_step_s: p_step_s.Set(mm_to_ft(200))
+            p_diam_s = staple_instance.LookupParameter("Rebar_Diameter")
+            if p_diam_s: p_diam_s.Set(mm_to_ft(8))
+            p_step_s = staple_instance.LookupParameter("Rebar_Spacing")
+            if p_step_s: p_step_s.Set(mm_to_ft(200))
 
-        # Тег под шпилькой (тот же тип тэга)
-        staple_tag_y = tag_y + mm_to_ft(staple_b_mm/2)
-        staple_tag_x = staple_pt.X + mm_to_ft(TAG_OFFSET_X_MM)
-        staple_tag_pt = XYZ(staple_tag_x, staple_tag_y, 0)
+            # Тег под шпилькой (тот же тип тэга)
+            staple_tag_y = tag_y + mm_to_ft(staple_b_mm/2)
+            staple_tag_x = staple_pt.X + mm_to_ft(TAG_OFFSET_X_MM)
+            staple_tag_pt = XYZ(staple_tag_x, staple_tag_y, 0)
 
-        staple_tag = IndependentTag.Create(
-            doc,
-            drafting_view.Id,
-            Reference(staple_instance),
-            False,
-            TagMode.TM_ADDBY_CATEGORY,
-            TagOrientation.Horizontal,
-            staple_tag_pt
-        )
-        staple_tag.ChangeTypeId(stirrup_tag_type.Id)
+            staple_tag = IndependentTag.Create(
+                doc,
+                drafting_view.Id,
+                Reference(staple_instance),
+                False,
+                TagMode.TM_ADDBY_CATEGORY,
+                TagOrientation.Horizontal,
+                staple_tag_pt
+            )
+            staple_tag.ChangeTypeId(stirrup_tag_type.Id)
     t.Commit()
 
 if low_rebar_marks:
