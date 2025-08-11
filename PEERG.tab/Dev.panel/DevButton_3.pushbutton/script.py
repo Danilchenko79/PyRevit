@@ -19,12 +19,15 @@ from Autodesk.Revit.DB import (
     TextNote,
     IndependentTag, TagMode, TagOrientation, Reference
 )
-
+from Autodesk.Revit.DB import ElementTransformUtils
 # Параметры для размещения тэга под хомутом
 STIRRUP_TAG_FAMILY_NAME = "Detail items_Tag Rebar(Text Quantity)"  # Имя семейства тэга
 
 STIRRUP_TAG_TYPE_NAME = "Tag Rebar + L"  # Имя типа тэга
 TAG_OFFSET_DOWN_CM = 25  # см вниз от центра хомута
+
+COL_TAG_FAMILY_NAME = "Detail items_Tag Rebar"
+COL_TAG_TYPE_NAME   = "Tag Rebar 2∅10"
 
 SECOND_REBAR_OFFSET_MM = 550      # сдвиг шпильки вправо от хомута
 TAG_OFFSET_X_MM = 300             # зазор для тега по X
@@ -89,6 +92,17 @@ STAPLE_FAMILY_NAME_CANDIDATES = ["PEER_Rebar Shape 61", "PEER_Rebar_Shape 61"]  
 TEXT_NOTE_TYPE_NAME = "Stractural 2.6"  # <-- Укажи здесь нужное название типа текста!
 DIMENSION_TYPE_NAME = "PEER-Linear"  # Например: "1.00", "2.5mm"
 
+
+col_tag_type = None
+for tag_type in FilteredElementCollector(doc).OfClass(FamilySymbol).OfCategory(BuiltInCategory.OST_DetailComponentTags):
+    name_param = tag_type.get_Parameter(BuiltInParameter.SYMBOL_NAME_PARAM)
+    tname = name_param.AsString() if name_param else None
+    if tag_type.FamilyName == COL_TAG_FAMILY_NAME and tname == COL_TAG_TYPE_NAME:
+        col_tag_type = tag_type
+        break
+
+if col_tag_type is None:
+    forms.alert("Tag type '{}' in family '{}' not found.".format(COL_TAG_TYPE_NAME, COL_TAG_FAMILY_NAME), exitscript=True)
 dimension_type = None
 for dim_type in FilteredElementCollector(doc).OfClass(DimensionType):
     param = dim_type.get_Parameter(BuiltInParameter.SYMBOL_NAME_PARAM)
@@ -252,6 +266,102 @@ max_row_width_ft = MAX_ROW_WIDTH_CM / 100.0 * 3.28084  # из см в футы
 current_row_width = 0
 current_row_y = 0
 
+
+def mm_to_ft(mm):
+    return mm / 304.8
+
+
+def ft_to_mm(ft):
+    return ft * 304.8
+
+
+
+def place_column_tag_force(doc, view, family_instance, tag_type, dx_mm=0.0, dy_mm=0.0):
+    """
+    Ставит тэг для Create Column и жёстко переносит его в правый-верхний угол рамки
+    (bbox.Max) + зазоры dx_mm/dy_mm. Работает даже если Revit игнорирует точку создания.
+    """
+    try:
+        doc.Regenerate()
+        bbox = family_instance.get_BoundingBox(view)
+        if not bbox:
+            return
+
+        # Целевая точка: верхний-правый угол + зазоры
+        target = XYZ(bbox.Max.X + mm_to_ft(dx_mm), bbox.Max.Y + mm_to_ft(dy_mm), 0)
+
+        # Создаём тэг (точка при создании может проигнорироваться — не страшно)
+        base_pt = XYZ((bbox.Min.X + bbox.Max.X)/2.0, (bbox.Min.Y + bbox.Max.Y)/2.0, 0)
+        tag = IndependentTag.Create(
+            doc, view.Id, Reference(family_instance), False,
+            TagMode.TM_ADDBY_CATEGORY, TagOrientation.Horizontal, base_pt
+        )
+        tag.ChangeTypeId(tag_type.Id)
+
+        doc.Regenerate()
+
+        # На всякий случай снимем pin
+        try:
+            if tag.Pinned:
+                tag.Pinned = False
+        except:
+            pass
+
+        # 1) Пытаемся сместить через TagHeadPosition (самый надёжный способ)
+        set_ok = False
+        try:
+            # В некоторых версиях проще сначала включить выноску
+            try:
+                tag.HasLeader = True
+                doc.Regenerate()
+            except:
+                pass
+
+            tag.TagHeadPosition = target
+            doc.Regenerate()
+
+            try:
+                tag.HasLeader = False
+                doc.Regenerate()
+            except:
+                pass
+
+            set_ok = True
+        except:
+            set_ok = False
+
+        # 2) Fallback: двигаем элемент на разницу координат
+        if not set_ok:
+            cur = None
+            try:
+                cur = tag.TagHeadPosition
+            except:
+                loc = getattr(tag, "Location", None)
+                cur = getattr(loc, "Point", None) if loc else None
+
+            if cur:
+                ElementTransformUtils.MoveElement(doc, tag.Id, target - cur)
+                doc.Regenerate()
+
+    except Exception as e:
+        print("❌ Tag place/move error: {}".format(e))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 with Transaction(doc, "Place Columns") as t:
     t.Start()
     if not family_symbol.IsActive:
@@ -260,6 +370,8 @@ with Transaction(doc, "Place Columns") as t:
         stirrup_symbol.Activate()
     if not stirrup_tag_type.IsActive:
         stirrup_tag_type.Activate()
+    if not col_tag_type.IsActive:
+        col_tag_type.Activate()
     stirrups_to_place = []
     for col_data in columns_data:
         width = col_data["width"]
@@ -279,6 +391,9 @@ with Transaction(doc, "Place Columns") as t:
             p_h = instance.LookupParameter(PARAM_H)
             if p_h:
                 p_h.Set(height)
+            # тэг в правый-верхний угол без зазоров (или, например, +50 мм по X/Y)
+            place_column_tag_force(doc, drafting_view, instance, col_tag_type, dx_mm=0.0, dy_mm=0.0)
+
             # Получаем Reference границ из семейства
             ref_left = instance.GetReferenceByName("Left")
             ref_right = instance.GetReferenceByName("Right")
@@ -327,6 +442,7 @@ with Transaction(doc, "Place Columns") as t:
                 except Exception as e:
                     print("Error setting Rebar_Diameter: {}".format(e))
             # Добавляем текст на иврите только с размерами колонны
+
 
             text_type = None
             for ttype in FilteredElementCollector(doc).OfClass(TextNoteType):
@@ -387,6 +503,8 @@ with Transaction(doc, "Place Columns") as t:
             # Данные для размещения хомута сохраняем для второго прохода
             doc.Regenerate()
             inst = doc.GetElement(eid)
+
+
             hasVerticalSpacer_param = inst.LookupParameter("HasVerticalSpacer")
             hasVerticalSpacer= hasVerticalSpacer_param.AsInteger()
             stirrups_to_place.append({
@@ -400,12 +518,7 @@ with Transaction(doc, "Place Columns") as t:
 
     # После расстановки всех колонн и аннотаций — расставляем хомуты
 
-    def mm_to_ft(mm):
-        return mm / 304.8
 
-
-    def ft_to_mm(ft):
-        return ft * 304.8
 
     for stirrup_info in stirrups_to_place:
         loc = stirrup_info["location_point"]
@@ -420,8 +533,7 @@ with Transaction(doc, "Place Columns") as t:
         stirrup_instance = doc.Create.NewFamilyInstance(stirrup_location, stirrup_symbol, drafting_view)
 
         # Автоматическое определение единиц: если width > 10 — это мм, иначе футы
-        def mm_to_ft(mm):
-            return mm / 304.8
+
 
         if width > 10:
             stirrup_a = width - 50
