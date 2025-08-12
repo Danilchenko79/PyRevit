@@ -19,7 +19,14 @@ from Autodesk.Revit.DB import (
     TextNote,
     IndependentTag, TagMode, TagOrientation, Reference
 )
-from Autodesk.Revit.DB import ElementTransformUtils
+from Autodesk.Revit.DB import (
+    XYZ, Reference, IndependentTag, TagMode, TagOrientation,
+    ElementTransformUtils, SubTransaction
+)
+from Samples.Numeration import process_drafting_view
+from Snippets._CreateTextType import create_TextType
+import math
+
 # Параметры для размещения тэга под хомутом
 STIRRUP_TAG_FAMILY_NAME = "Detail items_Tag Rebar(Text Quantity)"  # Имя семейства тэга
 
@@ -89,7 +96,7 @@ PARAM_REBAR_NUMBER = "Rebar_Number"  # диаметр хомута (мм)
 
 
 STAPLE_FAMILY_NAME_CANDIDATES = ["PEER_Rebar Shape 61", "PEER_Rebar_Shape 61"]  # поддержка обоих вариантов имени
-TEXT_NOTE_TYPE_NAME = "Stractural 2.6"  # <-- Укажи здесь нужное название типа текста!
+TEXT_NOTE_TYPE_NAME = "Structural 3.5"  # <-- Укажи здесь нужное название типа текста!
 DIMENSION_TYPE_NAME = "PEER-Linear"  # Например: "1.00", "2.5mm"
 
 
@@ -116,7 +123,22 @@ if not dimension_type:
 
 
 
-MAX_ROW_WIDTH_CM = 2300  # Максимальная ширина ряда в см на самом виде
+# Ask the user for sheet width in cm
+width_cm_str = forms.ask_for_string(
+    prompt="Enter sheet width in cm:",
+    default="59.4",  # default value
+    title="Sheet Width (cm)"
+)
+
+# Validate and convert to float
+try:
+    width_cm = float(width_cm_str.replace(",", "."))
+    MAX_ROW_WIDTH_CM = width_cm *25
+except (ValueError, AttributeError):
+    forms.alert("Invalid value! Using default value: 59.4 cm.")
+    width_cm = 59.4
+    MAX_ROW_WIDTH_CM= width_cm*25
+
 
 
 
@@ -259,12 +281,14 @@ for data in grouped_columns.values():
         "rebar_qty_y": data["rebar_qty_y"],
         "rebar_diam": data["rebar_diam"]
     })
-columns_data.sort(key=lambda c: (-c["width"] * c["height"], -c["rebar_qty_x"]-c["rebar_qty_y"]))
+columns_data.sort(key=lambda c: (-c["width"] * c["height"], -c["rebar_qty_x"]-c["rebar_qty_y"],-c["rebar_diam"]))
 
 spacing_ft = 200 * 0.0328084
 max_row_width_ft = MAX_ROW_WIDTH_CM / 100.0 * 3.28084  # из см в футы
 current_row_width = 0
 current_row_y = 0
+
+
 
 
 def mm_to_ft(mm):
@@ -347,9 +371,84 @@ def place_column_tag_force(doc, view, family_instance, tag_type, dx_mm=0.0, dy_m
         print("❌ Tag place/move error: {}".format(e))
 
 
+def rotate_element_around_z(doc, element, angle_deg, base_point=None):
+    """
+    Поворачивает элемент вокруг оси Z на указанный угол в градусах.
+
+    doc         — текущий документ Revit
+    element     — элемент Revit (instance или symbol)
+    angle_deg   — угол в градусах (+ против часовой стрелки, - по часовой)
+    base_point  — точка вращения (XYZ), если None — берётся LocationPoint элемента
+    """
+    # Получаем точку вращения
+    if base_point is None:
+        loc = element.Location
+        if hasattr(loc, "Point"):
+            base_point = loc.Point
+        else:
+            raise ValueError("Элемент не имеет LocationPoint. Укажи base_point вручную.")
+
+    # Создаём ось вращения (линия по оси Z)
+    axis = Line.CreateBound(base_point, base_point + XYZ(0, 0, 1))
+
+    # Преобразуем угол в радианы
+    angle_rad = math.radians(angle_deg)
+
+    # Вращаем элемент
+    ElementTransformUtils.RotateElement(doc, element.Id, axis, angle_rad)
 
 
+def place_tag_forced(doc, view, ref_el, tag_type, desired_head_pt, leader_end_pt=None):
+    """
+    Создаёт тег по категории и насильно ставит голову в desired_head_pt.
+    Работает на старых и новых API:
+      - пробуем SetTagHeadPosition
+      - если недоступно — MoveElement по дельте
+    Делаем с лидером (Revit послушнее), затем отключаем при необходимости.
+    """
+    st = SubTransaction(doc)
+    st.Start()
 
+    # 1) Создаём с лидером
+    tag = IndependentTag.Create(
+        doc, view.Id, Reference(ref_el), True,
+        TagMode.TM_ADDBY_CATEGORY, TagOrientation.Horizontal, desired_head_pt
+    )
+    tag.ChangeTypeId(tag_type.Id)
+    doc.Regenerate()
+
+    # 2) Задаём конец/локоть лидера (по желанию) — помогает зафиксировать якорь
+    try:
+        if leader_end_pt is not None:
+            tag.SetLeaderEnd(leader_end_pt)   # доступно в новых версиях
+        # Можно ещё: tag.SetLeaderElbow(XYZ(...)) — если нужно «колено»
+    except:
+        pass
+    doc.Regenerate()
+
+    # 3) Ставим голову тега именно туда, где хотим
+    try:
+        tag.SetTagHeadPosition(desired_head_pt)  # новые версии API
+    except:
+        # fallback: двигаем весь тег на дельту до нужной головы
+        try:
+            current = tag.TagHeadPosition
+            ElementTransformUtils.MoveElement(doc, tag.Id, desired_head_pt - current)
+        except:
+            # крайний случай — просто сдвиг по Y на фиксированную величину
+            # (если TagHeadPosition недоступен в API твоей версии)
+            ElementTransformUtils.MoveElement(doc, tag.Id, XYZ(0, desired_head_pt.Y, 0))
+    doc.Regenerate()
+
+    # 4) Отключаем лидер, если он не нужен
+    try:
+        tag.HasLeader = False
+    except:
+        pass
+    doc.Regenerate()
+
+    st.Commit()
+    return tag
 
 
 
@@ -448,17 +547,22 @@ with Transaction(doc, "Place Columns") as t:
             for ttype in FilteredElementCollector(doc).OfClass(TextNoteType):
                 type_name = ttype.get_Parameter(BuiltInParameter.SYMBOL_NAME_PARAM).AsString()
                 if type_name == TEXT_NOTE_TYPE_NAME:
-                    text_type = ttype
+                    text_type = ttype.Id
                     break
             if not text_type:
-                text_type = FilteredElementCollector(doc).OfClass(TextNoteType).FirstElement()
+                text_type=create_TextType(doc,
+                                          TEXT_NOTE_TYPE_NAME,
+                                          size_mm=3.5,
+                                          font="TN_CalibriL_Structural",
+                                          width_factor=1)
+
 
             b_int = int(round(width * 30.48))  # футы -> см
             h_int = int(round(height * 30.48))  # футы -> см
             hebrew_text = u"עמוד {}/{}".format(b_int, h_int)
             text_location = location_point + XYZ(0, -1.2, 0)
             text_note = TextNote.Create(doc, drafting_view.Id, text_location,
-                                        hebrew_text, text_type.Id)
+                                        hebrew_text, text_type)
             # Размещаем семейства с номерами марок (PR_Column Number)
             column_number_symbol = None
             for symbol in FilteredElementCollector(doc).OfClass(FamilySymbol):
@@ -503,7 +607,8 @@ with Transaction(doc, "Place Columns") as t:
             # Данные для размещения хомута сохраняем для второго прохода
             doc.Regenerate()
             inst = doc.GetElement(eid)
-
+            hasHorizontalSpacer_param = inst.LookupParameter("HasHorizontalSpacer")
+            hasHorizontalSpacer = hasHorizontalSpacer_param.AsInteger()
 
             hasVerticalSpacer_param = inst.LookupParameter("HasVerticalSpacer")
             hasVerticalSpacer= hasVerticalSpacer_param.AsInteger()
@@ -511,7 +616,8 @@ with Transaction(doc, "Place Columns") as t:
                 "location_point": location_point,
                 "width": width,
                 "height": height,
-                "hasVerticalSpacer":hasVerticalSpacer
+                "hasVerticalSpacer":hasVerticalSpacer,
+                "hasHorizontalSpacer":hasHorizontalSpacer
             })
 
             current_row_width += width + spacing_ft
@@ -525,6 +631,7 @@ with Transaction(doc, "Place Columns") as t:
         width = stirrup_info["width"]
         height = stirrup_info["height"]
         hasVerticalSpacer = stirrup_info["hasVerticalSpacer"]
+        hasHorizontalSpacer = stirrup_info["hasHorizontalSpacer"]
         # Смещение: центр хомута на 30 см правее ПРАВОГО края колонны
         center_x = loc.X+width/2
         center_y = loc.Y + height / 2
@@ -601,7 +708,7 @@ with Transaction(doc, "Place Columns") as t:
 
             # Тег под шпилькой (тот же тип тэга)
             staple_tag_y = tag_y + mm_to_ft(staple_b_mm/2)
-            staple_tag_x = staple_pt.X + mm_to_ft(TAG_OFFSET_X_MM)
+            staple_tag_x = staple_pt.X + mm_to_ft(200)
             staple_tag_pt = XYZ(staple_tag_x, staple_tag_y, 0)
 
             staple_tag = IndependentTag.Create(
@@ -614,8 +721,55 @@ with Transaction(doc, "Place Columns") as t:
                 staple_tag_pt
             )
             staple_tag.ChangeTypeId(stirrup_tag_type.Id)
+
+        if hasHorizontalSpacer == 1:
+            distance = mm_to_ft(220)
+            staple_y = loc.Y + height + distance  # к центру колонны
+            staple_x = loc.X + width / 2
+            staple_pt = XYZ(staple_x, staple_y, 0)
+
+            staple_instance = doc.Create.NewFamilyInstance(staple_pt, staple_symbol, drafting_view)
+
+            # --- параметры шпильки ---
+            staple_b_mm = max(0.0, ft_to_mm(width) - 50.0)  # высота по Y
+            pA_s = staple_instance.LookupParameter(PARAM_REBAR_B)
+            if pA_s:
+                pA_s.Set(mm_to_ft(staple_b_mm))
+
+            p_diam_s = staple_instance.LookupParameter("Rebar_Diameter")
+            if p_diam_s: p_diam_s.Set(mm_to_ft(8))
+            p_step_s = staple_instance.LookupParameter("Rebar_Spacing")
+            if p_step_s: p_step_s.Set(mm_to_ft(200))
+
+            # Вращаем вокруг своей точки вставки
+            rotate_element_around_z(doc, staple_instance, 90, staple_pt)
+
+            # ⚠️ Зафиксировать геометрию шпильки перед созданием тега
+            doc.Regenerate()
+
+            # --- создаём тег немного выше ---
+            staple_tag_y = staple_y + mm_to_ft(220)
+            staple_tag_x = staple_x
+            doc.Regenerate()
+
+            desired_head_pt = XYZ(staple_tag_x , staple_tag_y, 0)
+            leader_end_pt = staple_pt  # логично привязать конец лидера к шпильке
+
+            staple_tag = place_tag_forced(
+                doc=doc,
+                view=drafting_view,
+                ref_el=staple_instance,
+                tag_type=stirrup_tag_type,
+                desired_head_pt=desired_head_pt,
+                leader_end_pt=leader_end_pt
+            )
+
     t.Commit()
 
+t=Transaction(doc,"Numeration")
+t.Start()
+process_drafting_view(doc,drafting_view)
+t.Commit()
 if low_rebar_marks:
     msg = "No rebar found in columns with marks: {}. Please correct this.".format(", ".join(low_rebar_marks))
     forms.alert(msg)
