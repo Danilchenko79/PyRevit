@@ -476,6 +476,8 @@ with Transaction(doc, "Place Columns") as t:
         family_symbol.Activate()
     if not stirrup_symbol.IsActive:
         stirrup_symbol.Activate()
+    if not staple_symbol.IsActive:
+        staple_symbol.Activate()
     if not stirrup_tag_type.IsActive:
         stirrup_tag_type.Activate()
     if not col_tag_type.IsActive:
