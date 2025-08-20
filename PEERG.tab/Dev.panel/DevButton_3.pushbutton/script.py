@@ -139,6 +139,20 @@ except (ValueError, AttributeError):
     width_cm = 59.4
     MAX_ROW_WIDTH_CM= width_cm*25
 
+cover_cm_str = forms.ask_for_string(
+    prompt="Enter cover for columns",
+    default="2.5",  # default value
+    title="Cover"
+)
+
+# Validate and convert to float
+try:
+    cover_cm = float(cover_cm_str.replace(",", "."))
+    cover_mm = cover_cm*10
+except (ValueError, AttributeError):
+    forms.alert("Invalid value! Using default value: 2.5 cm.")
+    cover_mm = 25
+
 
 
 
@@ -172,17 +186,12 @@ if not drafting_view:
         drafting_view.Name = view_name
         t.Commit()
 else:
-    # Если вид есть — очищаем только нужные элементы (созданные скриптом)
     with Transaction(doc, "Очистка текущего вида") as t:
         t.Start()
-        to_delete = []
-        for inst in FilteredElementCollector(doc, drafting_view.Id).WhereElementIsNotElementType():
-            if hasattr(inst, "Symbol") and inst.Symbol.FamilyName in [FAMILY_NAME, COLUMN_NUMBER_FAMILY_NAME, STIRRUP_FAMILY_NAME]:
-                to_delete.append(inst.Id)
-        for eid in to_delete:
-            doc.Delete(eid)
+        for el in FilteredElementCollector(doc, drafting_view.Id).WhereElementIsNotElementType():
+            if getattr(el, "Symbol", None):
+                doc.Delete(el.Id)
         t.Commit()
-
 
 family_symbol = None
 for symbol in FilteredElementCollector(doc).OfClass(FamilySymbol):
@@ -540,6 +549,15 @@ with Transaction(doc, "Place Columns") as t:
                     p_rebar_diam.Set(col_data["rebar_diam"])
                 except Exception as e:
                     print("Error setting Rebar_Diameter: {}".format(e))
+
+            #Устанавливаем защитный слой
+
+            p_cover = instance.LookupParameter("Cover")
+            if p_cover:
+                try:
+                    p_cover.Set(mm_to_ft(cover_mm))
+                except Exception as e:
+                    print("Error setting Cover: {}".format(e))
             # Добавляем текст на иврите только с размерами колонны
 
 
@@ -643,11 +661,11 @@ with Transaction(doc, "Place Columns") as t:
 
 
         if width > 10:
-            stirrup_a = width - 50
-            stirrup_b = height - 50
+            stirrup_a = width - (2*cover_cm)*10
+            stirrup_b = height - (2*cover_cm)*10
         else:
-            stirrup_a = width * 304.8 - 50
-            stirrup_b = height * 304.8 - 50
+            stirrup_a = width * 304.8 - (2*cover_cm)*10
+            stirrup_b = height * 304.8 - (2*cover_cm)*10
         p_stirrup_a = stirrup_instance.LookupParameter(PARAM_REBAR_A)
         p_stirrup_b = stirrup_instance.LookupParameter(PARAM_REBAR_B)
         if p_stirrup_a:
@@ -694,7 +712,7 @@ with Transaction(doc, "Place Columns") as t:
             # Размеры шпильки: по высоте H - 50 мм, по ширине B - 50 мм (как у хомута)
             # width/height тут в футах; переводим в мм → вычитаем 50 → обратно в футы
 
-            staple_b_mm = max(0.0, ft_to_mm(height) - 50.0)  # высота по Y
+            staple_b_mm = max(0.0, ft_to_mm(height) - (2*cover_cm)*10)  # высота по Y
 
             pA_s = staple_instance.LookupParameter(PARAM_REBAR_B)
 
@@ -731,7 +749,7 @@ with Transaction(doc, "Place Columns") as t:
             staple_instance = doc.Create.NewFamilyInstance(staple_pt, staple_symbol, drafting_view)
 
             # --- параметры шпильки ---
-            staple_b_mm = max(0.0, ft_to_mm(width) - 50.0)  # высота по Y
+            staple_b_mm = max(0.0, ft_to_mm(width) - (2*cover_cm)*10)  # высота по Y
             pA_s = staple_instance.LookupParameter(PARAM_REBAR_B)
             if pA_s:
                 pA_s.Set(mm_to_ft(staple_b_mm))
