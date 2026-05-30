@@ -1,0 +1,71 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Create Worksets &amp; Coordination Filters"
+        Height="700" Width="480" MinWidth="420" MinHeight="560"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="CanResizeWithGrip"
+        ShowInTaskbar="False"
+        FontFamily="Segoe UI" FontSize="13">
+    <Grid Margin="14">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*" MinHeight="90"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="150"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" Text="Create Worksets &amp; Coordination Filters"
+                   FontWeight="Bold" FontSize="15" Margin="0,0,0,6"/>
+
+        <!-- Usage / instructions -->
+        <Border Grid.Row="1" Background="#F2F6FA" BorderBrush="#C6D4E1"
+                BorderThickness="1" CornerRadius="3" Padding="8" Margin="0,0,0,10">
+            <TextBlock TextWrapping="Wrap" Foreground="#33475B">
+                <Run FontWeight="Bold" Text="How to use:"/><LineBreak/>
+                <Run Text="1. Edit the worksets list (one per line)."/><LineBreak/>
+                <Run Text="2. Type the text found in concrete / block wall type names of the architectural model."/><LineBreak/>
+                <Run Text="3. Tick the view templates that should receive the coordination filters."/><LineBreak/>
+                <Run Text="4. Click OK — worksets are created, then filters are built and pushed to the templates."/>
+            </TextBlock>
+        </Border>
+
+        <TextBlock Grid.Row="2" Text="Worksets (one per line):" Margin="0,0,0,4"/>
+        <TextBox x:Name="tb_worksets" Grid.Row="3"
+                 AcceptsReturn="True" TextWrapping="NoWrap"
+                 VerticalScrollBarVisibility="Auto"
+                 HorizontalScrollBarVisibility="Auto"
+                 MinHeight="90" FontFamily="Consolas"/>
+
+        <TextBlock Grid.Row="4" Margin="0,10,0,4" TextWrapping="Wrap"
+                   Text="What text is contained in the CONCRETE wall type names (architectural model)? Comma-separated:"/>
+        <TextBox x:Name="tb_concrete" Grid.Row="5"/>
+
+        <TextBlock Grid.Row="6" Margin="0,10,0,4" TextWrapping="Wrap"
+                   Text="What text is contained in the BLOCK wall type names (architectural model)? Comma-separated:"/>
+        <TextBox x:Name="tb_block" Grid.Row="7"/>
+
+        <TextBlock Grid.Row="8" Margin="0,12,0,4"
+                   Text="View templates to update (tick to include):"/>
+        <Border Grid.Row="9" BorderBrush="#BBBBBB" BorderThickness="1" Background="White">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel x:Name="templates_panel" Margin="6,4,6,4"/>
+            </ScrollViewer>
+        </Border>
+
+        <StackPanel Grid.Row="10" Orientation="Vertical" Margin="0,12,0,0">
+            <CheckBox x:Name="cb_filters" Content="Create / update coordination filters" Margin="0,2"/>
+            <CheckBox x:Name="cb_worksharing" Content="Auto-enable worksharing if it is off" Margin="0,2"/>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+                <Button Content="OK" Width="90" Height="28" Click="on_ok" Margin="0,0,8,0" IsDefault="True"/>
+                <Button Content="Cancel" Width="90" Height="28" Click="on_cancel" IsCancel="True"/>
+            </StackPanel>
+        </StackPanel>
+    </Grid>
+</Window>
