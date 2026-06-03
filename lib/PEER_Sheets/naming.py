@@ -126,3 +126,59 @@ def sheet_defs(base, low_str, high_str, is_range, prev_str=None):
     if prev_str is not None:
         defs.append(("walls", TPL_WALLS.format(prev_str, high_str), str(base + 5)))
     return defs
+
+
+# --- view names -----------------------------------------------------------
+# Each sheet (kind) carries two structural plans: Reaching (RE) and Growing
+# (GR). View names are keyed by the PR_Level number (not the sheet number) so
+# all of a level's views share the same number, e.g. 120RE / RF.Floor 120RE.
+#
+# Unlike sheet names (Hebrew), view names use the office's short ASCII codes.
+# The kind prefix is the only per-kind part, kept in one dict so a future
+# Shift-mode "name constructor" can override it per project / user.
+
+# Sheet number offset per kind (mirrors sheet_defs: base, base+2, base+5).
+KIND_OFFSET = {"formwork": 0, "slab": 2, "walls": 5}
+
+# View name prefix per kind. Formwork is bare ("120RE"); reinforcement plans
+# carry a discipline prefix.
+VIEW_KIND_PREFIX = {
+    "formwork": u"",
+    "slab": u"RF.Floor ",
+    "walls": u"RF.Walls ",
+}
+
+# Plan flavours and their long labels (for UI / reports).
+FLAVORS = ("RE", "GR")
+FLAVOR_LABEL = {"RE": u"Reaching", "GR": u"Growing"}
+
+
+def sheet_number(base, kind):
+    """Sheet number string for a level `base` and sheet role `kind`."""
+    return str(base + KIND_OFFSET[kind])
+
+
+def view_name(base, kind, flavor, prefixes=None):
+    """View name for (level base, sheet kind, flavor).
+
+    `flavor` is "RE" or "GR". `prefixes` overrides VIEW_KIND_PREFIX (the future
+    user-editable name constructor); when None the built-in prefixes are used.
+    """
+    pref = (prefixes or VIEW_KIND_PREFIX).get(kind, u"")
+    return u"{}{}{}".format(pref, base, flavor)
+
+
+def view_defs(base, has_walls, prefixes=None):
+    """(kind, flavor, view_name) tuples for one logical level.
+
+    Two views (RE + GR) per sheet role: formwork and slab always, walls only
+    when `has_walls` (there is a lower logical level - matches sheet_defs).
+    """
+    kinds = ["formwork", "slab"]
+    if has_walls:
+        kinds.append("walls")
+    out = []
+    for kind in kinds:
+        for flavor in FLAVORS:
+            out.append((kind, flavor, view_name(base, kind, flavor, prefixes)))
+    return out

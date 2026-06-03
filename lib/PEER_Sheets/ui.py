@@ -670,3 +670,121 @@ class OrphanWindow(forms.WPFWindow):
     def btn_cancel_click(self, sender, args):
         self.result = None
         self.Close()
+
+
+# ---------------------------------------------------------------------------
+# View options window: pick RE/GR view types, RE/GR templates and a scope box
+# ---------------------------------------------------------------------------
+
+VIEW_OPTS_XAML = u"""
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="PEER - Create Views by Level"
+        Width="600" Height="420" MinWidth="500" MinHeight="380"
+        ResizeMode="CanResizeWithGrip"
+        WindowStartupLocation="CenterScreen"
+        FontFamily="Segoe UI" FontSize="13">
+    <Grid Margin="16,14,16,14">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="200"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <TextBlock Grid.Row="0" Grid.ColumnSpan="2"
+                   Text="Each sheet gets two structural plans placed at the exact same spot - Reaching (RE) first, Growing (GR) on top - so they are perfectly co-located."
+                   TextWrapping="Wrap" Margin="0,0,0,12"/>
+
+        <TextBlock Grid.Row="1" Grid.Column="0" Text="Reaching (RE) plan type:"
+                   VerticalAlignment="Center" Margin="0,4,8,4"/>
+        <ComboBox Grid.Row="1" Grid.Column="1" x:Name="re_type" Margin="0,4,0,4"/>
+
+        <TextBlock Grid.Row="2" Grid.Column="0" Text="Growing (GR) plan type:"
+                   VerticalAlignment="Center" Margin="0,4,8,4"/>
+        <ComboBox Grid.Row="2" Grid.Column="1" x:Name="gr_type" Margin="0,4,0,4"/>
+
+        <TextBlock Grid.Row="3" Grid.Column="0" Text="Reaching (RE) template:"
+                   VerticalAlignment="Center" Margin="0,4,8,4"/>
+        <ComboBox Grid.Row="3" Grid.Column="1" x:Name="re_tpl" Margin="0,4,0,4"/>
+
+        <TextBlock Grid.Row="4" Grid.Column="0" Text="Growing (GR) template:"
+                   VerticalAlignment="Center" Margin="0,4,8,4"/>
+        <ComboBox Grid.Row="4" Grid.Column="1" x:Name="gr_tpl" Margin="0,4,0,4"/>
+
+        <TextBlock Grid.Row="5" Grid.Column="0" Text="Scope box (crop):"
+                   VerticalAlignment="Center" Margin="0,4,8,4"/>
+        <ComboBox Grid.Row="5" Grid.Column="1" x:Name="scopebox" Margin="0,4,0,4"/>
+
+        <StackPanel Grid.Row="8" Grid.ColumnSpan="2" Orientation="Horizontal"
+                    HorizontalAlignment="Right" Margin="0,12,0,0">
+            <Button x:Name="btn_cancel" Content="Cancel" Width="90" Height="30"
+                    Margin="0,0,10,0" Click="btn_cancel_click"/>
+            <Button x:Name="btn_ok" Content="Create Views" Width="130" Height="30"
+                    Click="btn_ok_click"/>
+        </StackPanel>
+    </Grid>
+</Window>
+"""
+
+
+class ViewOptionsWindow(forms.WPFWindow):
+    """Pick view family types, templates and scope box for the level views.
+
+    Combos are filled from name lists; `presel` gives the initial index for
+    each combo. Template and scope-box lists are expected to start with a
+    '(none)' entry (index 0). On Create, self.result is a dict of the selected
+    indices: {"re_type", "gr_type", "re_tpl", "gr_tpl", "scopebox"}.
+    """
+
+    def __init__(self, vft_names, tpl_names, scope_names, presel=None):
+        forms.WPFWindow.__init__(self, xaml_source=VIEW_OPTS_XAML,
+                                 literal_string=True)
+        self.result = None
+        presel = presel or {}
+
+        for n in vft_names:
+            self.re_type.Items.Add(n)
+            self.gr_type.Items.Add(n)
+        for n in tpl_names:
+            self.re_tpl.Items.Add(n)
+            self.gr_tpl.Items.Add(n)
+        for n in scope_names:
+            self.scopebox.Items.Add(n)
+
+        def _sel(combo, key, default):
+            count = combo.Items.Count
+            idx = presel.get(key, default)
+            combo.SelectedIndex = idx if (0 <= idx < count) else (0 if count else -1)
+
+        _sel(self.re_type, "re_type", 0)
+        _sel(self.gr_type, "gr_type", 1 if len(vft_names) > 1 else 0)
+        _sel(self.re_tpl, "re_tpl", 0)
+        _sel(self.gr_tpl, "gr_tpl", 0)
+        _sel(self.scopebox, "scopebox", 0)
+
+    def btn_ok_click(self, sender, args):
+        if self.re_type.SelectedIndex < 0 or self.gr_type.SelectedIndex < 0:
+            forms.alert("Pick a plan type for both Reaching and Growing.")
+            return
+        self.result = {
+            "re_type": self.re_type.SelectedIndex,
+            "gr_type": self.gr_type.SelectedIndex,
+            "re_tpl": self.re_tpl.SelectedIndex,
+            "gr_tpl": self.gr_tpl.SelectedIndex,
+            "scopebox": self.scopebox.SelectedIndex,
+        }
+        self.Close()
+
+    def btn_cancel_click(self, sender, args):
+        self.result = None
+        self.Close()

@@ -20,6 +20,21 @@ get_document_data_file), so choices survive between sessions for this model:
         Which sheet (by UniqueId) this tool created for which logical level
         (the set of member levels' UniqueIds) and role. Lets the tool rename /
         renumber on PR_Level change and detect orphaned sheets.
+
+    views        : [ { "level_uids": [...], "kind": str, "flavor": str,
+                       "view_uid": str } ]
+        Which structural plan this tool created for which logical level, sheet
+        role and flavor (RE / GR). Lets the view tool reuse views on a re-run
+        instead of creating duplicates.
+
+    view_templates : { "RE": template.UniqueId, "GR": template.UniqueId }
+        The view templates chosen last time for the Reaching / Growing plans.
+
+    view_types   : { "RE": vft name, "GR": vft name }
+        The structural-plan ViewFamilyType names used for RE / GR views.
+
+    scope_box    : scope box UniqueId
+        The scope box chosen last time to crop the plans (empty = none).
 """
 
 import os
@@ -37,7 +52,9 @@ def _path():
 
 
 def _empty():
-    return {"slab_choices": {}, "elev_labels": {}, "sheets": []}
+    return {"slab_choices": {}, "elev_labels": {}, "sheets": [],
+            "views": [], "view_templates": {}, "view_types": {},
+            "scope_box": ""}
 
 
 def load():
@@ -54,6 +71,10 @@ def load():
     data.setdefault("slab_choices", {})
     data.setdefault("elev_labels", {})
     data.setdefault("sheets", [])
+    data.setdefault("views", [])
+    data.setdefault("view_templates", {})
+    data.setdefault("view_types", {})
+    data.setdefault("scope_box", "")
     return data
 
 
