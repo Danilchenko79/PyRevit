@@ -8,7 +8,8 @@ other member gets a reference marker pointing back at that same view.
 Window section: thin vertical slice (10 mm) at the window's plan position,
 cropped between the lower window's head and this window's sill -> only the slab
 and the concrete wall between the stacked windows are shown.
-Beam section: symmetric transverse cross-section.
+Beam section: transverse cross-section, widened to 1000 mm toward the side(s)
+that carry a slab and kept tight (500 mm) above/below and on any slab-free side.
 """
 
 from Autodesk.Revit.DB import (
@@ -21,7 +22,8 @@ from AutoSections import geometry as G
 WIN_DEPTH = 10.0         # mm minimal slice depth along the wall
 WIN_SIDE_MARGIN = 150.0  # mm margin each side of the wall thickness (across)
 WIN_SLAB_WIDEN = 1000.0  # mm extra width toward the slab so the slab shows
-BEAM_MARGIN = 500.0      # mm margin around the beam cross-section
+BEAM_MARGIN = 500.0      # mm margin above/below the beam and on a side with NO slab
+BEAM_SLAB_WIDEN = 1000.0  # mm lateral margin toward a side that HAS a slab
 
 
 def _build_box(desc):
@@ -39,11 +41,15 @@ def _build_box(desc):
                                   x_neg, x_pos, half_band, half_band,
                                   WIN_DEPTH * 0.5)
 
-    x_half = desc['b'] * 0.5 + BEAM_MARGIN
+    # Beam cross-section: widen laterally toward the slab side(s) (1000 mm) and
+    # keep a tight 500 mm above/below and on any side with no slab.
+    b_half = desc['b'] * 0.5
+    x_neg = b_half + (BEAM_SLAB_WIDEN if desc.get('widen_neg') else BEAM_MARGIN)
+    x_pos = b_half + (BEAM_SLAB_WIDEN if desc.get('widen_pos') else BEAM_MARGIN)
     y_half = desc['h'] * 0.5 + BEAM_MARGIN
-    z_half = desc['b'] * 0.5 + BEAM_MARGIN
+    z_half = b_half + BEAM_MARGIN
     return G.make_section_box(desc['origin'], desc['view_dir'],
-                              x_half, x_half, y_half, y_half, z_half)
+                              x_neg, x_pos, y_half, y_half, z_half)
 
 
 def _section_name(prefix, idx, a, b):

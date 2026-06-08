@@ -13,7 +13,10 @@ and family are deliberately NOT part of the key: the windows are cropped out, so
 two different windows over the same concrete detail share one real section and
 get reference markers instead.
 
-Beam node: the transverse cross-section (perpendicular to the axis).
+Beam node: the transverse cross-section (perpendicular to the axis). Uniqueness =
+cross-section (b x h) + which side(s) carry a slab (+ slab thickness, mirror-
+invariant) + the beam's vertical offset to its slab. The family/type name is NOT
+part of the key, so two look-alike beams collapse onto one real section.
 """
 
 from Autodesk.Revit.DB import (
@@ -118,13 +121,26 @@ def beam_node(doc, beam):
         return None
     b = P.dim_mm(beam, [BuiltInParameter.FAMILY_WIDTH_PARAM]) or 300.0
     h = P.dim_mm(beam, [BuiltInParameter.FAMILY_HEIGHT_PARAM]) or 600.0
+
+    # which side(s) carry a slab. side = +X of the cut (geometry.make_section_box
+    # right axis), so sa -> +X (widen_pos), sb -> -X (widen_neg).
     sa, sb = A.slab_context(doc, origin, side)
     ctx = A.canonical_context(sa, sb)
 
-    key = ('BEAM', P.type_name(doc, beam), round_to(b), round_to(h), ctx)
+    # vertical position of the beam relative to its slab (floor-to-beam): two
+    # beams at different heights under the same slab are different details.
+    v_off = A.slab_vertical_offset(doc, origin)
+    v_key = round_to(v_off) if v_off is not None else None
+
+    # uniqueness = pure geometry (cross-section + slab side context + vertical
+    # drop), NOT the family/type name: two look-alike beams share one real
+    # section and the rest get reference markers.
+    key = ('BEAM', round_to(b), round_to(h), ctx, v_key)
     desc = {'kind': 'BEAM', 'prefix': 'B_SEC',
             'origin': origin, 'view_dir': view_dir,
-            'b': b, 'h': h, 'name_w': round_to(b), 'name_h': round_to(h), 'key': key}
+            'b': b, 'h': h,
+            'widen_pos': bool(sa), 'widen_neg': bool(sb),
+            'name_w': round_to(b), 'name_h': round_to(h), 'key': key}
     return key, desc
 
 

@@ -93,6 +93,40 @@ def slab_context(doc, origin, side_axis):
     return tuple(sorted(pos)), tuple(sorted(neg))
 
 
+def slab_vertical_offset(doc, origin):
+    """Vertical offset (mm) from `origin` to the nearest slab's TOP face.
+
+    Searches the same anisotropic box as `slab_context`; of the floors found,
+    picks the one whose top face is vertically closest to `origin` and returns
+    mm(slab_top_z - origin.Z). Positive = the slab top is above the origin.
+    Returns None when no slab is found.
+
+    Part of a beam's uniqueness key: two beams with the same cross-section and
+    the same side context but sitting at a different height relative to their
+    slab are different details and must each keep their own real section.
+    """
+    h, v = to_ft(ADJ_H), to_ft(ADJ_V)
+    outline = Outline(XYZ(origin.X - h, origin.Y - h, origin.Z - v),
+                      XYZ(origin.X + h, origin.Y + h, origin.Z + v))
+    floors = (FilteredElementCollector(doc)
+              .OfCategory(BuiltInCategory.OST_Floors)
+              .WhereElementIsNotElementType()
+              .WherePasses(BoundingBoxIntersectsFilter(outline)).ToElements())
+    best_top = None
+    for fl in floors:
+        if _floor_thickness_mm(fl) <= 0:
+            continue
+        bb = fl.get_BoundingBox(None)
+        if bb is None:
+            continue
+        top = bb.Max.Z
+        if best_top is None or abs(top - origin.Z) < abs(best_top - origin.Z):
+            best_top = top
+    if best_top is None:
+        return None
+    return mm(best_top - origin.Z)
+
+
 def slab_in_band(doc, origin, top_z, bottom_z, axis):
     """Floor slab crossing the vertical band near `origin`.
 

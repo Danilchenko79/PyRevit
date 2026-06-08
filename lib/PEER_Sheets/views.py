@@ -17,12 +17,18 @@ templates / view family types.
 
 from Autodesk.Revit.DB import (
     FilteredElementCollector, View, ViewPlan, ViewFamily, ViewFamilyType,
-    ViewType, Viewport, Transaction, XYZ, ElementId, BuiltInParameter,
-    BuiltInCategory, IFailuresPreprocessor, FailureProcessingResult,
-    FailureSeverity,
+    ViewType, Viewport, Transaction, XYZ, ElementId, ElementType,
+    ElementTypeGroup, BuiltInParameter, BuiltInCategory, IFailuresPreprocessor,
+    FailureProcessingResult, FailureSeverity,
 )
 
 SCALE = 50  # 1:50
+
+# Growing viewports get a title-less viewport type (created once by duplicating
+# the project's default). VIEWPORT_SHOW_TITLE_NO is the 'Show Title' value that
+# hides the title; flip to 1 if titles still show in your Revit build.
+NO_TITLE_TYPE_NAME = u"PEER No Title"
+VIEWPORT_SHOW_TITLE_NO = 0
 
 # The two plans go at the EXACT same spot (one directly over the other) so the
 # model geometry registers precisely. RE is placed first, GR on top of it. The
@@ -180,6 +186,11 @@ def _view_level_id(view):
     return ElementId.InvalidElementId
 
 
+def _same_xy(a, b, eps=1e-4):
+    """True if two points share the same X/Y (sheet space, feet)."""
+    return abs(a.X - b.X) < eps and abs(a.Y - b.Y) < eps
+
+
 # --- view configuration ---------------------------------------------------
 
 def _apply_template_and_scale(view, tpl_id):
@@ -205,6 +216,93 @@ def _set_scope_box(view, scope_box_id):
             pass
 
 
+def _hide_crop(view):
+    """Hide the crop region boundary (the crop stays active to limit extents).
+
+    If the view template controls 'Crop Region Visible', the property is
+    read-only and the template's value wins.
+    """
+    try:
+        view.CropBoxVisible = False
+    except Exception:
+        pass
+
+
+def _sheet_name(sheet):
+    """Sheet name, read via SHEET_NAME (guarded against the .Name quirk)."""
+    p = sheet.get_Parameter(BuiltInParameter.SHEET_NAME)
+    if p:
+        s = p.AsString()
+        if s:
+            return s
+    try:
+        return sheet.Name
+    except Exception:
+        return u""
+
+
+def _set_title_on_sheet(view, text):
+    """Set the view's 'Title on Sheet' (VIEW_DESCRIPTION) to `text`."""
+    p = view.get_Parameter(BuiltInParameter.VIEW_DESCRIPTION)
+    if p and not p.IsReadOnly:
+        try:
+            p.Set(text or u"")
+        except Exception:
+            pass
+
+
+def _type_name(et):
+    try:
+        n = et.Name
+        if n:
+            return n
+    except Exception:
+        pass
+    return _name_via_param(et, BuiltInParameter.SYMBOL_NAME_PARAM) or u""
+
+
+def ensure_no_title_viewport_type(doc):
+    """Id of a viewport type whose title is hidden, creating it once if needed.
+
+    Reuses an existing NO_TITLE_TYPE_NAME type, otherwise duplicates the default
+    viewport type and turns 'Show Title' off. Returns InvalidElementId on
+    failure (then the title just isn't hidden).
+    """
+    default_id = doc.GetDefaultElementTypeId(ElementTypeGroup.ViewportType)
+    base = doc.GetElement(default_id) if default_id else None
+    if base is None:
+        return ElementId.InvalidElementId
+    cat_id = base.Category.Id if base.Category else None
+
+    for et in FilteredElementCollector(doc).OfClass(ElementType):
+        if cat_id and et.Category and et.Category.Id == cat_id:
+            if _type_name(et) == NO_TITLE_TYPE_NAME:
+                return et.Id
+
+    try:
+        new_type = base.Duplicate(NO_TITLE_TYPE_NAME)
+    except Exception:
+        return ElementId.InvalidElementId
+    p = new_type.get_Parameter(BuiltInParameter.VIEWPORT_ATTR_SHOW_LABEL)
+    if p and not p.IsReadOnly:
+        try:
+            p.Set(VIEWPORT_SHOW_TITLE_NO)
+        except Exception:
+            pass
+    return new_type.Id
+
+
+def _apply_no_title_type(vp, type_id):
+    """Switch a viewport to the title-less type (no-op if unavailable)."""
+    if not type_id or type_id == ElementId.InvalidElementId:
+        return
+    try:
+        if vp.GetTypeId() != type_id:
+            vp.ChangeTypeId(type_id)
+    except Exception:
+        pass
+
+
 def _unique_name(base, by_name):
     name = base
     i = 1
@@ -221,7 +319,7 @@ def apply_views(doc, jobs, vft_for, tpl_for, scope_box_id=None):
 
         created   [(name, kind, flavor)]  - new views made
         placed    [(name, sheet_number)]  - viewports newly added to a sheet
-        realigned [(name, sheet_number)]  - existing viewports moved to anchor
+        realigned [(name, sheet_number)]  - GR moved onto RE (had drifted)
         skipped   [(name, reason)]
         conflicts [(name, reason)]         - a foreign view blocks the name, or
                                              the view sits on another sheet
@@ -231,16 +329,19 @@ def apply_views(doc, jobs, vft_for, tpl_for, scope_box_id=None):
         {"level": Level, "kind": str, "flavor": "RE"|"GR",
          "name": str, "sheet": ViewSheet, "view_uid": str|None}
     Jobs sharing a sheet (the RE/GR pair of one level+kind) are handled
-    together so both plans land at the exact same point - RE first, GR on top -
-    making the two perfectly co-located. Each job gets job["view"] set to the
-    resolved view (or None) for the caller's tracking.
+    together. Reaching is the anchor: a NEW RE viewport is placed at the title
+    block anchor, an existing one is left exactly where the user put it. Growing
+    is co-located with Reaching - a new GR viewport is created on RE, an
+    existing GR is moved onto RE only if it has drifted (already matching = left
+    alone). So a manual layout is preserved; the tool only fixes a GR that no
+    longer sits on its RE. Each job gets job["view"] set for the caller's
+    tracking.
 
     `vft_for` maps flavor -> ViewFamilyType, `tpl_for` maps flavor -> template
     ElementId (or InvalidElementId for none).
 
-    Idempotent and self-correcting: an existing view is reused only when it is
-    a plan of the job's level; whatever is on the sheet is re-aligned rather
-    than duplicated.
+    Idempotent: an existing view is reused only when it is a plan of the job's
+    level (else conflict).
     """
     result = {"created": [], "placed": [], "realigned": [],
               "skipped": [], "conflicts": [], "errors": []}
@@ -262,11 +363,12 @@ def apply_views(doc, jobs, vft_for, tpl_for, scope_box_id=None):
     opts.SetFailuresPreprocessor(_SwallowWarnings())
     t.SetFailureHandlingOptions(opts)
     try:
+        no_title_type_id = ensure_no_title_viewport_type(doc)
         for key in order:
             pair = groups[key]
             try:
                 _process_pair(doc, pair, by_name, vft_for, tpl_for,
-                              scope_box_id, result)
+                              scope_box_id, no_title_type_id, result)
             except Exception as e:
                 names = u", ".join(j.get("name", u"") for j in pair)
                 result["errors"].append((names, str(e)))
@@ -312,9 +414,10 @@ def _ordered(pair_jobs):
 
 
 def _process_pair(doc, pair_jobs, by_name, vft_for, tpl_for, scope_box_id,
-                  result):
+                  no_title_type_id, result):
     pair_jobs = _ordered(pair_jobs)
     sheet = pair_jobs[0]["sheet"]
+    sheet_name = _sheet_name(sheet)
     name_by_flavor = dict((j["flavor"], j["name"]) for j in pair_jobs)
 
     # 1) resolve or create each view (level-checked), RE before GR
@@ -345,6 +448,9 @@ def _process_pair(doc, pair_jobs, by_name, vft_for, tpl_for, scope_box_id,
                 _set_scope_box(view, scope_box_id)
             result["created"].append((final_name, job["kind"], flavor))
 
+        _hide_crop(view)  # keep crop active, hide its boundary line
+        # Title on Sheet: the sheet name on Reaching only; Growing carries none
+        _set_title_on_sheet(view, sheet_name if flavor == "RE" else u"")
         job["view"] = view
         resolved.append((flavor, view))
 
@@ -365,22 +471,52 @@ def _process_pair(doc, pair_jobs, by_name, vft_for, tpl_for, scope_box_id,
     anchor = XYZ(bb.Min.X + PAIR_CENTER_X * w,
                  bb.Min.Y + PAIR_CENTER_Y * h_tb, 0)
 
-    # 2 + 3) co-locate: RE first then GR, both at the exact same point. A view
-    # already on another sheet is a conflict (a view lives on one sheet only).
-    for flavor, view in resolved:                  # resolved is in draw order
-        name = name_by_flavor[flavor]
-        vp = _viewport_of(doc, view.Id)
+    view_by_flavor = dict(resolved)
+
+    # --- Reaching is the anchor: never move it if it's already placed ---
+    # A new RE viewport is created at the title-block anchor; an existing one
+    # keeps wherever the user put it. re_center is the point GR aligns to.
+    re_center = None
+    re_view = view_by_flavor.get("RE")
+    if re_view is not None:
+        re_name = name_by_flavor["RE"]
+        vp = _viewport_of(doc, re_view.Id)
         if vp is not None and vp.SheetId != sheet.Id:
             result["conflicts"].append(
-                (name, "view already placed on another sheet"))
-            continue
-        if vp is not None:                          # already here -> re-align
+                (re_name, "view already placed on another sheet"))
+        elif vp is not None:
+            re_center = vp.GetBoxCenter()            # existing -> left untouched
+        elif Viewport.CanAddViewToSheet(doc, sheet.Id, re_view.Id):
+            vp = Viewport.Create(doc, sheet.Id, re_view.Id, anchor)
             vp.SetBoxCenter(anchor)
-            result["realigned"].append((name, sheet.SheetNumber))
-            continue
-        if not Viewport.CanAddViewToSheet(doc, sheet.Id, view.Id):
-            result["skipped"].append((name, "cannot add to sheet"))
-            continue
-        vp = Viewport.Create(doc, sheet.Id, view.Id, anchor)
-        vp.SetBoxCenter(anchor)                     # exact, in case Create rounds
-        result["placed"].append((name, sheet.SheetNumber))
+            re_center = vp.GetBoxCenter()
+            result["placed"].append((re_name, sheet.SheetNumber))
+        else:
+            result["skipped"].append((re_name, "cannot add to sheet"))
+
+    # --- Growing follows Reaching: move it only when they differ, no title ---
+    target = re_center if re_center is not None else anchor
+    gr_view = view_by_flavor.get("GR")
+    if gr_view is not None:
+        gr_name = name_by_flavor["GR"]
+        vp = _viewport_of(doc, gr_view.Id)
+        if vp is not None and vp.SheetId != sheet.Id:
+            result["conflicts"].append(
+                (gr_name, "view already placed on another sheet"))
+        else:
+            if vp is None:
+                if Viewport.CanAddViewToSheet(doc, sheet.Id, gr_view.Id):
+                    vp = Viewport.Create(doc, sheet.Id, gr_view.Id, target)
+                    vp.SetBoxCenter(target)
+                    result["placed"].append((gr_name, sheet.SheetNumber))
+                else:
+                    result["skipped"].append((gr_name, "cannot add to sheet"))
+                    vp = None
+            else:
+                # already placed: realign to RE only if it has drifted
+                if re_center is not None and not _same_xy(vp.GetBoxCenter(),
+                                                          re_center):
+                    vp.SetBoxCenter(re_center)
+                    result["realigned"].append((gr_name, sheet.SheetNumber))
+            if vp is not None:
+                _apply_no_title_type(vp, no_title_type_id)  # Growing: no title

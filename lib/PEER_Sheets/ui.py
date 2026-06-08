@@ -788,3 +788,280 @@ class ViewOptionsWindow(forms.WPFWindow):
     def btn_cancel_click(self, sender, args):
         self.result = None
         self.Close()
+
+
+# ---------------------------------------------------------------------------
+# Combined tool window: one dialog, two tabs (Sheets + Views), one Create button
+# ---------------------------------------------------------------------------
+
+LEVEL_TOOL_XAML = u"""
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="PEER - Sheets + Views by Level"
+        Width="700" Height="740" MinWidth="580" MinHeight="560"
+        ResizeMode="CanResizeWithGrip"
+        WindowStartupLocation="CenterScreen"
+        FontFamily="Segoe UI" FontSize="13">
+    <Grid Margin="12,12,12,12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TabControl Grid.Row="0">
+            <TabItem Header="Sheets">
+                <Grid Margin="8,10,8,8">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*" MinHeight="120"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0"
+                               Text="Review the PR_Level value of each level. Only levels with a value get sheets."
+                               TextWrapping="Wrap" Margin="0,0,0,8"/>
+
+                    <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="6,0,0,4">
+                        <TextBlock Text="Level" Width="280" FontWeight="Bold"/>
+                        <TextBlock Text="Elevation (m)" Width="120" FontWeight="Bold"/>
+                        <TextBlock Text="PR_Level" Width="90" FontWeight="Bold"/>
+                    </StackPanel>
+
+                    <Border Grid.Row="2" BorderBrush="#BBBBBB" BorderThickness="1" Background="White">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <StackPanel x:Name="levels_panel" Margin="6,4,6,4"/>
+                        </ScrollViewer>
+                    </Border>
+
+                    <Separator Grid.Row="3" Margin="0,12,0,10"/>
+
+                    <StackPanel Grid.Row="4" Margin="0,0,0,12">
+                        <TextBlock Text="Elevation used in sheet names:" FontWeight="Bold" Margin="0,0,0,6"/>
+                        <RadioButton x:Name="src_slab"
+                                     Content="By top of slab (overcant)  -  pick a slab per level if several exist"
+                                     GroupName="src" IsChecked="True" Margin="6,0,0,5"
+                                     Checked="src_changed"/>
+                        <RadioButton x:Name="src_level"
+                                     Content="By level elevation"
+                                     GroupName="src" Margin="6,0,0,5"
+                                     Checked="src_changed"/>
+                        <CheckBox x:Name="repick_slabs"
+                                  Content="Re-choose slabs (ignore saved choices for levels with several slabs)"
+                                  Margin="24,2,0,0"/>
+                    </StackPanel>
+
+                    <StackPanel Grid.Row="5" Orientation="Horizontal" Margin="0,0,0,4">
+                        <TextBlock Text="Title block:" FontWeight="Bold"
+                                   VerticalAlignment="Center" Margin="0,0,10,0"/>
+                        <ComboBox x:Name="tb_combo" Width="380"/>
+                    </StackPanel>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Views">
+                <Grid Margin="8,12,8,8">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="200"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Grid.Row="0" Grid.ColumnSpan="2"
+                               Text="Each sheet gets two structural plans placed at the exact same spot - Reaching (RE) first, Growing (GR) on top. The crop region is hidden."
+                               TextWrapping="Wrap" Margin="0,0,0,12"/>
+
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Reaching (RE) plan type:"
+                               VerticalAlignment="Center" Margin="0,4,8,4"/>
+                    <ComboBox Grid.Row="1" Grid.Column="1" x:Name="re_type" Margin="0,4,0,4"/>
+
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Growing (GR) plan type:"
+                               VerticalAlignment="Center" Margin="0,4,8,4"/>
+                    <ComboBox Grid.Row="2" Grid.Column="1" x:Name="gr_type" Margin="0,4,0,4"/>
+
+                    <TextBlock Grid.Row="3" Grid.Column="0" Text="Reaching (RE) template:"
+                               VerticalAlignment="Center" Margin="0,4,8,4"/>
+                    <ComboBox Grid.Row="3" Grid.Column="1" x:Name="re_tpl" Margin="0,4,0,4"/>
+
+                    <TextBlock Grid.Row="4" Grid.Column="0" Text="Growing (GR) template:"
+                               VerticalAlignment="Center" Margin="0,4,8,4"/>
+                    <ComboBox Grid.Row="4" Grid.Column="1" x:Name="gr_tpl" Margin="0,4,0,4"/>
+
+                    <TextBlock Grid.Row="5" Grid.Column="0" Text="Scope box (crop):"
+                               VerticalAlignment="Center" Margin="0,4,8,4"/>
+                    <ComboBox Grid.Row="5" Grid.Column="1" x:Name="scopebox" Margin="0,4,0,4"/>
+                </Grid>
+            </TabItem>
+        </TabControl>
+
+        <StackPanel Grid.Row="1" Orientation="Horizontal"
+                    HorizontalAlignment="Right" Margin="0,12,0,0">
+            <Button x:Name="btn_cancel" Content="Cancel" Width="90" Height="30"
+                    Margin="0,0,10,0" Click="btn_cancel_click"/>
+            <Button x:Name="btn_ok" Content="Create" Width="140" Height="30"
+                    Click="btn_ok_click"/>
+        </StackPanel>
+    </Grid>
+</Window>
+"""
+
+
+class LevelToolWindow(forms.WPFWindow):
+    """One window, two tabs: sheet options + view options, one Create button.
+
+    Combines the sheet inputs (PR_Level table, elevation source, title block)
+    with the view inputs (RE/GR types, templates, scope box). On Create,
+    self.result is:
+        {"sheets": {"pr_values", "elev_source", "repick_slabs", "titleblock"},
+         "views":  {"re_type", "gr_type", "re_tpl", "gr_tpl", "scopebox"}}
+    where the view values are combo indices (template/scope lists start with a
+    '(none)' entry at index 0).
+    """
+
+    def __init__(self, levels, titleblocks, saved_tb_uid,
+                 vft_names, tpl_names, scope_names, view_presel=None):
+        forms.WPFWindow.__init__(self, xaml_source=LEVEL_TOOL_XAML,
+                                 literal_string=True)
+        self.result = None
+        self._rows = []
+        self._titleblocks = list(titleblocks)
+        view_presel = view_presel or {}
+
+        # --- Sheets tab: level rows ---
+        for lvl in levels:
+            row_panel = StackPanel()
+            row_panel.Orientation = Orientation.Horizontal
+            row_panel.Margin = Thickness(2, 3, 2, 3)
+
+            name_tb = TextBlock()
+            name_tb.Text = lvl.Name
+            name_tb.Width = 280
+            name_tb.VerticalAlignment = VerticalAlignment.Center
+
+            elev_tb = TextBlock()
+            elev_tb.Text = u"{0:.2f}".format(ft_to_m(lvl.Elevation))
+            elev_tb.Width = 120
+            elev_tb.VerticalAlignment = VerticalAlignment.Center
+
+            raw = get_pr_level_raw(lvl)
+            edit = TextBox()
+            edit.Text = raw
+            edit.Width = 80
+            edit.HorizontalAlignment = HorizontalAlignment.Left
+
+            row_panel.Children.Add(name_tb)
+            row_panel.Children.Add(elev_tb)
+            row_panel.Children.Add(edit)
+            self.levels_panel.Children.Add(row_panel)
+
+            self._rows.append(_LevelRow(lvl, edit, raw))
+
+        for tb in self._titleblocks:
+            self.tb_combo.Items.Add(tb.FamilyName)
+        if self._titleblocks:
+            preselect = 0
+            if saved_tb_uid:
+                for i, tb in enumerate(self._titleblocks):
+                    if tb.UniqueId == saved_tb_uid:
+                        preselect = i
+                        break
+            self.tb_combo.SelectedIndex = preselect
+
+        self._update_repick_visibility()
+
+        # --- Views tab: combos ---
+        for n in vft_names:
+            self.re_type.Items.Add(n)
+            self.gr_type.Items.Add(n)
+        for n in tpl_names:
+            self.re_tpl.Items.Add(n)
+            self.gr_tpl.Items.Add(n)
+        for n in scope_names:
+            self.scopebox.Items.Add(n)
+
+        def _sel(combo, key, default):
+            count = combo.Items.Count
+            idx = view_presel.get(key, default)
+            combo.SelectedIndex = idx if (0 <= idx < count) else (0 if count else -1)
+
+        _sel(self.re_type, "re_type", 0)
+        _sel(self.gr_type, "gr_type", 1 if len(vft_names) > 1 else 0)
+        _sel(self.re_tpl, "re_tpl", 0)
+        _sel(self.gr_tpl, "gr_tpl", 0)
+        _sel(self.scopebox, "scopebox", 0)
+
+    def src_changed(self, sender, args):
+        self._update_repick_visibility()
+
+    def _update_repick_visibility(self):
+        chk = getattr(self, "repick_slabs", None)
+        slab = getattr(self, "src_slab", None)
+        if chk is None or slab is None:
+            return
+        from System.Windows import Visibility
+        chk.Visibility = (Visibility.Visible if slab.IsChecked
+                          else Visibility.Collapsed)
+
+    def btn_ok_click(self, sender, args):
+        if self.tb_combo.SelectedIndex < 0:
+            forms.alert("Please select a title block (Sheets tab).")
+            return
+        if self.re_type.SelectedIndex < 0 or self.gr_type.SelectedIndex < 0:
+            forms.alert("Pick a plan type for both Reaching and Growing "
+                        "(Views tab).")
+            return
+
+        bad = []
+        for r in self._rows:
+            raw = (r.textbox.Text or u"").strip().replace(u",", u".")
+            if not raw:
+                continue
+            try:
+                v = float(raw)
+            except ValueError:
+                bad.append(r.level.Name)
+                continue
+            if v <= 0 or v != int(v) or int(v) % 10 != 0:
+                bad.append(r.level.Name)
+        if bad:
+            forms.alert(u"PR_Level must be a positive multiple of 10 "
+                        u"(100, 110, 120, ...).\n\nFix these levels:\n - "
+                        + u"\n - ".join(bad))
+            return
+
+        pr_values = {}
+        for r in self._rows:
+            pr_values[r.level.Id.IntegerValue] = (
+                r.level, r.textbox.Text.strip(), r.original_raw
+            )
+
+        self.result = {
+            "sheets": {
+                "pr_values": pr_values,
+                "elev_source": "slab" if self.src_slab.IsChecked else "level",
+                "repick_slabs": bool(self.repick_slabs.IsChecked),
+                "titleblock": self._titleblocks[self.tb_combo.SelectedIndex],
+            },
+            "views": {
+                "re_type": self.re_type.SelectedIndex,
+                "gr_type": self.gr_type.SelectedIndex,
+                "re_tpl": self.re_tpl.SelectedIndex,
+                "gr_tpl": self.gr_tpl.SelectedIndex,
+                "scopebox": self.scopebox.SelectedIndex,
+            },
+        }
+        self.Close()
+
+    def btn_cancel_click(self, sender, args):
+        self.result = None
+        self.Close()
