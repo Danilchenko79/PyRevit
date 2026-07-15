@@ -2,14 +2,19 @@
 __title__ = "Create Filters"
 __doc__ = """
 Creates/updates parametric coordination filters and assigns them to view
-templates, applying graphic overrides. Block walls get a different color.
+templates, applying graphic overrides.
+
+Walls are split by the CONCRETE type-name keyword(s) only:
+  - walls whose type name CONTAINS a keyword  -> concrete colour
+  - every OTHER wall (type name does NOT contain any keyword) -> a different
+    colour. No separate keyword for partitions is needed.
 Default templates: "PEER Work" and "PEER Work SEC".
 
 Can be used two ways:
   - imported and called with explicit settings:
-        CreateFilters.run(concrete_keywords=["CON"], block_keywords=["BLK"],
+        CreateFilters.run(concrete_keywords=["CON"],
                           target_templates=["PEER Work", "PEER Work SEC"])
-  - run on its own: it then asks for the keywords via dialogs.
+  - run on its own: it then asks for the keyword via a dialog.
 """
 
 __author__ = "Dima D"
@@ -40,9 +45,11 @@ doc = __revit__.ActiveUIDocument.Document
 WORKSET_NAME_FOR_RULE = u"Construction"
 TARGET_VIEW_TEMPLATES = [u"PEER Work", u"PEER Work SEC"]
 
-# Filter specs: (filter name, categories, add CON rule?, add BLK rule?)
+# Filter specs: (filter name, categories, add CON rule?, add OTHER-walls rule?)
+#   - CON rule:   type name CONTAINS a concrete keyword.
+#   - OTHER rule: type name does NOT contain any concrete keyword (= partitions).
 FILTER_SPECS = [
-    (u"PR_Coordination AR Walls=CON",  [BuiltInCategory.OST_Walls],             True,  False),
+    (u"PR_Coordination AR Walls=CON",   [BuiltInCategory.OST_Walls],            True,  False),
     (u"PR_Coordination AR Walls = BLK", [BuiltInCategory.OST_Walls],            False, True),
     (u"PR_Coordination AR Floor",      [BuiltInCategory.OST_Floors],            False, False),
     (u"PR_Coordination AR Beam",       [BuiltInCategory.OST_StructuralFraming], False, False),
@@ -54,7 +61,6 @@ DEFAULT_COLOR = Color(0, 128, 192)
 FILTER_VISUALS = {
     u"PR_Coordination AR Walls = BLK": Color(200, 80, 80),
 }
-SURFACE_TRANSPARENCY = 50
 
 # Type-name parameter that is reliably filterable for system families (walls).
 TYPE_NAME_PARAM = ElementId(BuiltInParameter.ALL_MODEL_TYPE_NAME)
@@ -78,6 +84,14 @@ def _contains_rule(param_id, value):
         return ParameterFilterRuleFactory.CreateContainsRule(param_id, value)
 
 
+def _not_contains_rule(param_id, value):
+    """Case-insensitive 'does not contain' rule, tolerant to API versions."""
+    try:
+        return ParameterFilterRuleFactory.CreateNotContainsRule(param_id, value, False)
+    except TypeError:
+        return ParameterFilterRuleFactory.CreateNotContainsRule(param_id, value)
+
+
 def _param_filter(rule):
     return ElementParameterFilter(List[FilterRule]([rule]), False)
 
@@ -97,7 +111,7 @@ def build_workset_filter(document, workset_name):
 
 
 def build_typename_filter(keywords):
-    """OR-filter over several type-name substrings. Returns None if no keywords."""
+    """OR-filter: type name CONTAINS any of the substrings. None if no keywords."""
     keywords = [k for k in (keywords or []) if k]
     if not keywords:
         return None
@@ -105,6 +119,22 @@ def build_typename_filter(keywords):
     if len(subs) == 1:
         return subs[0]
     return LogicalOrFilter(List[ElementFilter](subs))
+
+
+def build_not_typename_filter(keywords):
+    """AND-filter: type name does NOT contain ANY of the substrings.
+
+    This is the inverse of build_typename_filter — i.e. every wall that is
+    not concrete. Returns None if no keywords (then there are no "other" walls
+    to single out and the filter is skipped).
+    """
+    keywords = [k for k in (keywords or []) if k]
+    if not keywords:
+        return None
+    subs = [_param_filter(_not_contains_rule(TYPE_NAME_PARAM, kw)) for kw in keywords]
+    if len(subs) == 1:
+        return subs[0]
+    return LogicalAndFilter(List[ElementFilter](subs))
 
 
 def combine_and(filters):
@@ -166,16 +196,12 @@ def get_solid_fill_id(document):
     return None
 
 
-def make_ogs(fill_id, color, transparency=SURFACE_TRANSPARENCY):
+def make_ogs(fill_id, color):
+    # Colour the CUT pattern only — surfaces are left untouched.
     ogs = OverrideGraphicSettings()
     ogs.SetCutForegroundPatternId(fill_id)
     ogs.SetCutForegroundPatternVisible(True)
     ogs.SetCutForegroundPatternColor(color)
-    # Color surfaces too, so the override is visible in non-cut views.
-    ogs.SetSurfaceForegroundPatternId(fill_id)
-    ogs.SetSurfaceForegroundPatternVisible(True)
-    ogs.SetSurfaceForegroundPatternColor(color)
-    ogs.SetSurfaceTransparency(int(transparency))
     return ogs
 
 
@@ -196,24 +222,23 @@ def apply_overrides_to_filters(document, vt, filter_ids, id2name, default_color=
 # ==================================================
 # MAIN
 # ==================================================
-def run(concrete_keywords=None, block_keywords=None,
-        target_templates=None, workset_name=None, use_workset_rule=True):
+def run(concrete_keywords=None, target_templates=None,
+        workset_name=None, use_workset_rule=True):
     """Create/update the coordination filters and push them to templates.
 
-    concrete_keywords / block_keywords: list of type-name substrings (OR).
-        If None and used standalone, the user is asked via dialogs.
+    concrete_keywords: list of type-name substrings (OR) that mark CONCRETE
+        walls. Every other wall (type name does not contain any keyword) is
+        treated as a partition and recoloured by a separate filter.
+        If None and used standalone, the user is asked via a dialog.
     target_templates: list of view-template names. Defaults to TARGET_VIEW_TEMPLATES.
     """
-    if concrete_keywords is None and block_keywords is None:
+    if concrete_keywords is None:
         concrete_keywords = [forms.ask_for_string(
             default=u'CON', title=u'Concrete Walls',
-            prompt=u'Type-name substring for Concrete walls:') or u'']
-        block_keywords = [forms.ask_for_string(
-            default=u'BLK', title=u'Block Walls',
-            prompt=u'Type-name substring for Block walls:') or u'']
+            prompt=u'Type-name substring for Concrete walls '
+                   u'(all other walls are treated as partitions):') or u'']
 
     concrete_keywords = [k for k in (concrete_keywords or []) if k]
-    block_keywords = [k for k in (block_keywords or []) if k]
     templates = target_templates or TARGET_VIEW_TEMPLATES
     ws_name = workset_name or WORKSET_NAME_FOR_RULE
 
@@ -224,7 +249,8 @@ def run(concrete_keywords=None, block_keywords=None,
     try:
         ws_filter = build_workset_filter(doc, ws_name) if use_workset_rule else None
         con_filter = build_typename_filter(concrete_keywords)
-        blk_filter = build_typename_filter(block_keywords)
+        # Partitions = walls that are NOT concrete (inverse of the keywords).
+        blk_filter = build_not_typename_filter(concrete_keywords)
 
         created_filters = {}
         for fname, bics, need_con, need_blk in FILTER_SPECS:

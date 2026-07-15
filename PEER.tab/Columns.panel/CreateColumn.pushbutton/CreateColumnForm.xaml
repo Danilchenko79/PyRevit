@@ -1,0 +1,108 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Create Column"
+        Height="620" Width="700" MinWidth="580" MinHeight="480"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="CanResizeWithGrip"
+        ShowInTaskbar="False"
+        FontFamily="Segoe UI" FontSize="13">
+    <!-- Row 0: title + how-to + global inputs (level, sheet width, cover, view).
+         Row 1: editable groups table (fills the rest).
+         Row 2: pinned OK/Cancel. -->
+    <Grid Margin="14">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- TOP: title, instructions, global inputs -->
+        <StackPanel Grid.Row="0">
+            <TextBlock Text="Create Column" FontWeight="Bold" FontSize="15" Margin="0,0,0,6"/>
+
+            <Border Background="#F2F6FA" BorderBrush="#C6D4E1"
+                    BorderThickness="1" CornerRadius="3" Padding="8" Margin="0,0,0,10">
+                <TextBlock TextWrapping="Wrap" Foreground="#33475B">
+                    <Run FontWeight="Bold" Text="How to use:"/><LineBreak/>
+                    <Run Text="1. Pick the level - the table below shows the column groups that will be drawn."/><LineBreak/>
+                    <Run Text="2. Set the global values once: view name, sheet width, cover, and the stirrup / staple (transverse) diameters."/><LineBreak/>
+                    <Run Text="3. Edit the longitudinal diameter and Rebar Quantity_B / _H in the table (per one side, corners excluded). Total Rebar_Quantity updates itself."/><LineBreak/>
+                    <Run Text="4. Click OK - values are written back to the model columns, then the sheet is drawn. If the view already exists you are asked to confirm replacing it."/>
+                </TextBlock>
+            </Border>
+
+            <!-- Global inputs -->
+            <Grid Margin="0,0,0,6">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="160"/>
+                    <ColumnDefinition Width="24"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <TextBlock Text="Level (PR_Level):" VerticalAlignment="Center"
+                           Margin="0,0,8,0" Grid.Row="0" Grid.Column="0"/>
+                <ComboBox x:Name="cb_level" Height="24" Grid.Row="0" Grid.Column="1"
+                          SelectionChanged="on_level_changed"/>
+
+                <TextBlock Text="Drafting View:" VerticalAlignment="Center"
+                           Margin="0,0,8,0" Grid.Row="0" Grid.Column="3"/>
+                <TextBox x:Name="tb_view" Text="Column 150" Grid.Row="0" Grid.Column="4"/>
+
+                <TextBlock Text="Sheet width (cm):" VerticalAlignment="Center"
+                           Margin="0,8,8,0" Grid.Row="1" Grid.Column="0"/>
+                <TextBox x:Name="tb_width" Text="59.4" Margin="0,8,0,0"
+                         Grid.Row="1" Grid.Column="1"/>
+
+                <TextBlock Text="Cover (cm):" VerticalAlignment="Center"
+                           Margin="0,8,8,0" Grid.Row="1" Grid.Column="3"/>
+                <TextBox x:Name="tb_cover" Text="2.5" Margin="0,8,0,0"
+                         Grid.Row="1" Grid.Column="4"/>
+
+                <TextBlock Text="Stirrup Ø (mm):" VerticalAlignment="Center"
+                           Margin="0,8,8,0" Grid.Row="2" Grid.Column="0"/>
+                <TextBox x:Name="tb_stirrup_dia" Text="8" Margin="0,8,0,0"
+                         Grid.Row="2" Grid.Column="1"/>
+
+                <TextBlock Text="Staple 62 Ø (mm):" VerticalAlignment="Center"
+                           Margin="0,8,8,0" Grid.Row="2" Grid.Column="3"/>
+                <TextBox x:Name="tb_staple_dia" Text="10" Margin="0,8,0,0"
+                         Grid.Row="2" Grid.Column="4"/>
+            </Grid>
+
+            <TextBlock Text="Column groups on this level:" FontWeight="SemiBold"
+                       Foreground="#5A6A78" Margin="0,4,0,4"/>
+        </StackPanel>
+
+        <!-- MIDDLE: editable groups table -->
+        <DataGrid Grid.Row="1" x:Name="dg_groups"
+                  AutoGenerateColumns="False"
+                  CanUserAddRows="False" CanUserDeleteRows="False"
+                  CanUserResizeRows="False"
+                  HeadersVisibility="Column" GridLinesVisibility="All"
+                  SelectionUnit="Cell" RowHeaderWidth="0"
+                  AlternatingRowBackground="#F6F8FA">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Mark" Binding="{Binding Marks}" IsReadOnly="True" Width="*"/>
+                <DataGridTextColumn Header="B / H (cm)" Binding="{Binding Size}" IsReadOnly="True" Width="90"/>
+                <DataGridTextColumn Header="Rebar_Diameter (mm)" Binding="{Binding DiaMM}" Width="130"/>
+                <DataGridTextColumn Header="Rebar Quantity_B" Binding="{Binding RebarX}" Width="120"/>
+                <DataGridTextColumn Header="Rebar Quantity_H" Binding="{Binding RebarY}" Width="120"/>
+                <DataGridTextColumn Header="Rebar_Quantity" Binding="{Binding Total}" IsReadOnly="True" Width="100"/>
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <!-- BOTTOM: pinned buttons -->
+        <StackPanel Grid.Row="2" Orientation="Horizontal"
+                    HorizontalAlignment="Right" Margin="0,12,0,0">
+            <Button Content="OK" Width="90" Height="28" Click="on_ok" Margin="0,0,8,0" IsDefault="True"/>
+            <Button Content="Cancel" Width="90" Height="28" Click="on_cancel" IsCancel="True"/>
+        </StackPanel>
+    </Grid>
+</Window>
