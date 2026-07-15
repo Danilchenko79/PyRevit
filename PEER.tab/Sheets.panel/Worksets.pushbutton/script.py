@@ -7,8 +7,10 @@ then pushes those filters to the chosen view templates.
 
 ONE WINDOW, IN ORDER:
 1. Worksets - edit the list (one per line). Existing ones are skipped.
-2. Concrete / Block walls - type the text that appears in the wall type
-   names of the architectural model (comma-separated for several variants).
+2. Concrete walls - type the text found in the CONCRETE wall type names
+   (comma-separated for several variants). The read-only list on the right
+   shows the wall types present in the LINKED models for reference only.
+   Every other wall is treated as a partition and recoloured separately.
 3. View templates - tick the templates that should get the filters.
    "PEER Work" and "PEER Work SEC" are pre-selected.
 
@@ -26,7 +28,7 @@ from pyrevit import forms, script
 
 from Autodesk.Revit.DB import (
     Transaction, Workset, WorksetKind, FilteredWorksetCollector,
-    FilteredElementCollector, View
+    FilteredElementCollector, View, BuiltInCategory, RevitLinkInstance
 )
 
 from System.Windows.Controls import CheckBox
@@ -54,7 +56,6 @@ DEFAULT_WORKSETS = [
     u"Construction",
 ]
 DEFAULT_CONCRETE_KEYWORDS = u"CON"
-DEFAULT_BLOCK_KEYWORDS = u"BLK"
 # These templates are always ticked by default (if they exist in the model).
 DEFAULT_TEMPLATE_NAMES = [u"PEER Work", u"PEER Work SEC"]
 
@@ -156,6 +157,38 @@ def collect_view_templates(document):
     return sorted(names, key=lambda n: (_norm(n) not in defaults_norm, n.lower()))
 
 
+def _wall_type_names_in(document):
+    """Distinct wall *type* names actually used by wall instances in a doc."""
+    names = set()
+    walls = (FilteredElementCollector(document)
+             .OfCategory(BuiltInCategory.OST_Walls)
+             .WhereElementIsNotElementType())
+    for w in walls:
+        try:
+            names.add(w.Name)   # Wall.Name returns its type name
+        except Exception:
+            pass
+    return names
+
+
+def collect_wall_type_names(document):
+    """Wall type names used by walls in the LINKED models only.
+
+    Architectural walls live in links, so the host model is intentionally not
+    scanned. Unloaded or unreadable links are skipped silently. Sorted list.
+    """
+    names = set()
+    for link in FilteredElementCollector(document).OfClass(RevitLinkInstance):
+        try:
+            ldoc = link.GetLinkDocument()
+        except Exception:
+            ldoc = None
+        if ldoc is None:
+            continue
+        names |= _wall_type_names_in(ldoc)
+    return sorted(names, key=lambda n: n.lower())
+
+
 class WorksetsWindow(forms.WPFWindow):
     """Single window collecting worksets + filter settings."""
 
@@ -163,9 +196,14 @@ class WorksetsWindow(forms.WPFWindow):
         forms.WPFWindow.__init__(self, xaml_path)
         self.tb_worksets.Text = u"\n".join(DEFAULT_WORKSETS)
         self.tb_concrete.Text = DEFAULT_CONCRETE_KEYWORDS
-        self.tb_block.Text = DEFAULT_BLOCK_KEYWORDS
         self.cb_filters.IsChecked = True
         self.cb_worksharing.IsChecked = True
+
+        # Read-only reference list (right side): the wall types found in the
+        # links, just to look at while typing the substring into tb_concrete.
+        wall_types = collect_wall_type_names(doc)
+        self.tb_walltypes.Text = (u"\n".join(wall_types) if wall_types
+                                  else u"(no walls found in loaded links)")
 
         # View-template checkboxes; the two defaults start ticked.
         defaults_norm = [_norm(n) for n in DEFAULT_TEMPLATE_NAMES]
@@ -181,6 +219,14 @@ class WorksetsWindow(forms.WPFWindow):
         return [chk.Tag for chk in self.templates_panel.Children
                 if isinstance(chk, CheckBox) and chk.IsChecked]
 
+    def concrete_keywords(self):
+        """Concrete keywords typed into the box (comma-separated substrings).
+
+        Each is matched as a type-name 'contains' substring; every wall that
+        contains none of them is treated as a partition.
+        """
+        return _split_csv(self.tb_concrete.Text)
+
     def on_ok(self, sender, args):
         if not _split_lines(self.tb_worksets.Text):
             forms.alert(u"Enter at least one workset name.", title=__title__)
@@ -189,6 +235,12 @@ class WorksetsWindow(forms.WPFWindow):
             forms.alert(u"Tick at least one view template, or untick "
                         u"'Create / update coordination filters'.", title=__title__)
             return
+        if self.cb_filters.IsChecked and not self.concrete_keywords():
+            if not forms.alert(
+                    u"No concrete substring is entered.\nEvery wall will be "
+                    u"treated as a partition (recoloured). Continue anyway?",
+                    title=__title__, yes=True, no=True):
+                return
         self.DialogResult = True
         self.Close()
 
@@ -207,8 +259,7 @@ def main():
         return
 
     worksets = _split_lines(window.tb_worksets.Text)
-    concrete_keywords = _split_csv(window.tb_concrete.Text)
-    block_keywords = _split_csv(window.tb_block.Text)
+    concrete_keywords = window.concrete_keywords()
     templates = list(window.selected_templates())
     make_filters = bool(window.cb_filters.IsChecked)
     auto_enable = bool(window.cb_worksharing.IsChecked)
@@ -240,7 +291,6 @@ def main():
     try:
         CreateFilters.run(
             concrete_keywords=concrete_keywords,
-            block_keywords=block_keywords,
             target_templates=templates,
         )
     except Exception as ex:
