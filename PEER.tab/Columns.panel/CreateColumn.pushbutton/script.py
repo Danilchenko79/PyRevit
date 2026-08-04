@@ -148,6 +148,51 @@ _clr.AddReference("System.Data")
 from System.Data import DataTable
 
 
+# Возможные имена параметров ширины/высоты сечения колонны у РАЗНЫХ семейств
+# (LookupParameter чувствителен к регистру, поэтому перечисляем варианты).
+# Проверяются по порядку; берётся первая пара, где заданы И ширина, И высота.
+SECTION_SIZE_PAIRS = [
+    ("B", "H"),
+    ("b", "h"),
+    ("Width", "Depth"),
+    ("Width", "Height"),
+    ("Column_B", "Column_H"),
+    ("PR_B", "PR_H"),
+]
+
+
+def _lookup_double(el, name):
+    """Значение параметра-длины (Double) по имени, или None. Ищет и на экземпляре,
+    и на типе — el передаём нужный."""
+    if el is None:
+        return None
+    p = el.LookupParameter(name)
+    if p is None:
+        return None
+    try:
+        if str(p.StorageType) == "Double":
+            return p.AsDouble()
+    except Exception:
+        pass
+    return None
+
+
+def read_section_size(col, ctype):
+    """Размеры сечения (ширина, высота) в футах. Пробуем набор имён B/H, b/h,
+    Width/Depth... сначала на экземпляре, затем на типе. Так инструмент работает
+    на разных семействах колонн. Если ничего не нашли — (0.0, 0.0)."""
+    for wn, hn in SECTION_SIZE_PAIRS:
+        w = _lookup_double(col, wn)
+        if w is None:
+            w = _lookup_double(ctype, wn)
+        h = _lookup_double(col, hn)
+        if h is None:
+            h = _lookup_double(ctype, hn)
+        if w and h:   # обе величины найдены и ненулевые
+            return w, h
+    return 0.0, 0.0
+
+
 def compute_groups(level):
     """Группы колонн уровня по (B, H, Rebar X, Rebar Y, Ø).
 
@@ -166,10 +211,8 @@ def compute_groups(level):
         mp = col.LookupParameter(PARAM_MARK)
         mark = mp.AsString() if mp and mp.HasValue else None
         ctype = doc.GetElement(col.GetTypeId())
-        wp = ctype.LookupParameter(PARAM_B)
-        hp = ctype.LookupParameter(PARAM_H)
-        w = wp.AsDouble() if wp else 0.0
-        h = hp.AsDouble() if hp else 0.0
+        # Размеры сечения — устойчиво к разным именам параметров (B/H, b/h, ...).
+        w, h = read_section_size(col, ctype)
         qxp = col.LookupParameter(PARAM_REBAR_QTY_X)
         qyp = col.LookupParameter(PARAM_REBAR_QTY_Y)
         qx = qxp.AsDouble() if qxp and qxp.HasValue else 0.0
