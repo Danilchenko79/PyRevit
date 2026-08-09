@@ -1,0 +1,25 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Create Column - Reinforcement legend"
+        Width="1010" Height="545" MinWidth="760" MinHeight="420"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="CanResizeWithGrip"
+        ShowInTaskbar="False"
+        FontFamily="Segoe UI" FontSize="13">
+    <DockPanel Margin="12">
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal"
+                    HorizontalAlignment="Right" Margin="0,8,0,0">
+            <Button Content="Close" Width="90" Height="28" Click="on_close"/>
+        </StackPanel>
+        <StackPanel>
+            <TextBlock TextWrapping="Wrap" Foreground="#33475B" Margin="2,0,2,8"
+                       Text="Rebar_Diameter - longitudinal bars (dots). Qb / Qh = Rebar Quantity_B / _H - bars per ONE side. Cover is measured to the stirrup (dashed)."/>
+            <!-- Картинки подставляются из script.py (sketch_*.png в папке кнопки). -->
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                <Image x:Name="img_rect" Height="410" Stretch="Uniform" Margin="0,0,10,0"/>
+                <Image x:Name="img_round2" Height="410" Stretch="Uniform" Margin="0,0,10,0"/>
+                <Image x:Name="img_round1" Height="410" Stretch="Uniform"/>
+            </StackPanel>
+        </StackPanel>
+    </DockPanel>
+</Window>

@@ -1,0 +1,30 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Create Column - How to use"
+        Width="640" SizeToContent="Height"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        FontFamily="Segoe UI" FontSize="13">
+    <StackPanel Margin="16">
+        <TextBlock Text="How to use" FontWeight="Bold" FontSize="15" Margin="0,0,0,8"/>
+        <Border Background="#F2F6FA" BorderBrush="#C6D4E1"
+                BorderThickness="1" CornerRadius="3" Padding="10">
+            <TextBlock TextWrapping="Wrap" Foreground="#33475B">
+                <Run Text="1. Pick the level - the table shows the column groups that will be drawn."/><LineBreak/>
+                <Run Text="2. Set the global values once: view name, sheet width, cover, and the stirrup / staple (transverse) diameters."/><LineBreak/>
+                <Run Text="3. Edit the longitudinal diameter and Rebar Quantity_B / _H in the table. Total Rebar_Quantity updates itself."/><LineBreak/>
+                <Run Text="   Groups are split by column shape - the sketch in the first column shows the section (rectangular / rounded both sides / rounded one side)."/><LineBreak/>
+                <Run Text="   For rectangular columns Total = 4 corners + 2 x Quantity_B + 2 x Quantity_H; for rounded shapes Total = 2 x (Quantity_B + Quantity_H)."/><LineBreak/>
+                <Run Text="   Click the ? icon in the title for the reinforcement legend - which bars each parameter controls."/><LineBreak/>
+                <Run Text="   Marks with identical reinforcement are grouped into one row. Click the underlined marks to split the group and edit each mark separately; rows left identical merge back on OK."/><LineBreak/>
+                <Run Text="   Bulk edit: select several cells in one column (drag / Ctrl / Shift), type the value and press Enter - it is applied to every selected cell."/><LineBreak/>
+                <Run Text="4. The lower table lists problem columns (no mark on this level). Use Select to find them in the model."/><LineBreak/>
+                <Run Text="5. Pick 'No Level' in the level list to review columns without PR_Level, grouped by their top level (review only - nothing is drawn)."/><LineBreak/>
+                <Run Text="6. Click OK - values are written back to the model columns, then the sheet is drawn. If the view already exists you are asked to confirm replacing it."/>
+            </TextBlock>
+        </Border>
+        <Button Content="Close" Width="90" Height="28" HorizontalAlignment="Right"
+                Margin="0,12,0,0" Click="on_close"/>
+    </StackPanel>
+</Window>
