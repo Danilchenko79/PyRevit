@@ -31,7 +31,7 @@ from Autodesk.Revit.DB import (
 )
 from Autodesk.Revit.UI import IExternalEventHandler, ExternalEvent
 from System.Collections.Generic import List
-from System import Uri
+from System import Uri, Guid
 from System.Windows.Media.Imaging import (BitmapImage, BitmapCacheOption,
                                           BitmapCreateOptions)
 from Samples.Numeration import process_drafting_view
@@ -88,11 +88,54 @@ doc = revit.doc
 
 # 🔹 Настройки
 FAMILY_NAME = "Create Column"
-# Габариты сечения в 2D-семействах (обновление 2026-08: раньше были B/H).
-# От них же считаются формулы семейства: раскладка стержней, Rebar_Spacing,
-# HasVertical/HorizontalSpacer (шпильки при стороне > 400 мм).
-PARAM_B = "PR_Dimension_Width"
-PARAM_H = "PR_Dimension_Height"
+# Габариты сечения в 2D-семействах: пишем в первый НАЙДЕННЫЙ параметр.
+# Порядок поиска: GUID общего параметра → имена-кандидаты (новое → старые).
+# В чужих проектах может сидеть старая версия семейства, где общий параметр
+# закрепился под ДРУГИМ именем (в т.ч. русским) — имя едет внутри .rfa,
+# но GUID общего параметра вечный, поэтому матчим сначала по нему.
+PARAM_B_CANDIDATES = ("PR_Dimension_Width", "B")
+PARAM_H_CANDIDATES = ("PR_Dimension_Height", "H")
+
+# GUID-ы общих параметров — сняты с эталонных .rfa (2026-09-01), во всех
+# трёх 2D-семействах одинаковые; те же общие параметры сидят и в 3D-колоннах.
+# Cover — семейный параметр (GUID нет), ищется только по имени.
+SHARED_GUIDS = {
+    "width":  "8f2e4f93-9472-4941-a65d-0ac468fd6a5d",   # PR_Dimension_Width
+    "height": "da753fe3-ecfa-465b-9a2c-02f55d0c2ff1",   # PR_Dimension_Height
+    "qty_x":  "de7637e2-5111-4f6b-ba9d-b8394ea5d7c3",   # Rebar_QuantityX
+    "qty_y":  "79cc3e37-3043-4df5-8f0d-fc304127fc48",   # Rebar_QuantityY
+    "dia":    "5498ba20-78b8-42d5-a4bf-f4ba6f5c16dd",   # Rebar_Diameter
+}
+
+
+def _guid_param(el, guid_key):
+    """Параметр общего параметра по GUID, или None."""
+    g = SHARED_GUIDS.get(guid_key)
+    if el is None or not g:
+        return None
+    try:
+        p = el.get_Parameter(Guid(g))
+        return p
+    except Exception:
+        return None
+
+
+def lookup_param(el, names, guid_key=None, writable=False):
+    """Параметр: сначала по GUID общего параметра (надёжно при любых
+    именах в чужих проектах), затем первый существующий из списка имён.
+
+    writable=True — ищем параметр ДЛЯ ЗАПИСИ: read-only кандидаты
+    пропускаются, поиск продолжается. Пример: в старом 2D-семействе общий
+    ADSK_Размер_Ширина — формульный (read-only), а входной параметр —
+    семейный B; без пропуска запись срезалась бы на защите IsReadOnly."""
+    p = _guid_param(el, guid_key)
+    if p is not None and not (writable and p.IsReadOnly):
+        return p
+    for n in names:
+        p = el.LookupParameter(n)
+        if p is not None and not (writable and p.IsReadOnly):
+            return p
+    return None
 PARAM_MARK = "Mark"
 PARAM_REBAR_QTY_X = "Rebar_QuantityX"
 PARAM_REBAR_QTY_Y = "Rebar_QuantityY"
@@ -256,10 +299,31 @@ def _lookup_double(el, name):
     return None
 
 
+def _guid_double(col, ctype, guid_key):
+    """Ненулевое значение общего параметра-длины по GUID (экземпляр, затем
+    тип), или None."""
+    for el in (col, ctype):
+        p = _guid_param(el, guid_key)
+        if p is not None:
+            try:
+                if str(p.StorageType) == "Double" and p.HasValue:
+                    v = p.AsDouble()
+                    if v:
+                        return v
+            except Exception:
+                pass
+    return None
+
+
 def read_section_size(col, ctype):
-    """Размеры сечения (ширина, высота) в футах. Пробуем набор имён B/H, b/h,
-    Width/Depth... сначала на экземпляре, затем на типе. Так инструмент работает
-    на разных семействах колонн. Если ничего не нашли — (0.0, 0.0)."""
+    """Размеры сечения (ширина, высота) в футах. Сначала общие параметры по
+    GUID (имена в чужих проектах могут быть любыми, в т.ч. русскими), затем
+    набор имён B/H, b/h, Width/Depth... — на экземпляре и на типе.
+    Если ничего не нашли — (0.0, 0.0)."""
+    w = _guid_double(col, ctype, "width")
+    h = _guid_double(col, ctype, "height")
+    if w and h:
+        return w, h
     for wn, hn in SECTION_SIZE_PAIRS:
         w = _lookup_double(col, wn)
         if w is None:
@@ -377,11 +441,11 @@ def compute_groups(level):
         ctype = doc.GetElement(col.GetTypeId())
         # Размеры сечения — устойчиво к разным именам параметров (B/H, b/h, ...).
         w, h = read_section_size(col, ctype)
-        qxp = col.LookupParameter(PARAM_REBAR_QTY_X)
-        qyp = col.LookupParameter(PARAM_REBAR_QTY_Y)
+        qxp = lookup_param(col, (PARAM_REBAR_QTY_X,), "qty_x")
+        qyp = lookup_param(col, (PARAM_REBAR_QTY_Y,), "qty_y")
         qx = qxp.AsDouble() if qxp and qxp.HasValue else 0.0
         qy = qyp.AsDouble() if qyp and qyp.HasValue else 0.0
-        dp = col.LookupParameter("Rebar_Diameter")
+        dp = lookup_param(col, ("Rebar_Diameter",), "dia")
         d = dp.AsDouble() if dp and dp.HasValue else 0.0
         if not (mark and mark.strip() and mark != "N/A"):
             no_mark_ids.append(col.Id)
@@ -960,10 +1024,11 @@ def run_pipeline():
                 model_col = doc.GetElement(cid)
                 if model_col is None:
                     continue
-                for pname, pval in ((PARAM_REBAR_QTY_X, float(g["rebar_qty_x"])),
-                                    (PARAM_REBAR_QTY_Y, float(g["rebar_qty_y"])),
-                                    ("Rebar_Diameter", g["rebar_diam"])):
-                    p = model_col.LookupParameter(pname)
+                for pname, gkey, pval in (
+                        (PARAM_REBAR_QTY_X, "qty_x", float(g["rebar_qty_x"])),
+                        (PARAM_REBAR_QTY_Y, "qty_y", float(g["rebar_qty_y"])),
+                        ("Rebar_Diameter", "dia", g["rebar_diam"])):
+                    p = lookup_param(model_col, (pname,), gkey, writable=True)
                     if p and not p.IsReadOnly:
                         try:
                             p.Set(pval)
@@ -1339,11 +1404,13 @@ def run_pipeline():
                 instance = doc.Create.NewFamilyInstance(location_point, fam_symbol, drafting_view,)
                 eid = instance.Id
                 # Устанавливаем B и H
-                p_b = instance.LookupParameter(PARAM_B)
+                p_b = lookup_param(instance, PARAM_B_CANDIDATES, "width",
+                                   writable=True)
                 if p_b:
                     p_b.Set(width)
 
-                p_h = instance.LookupParameter(PARAM_H)
+                p_h = lookup_param(instance, PARAM_H_CANDIDATES, "height",
+                                   writable=True)
                 if p_h:
                     p_h.Set(height)
                 # тэг в правый-верхний угол без зазоров (или, например, +50 мм по X/Y)
@@ -1376,21 +1443,24 @@ def run_pipeline():
                     doc.Create.NewDimension(drafting_view, dim_line_v, ref_array_v,dimension_type)
 
                 # Новый параметр армирования
-                p_rebar_qty_x = instance.LookupParameter(PARAM_REBAR_QTY_X)
+                p_rebar_qty_x = lookup_param(instance, (PARAM_REBAR_QTY_X,), "qty_x",
+                                             writable=True)
                 if p_rebar_qty_x:
                     try:
                         p_rebar_qty_x.Set(col_data["rebar_qty_x"])
                     except Exception as e:
                         print("Error setting {}: {}".format(PARAM_REBAR_QTY_X, e))
 
-                p_rebar_qty_y = instance.LookupParameter(PARAM_REBAR_QTY_Y)
+                p_rebar_qty_y = lookup_param(instance, (PARAM_REBAR_QTY_Y,), "qty_y",
+                                             writable=True)
                 if p_rebar_qty_y:
                     try:
                         p_rebar_qty_y.Set(col_data["rebar_qty_y"])
                     except Exception as e:
                         print("Error setting {}: {}".format(PARAM_REBAR_QTY_Y, e))
                 # Устанавливаем Rebar_Diameter
-                p_rebar_diam = instance.LookupParameter("Rebar_Diameter")
+                p_rebar_diam = lookup_param(instance, ("Rebar_Diameter",), "dia",
+                                            writable=True)
                 if p_rebar_diam:
                     try:
                         p_rebar_diam.Set(col_data["rebar_diam"])
