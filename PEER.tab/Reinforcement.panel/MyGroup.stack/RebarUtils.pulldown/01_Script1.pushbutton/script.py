@@ -2,19 +2,23 @@
 """
 ColorTag by View Filters
 ==================================================
-Description:
-Красит теги (IndependentTag) на активном виде цветами, взятыми
-из ФИЛЬТРОВ этого вида (View Filters).
-
-Логика:
-1) Собираем фильтры активного вида в их порядке (если V/G Filters заданы
-   шаблоном вида - берём фильтры из шаблона).
-2) Для каждого фильтра читаем OverrideGraphicSettings вида и достаём цвет
-   (Projection Lines -> Cut Lines -> Surface Pattern -> Cut Pattern).
-3) Для каждого тега находим элемент-хост и проверяем, под какой фильтр он
-   попадает. Первый подошедший по порядку списка фильтров - выигрывает.
-4) Ставим тегу Projection Line Color = цвет этого фильтра.
+Colors tags (IndependentTag) on the active view with the colors
+of that view's filters (View Filters). First matching filter wins.
 """
+# Docstring must stay ASCII: pyRevit fails to parse a non-ASCII docstring
+# (UnicodeEncodeError) and silently drops the button from the ribbon.
+#
+# Красит теги (IndependentTag) на активном виде цветами, взятыми
+# из ФИЛЬТРОВ этого вида (View Filters).
+#
+# Логика:
+# 1) Собираем фильтры активного вида в их порядке (если V/G Filters заданы
+#    шаблоном вида - берём фильтры из шаблона).
+# 2) Для каждого фильтра читаем OverrideGraphicSettings вида и достаём цвет
+#    (Projection Lines -> Cut Lines -> Surface Pattern -> Cut Pattern).
+# 3) Для каждого тега находим элемент-хост и проверяем, под какой фильтр он
+#    попадает. Первый подошедший по порядку списка фильтров - выигрывает.
+# 4) Ставим тегу Projection Line Color = цвет этого фильтра.
 
 __title__ = "ColorTag"
 __author__ = "BIM Specialist"
