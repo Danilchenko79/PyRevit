@@ -1,0 +1,1522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>__TITLE__</title>
+<style>
+:root{
+  --bg:#f4f5f7;--fg:#1c2230;--muted:#6b7385;--line:#dde1e8;--card:#ffffff;--card2:#f8f9fb;
+  --accent:#1f5fbf;--accent-soft:#e3ecfa;--warn:#b25b00;--warn-soft:#fff1e0;--bad:#b3261e;--bad-soft:#fde8e6;--ok:#1e7a3c;--ok-soft:#e3f4e8;
+  --plan:#ffffff;--wall:#3a4252;--col:#1c2230;--beam:#8a94a8;--slabline:#1c2230;
+  --mid:#eceef2;--beamz:#dde3ee;--border:rgba(255,255,255,.9);--sel:#1f5fbf;--meas:#c2185b;--off:#c2185b;
+  --shadow:0 1px 2px rgba(16,24,40,.06),0 1px 3px rgba(16,24,40,.08);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#12151b;--fg:#e6e9ef;--muted:#98a0b3;--line:#2a303c;--card:#1a1e26;--card2:#20252f;
+  --accent:#6ea2ff;--accent-soft:#1f2b44;--warn:#f0a44b;--warn-soft:#3a2a15;--bad:#ff7a70;--bad-soft:#3a1c1a;--ok:#5cc98a;--ok-soft:#173022;
+  --plan:#161a21;--wall:#c9cfdb;--col:#e6e9ef;--beam:#7b86a0;--slabline:#c9cfdb;
+  --mid:#2a2f3a;--beamz:#2c3444;--border:rgba(0,0,0,.55);--sel:#6ea2ff;--meas:#ff6fa8;--off:#ff6fa8;
+  --shadow:none;}}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--fg);font:13px/1.45 "Segoe UI",Arial,sans-serif}
+button,input,select{font:inherit;color:inherit}
+header.top{display:flex;align-items:center;gap:16px;padding:10px 16px;background:var(--card);border-bottom:1px solid var(--line)}
+header.top h1{font-size:17px;margin:0;font-weight:600}
+header .sub{color:var(--muted);font-size:12px}
+header .grow{flex:1}
+.btn{border:1px solid var(--line);background:var(--card);border-radius:6px;padding:5px 10px;cursor:pointer}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.sm{padding:2px 8px;font-size:12px}
+.btn:disabled{opacity:.45;cursor:default;border-color:var(--line)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.seg button{border:0;background:var(--card);padding:5px 10px;cursor:pointer}
+.seg button.on{background:var(--accent);color:#fff}
+main.work{display:grid;grid-template-columns:minmax(0,1fr) 390px;gap:12px;padding:12px 16px;height:calc(100vh - 120px);min-height:520px}
+.stage{position:relative;background:var(--plan);border:1px solid var(--line);border-radius:8px;overflow:hidden;box-shadow:var(--shadow);min-height:0}
+#plan{width:100%;height:100%;display:block;touch-action:none;cursor:default;user-select:none}
+#plan.panning{cursor:grabbing}
+#plan.measure{cursor:crosshair}
+#plan.tool-sup{cursor:pointer}
+.tools{position:absolute;left:10px;top:10px;display:flex;gap:4px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:4px;box-shadow:var(--shadow);flex-wrap:wrap;max-width:calc(100% - 20px)}
+.tools button{border:0;background:transparent;border-radius:5px;padding:5px 9px;cursor:pointer;display:flex;align-items:center;gap:6px;white-space:nowrap}
+.tools button:hover{background:var(--card2)}
+.tools button.on{background:var(--accent-soft);color:var(--accent)}
+.tools .sep{width:1px;background:var(--line);margin:3px 2px}
+.tools svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.6}
+.status{position:absolute;left:10px;bottom:8px;background:var(--card);border:1px solid var(--line);border-radius:6px;padding:3px 8px;color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}
+.busy{position:absolute;right:10px;top:10px;background:var(--accent);color:#fff;border-radius:6px;padding:4px 10px;font-size:12px;display:none}
+.hintbar{position:absolute;left:50%;transform:translateX(-50%);bottom:8px;background:var(--card);border:1px solid var(--accent);color:var(--accent);border-radius:6px;padding:3px 10px;font-size:12px;display:none;white-space:nowrap}
+.legend{position:absolute;right:10px;bottom:8px;background:var(--card);border:1px solid var(--line);border-radius:6px;padding:6px 8px;font-size:12px;max-width:320px}
+.legend .row{display:flex;align-items:center;gap:6px;margin:2px 0}
+.legend .sw{width:14px;height:10px;border-radius:2px;border:1px solid var(--line)}
+.legend .ramp{height:8px;border-radius:4px;margin:4px 0 2px}
+.tip{position:absolute;pointer-events:none;background:var(--card);border:1px solid var(--line);border-radius:6px;padding:4px 8px;font-size:12px;box-shadow:var(--shadow);display:none;white-space:nowrap;z-index:5}
+aside.panel{background:var(--card);border:1px solid var(--line);border-radius:8px;display:flex;flex-direction:column;min-height:0;overflow:hidden;box-shadow:var(--shadow)}
+.tabs{display:flex;border-bottom:1px solid var(--line);flex:none}
+.tabs button{flex:1;border:0;background:transparent;padding:9px 2px;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;font-size:12.5px}
+.tabs button.on{color:var(--fg);border-bottom-color:var(--accent);font-weight:600}
+.tab{padding:12px 14px;overflow:auto;flex:1;min-height:0}
+.hint{color:var(--muted)}
+.card{background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:10px;margin:0 0 10px}
+.card h3{margin:0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:600}
+details.sec{background:var(--card2);border:1px solid var(--line);border-radius:8px;margin:0 0 8px}
+details.sec>summary{cursor:pointer;padding:8px 10px;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:600;list-style:none;display:flex;justify-content:space-between}
+details.sec>summary::-webkit-details-marker{display:none}
+details.sec>summary::after{content:'▸';transition:transform .15s}
+details.sec[open]>summary::after{transform:rotate(90deg)}
+details.sec>div{padding:0 10px 10px}
+.phead{display:flex;gap:10px;align-items:center;margin-bottom:10px}
+.phead .num{min-width:38px;height:38px;border-radius:19px;display:grid;place-items:center;font-weight:700;font-size:16px;color:#1c2230}
+.phead .k{font-weight:600;font-size:15px}
+.kpis{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+.kpi{background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+.kpi .l{color:var(--muted);font-size:11px}
+.kpi .v{font-size:19px;font-weight:600;font-variant-numeric:tabular-nums}
+.kpi .v small{font-size:12px;font-weight:400;color:var(--muted)}
+.kpi.main{border-color:var(--accent);background:var(--accent-soft)}
+.formula{font-family:Consolas,monospace;font-size:12px;background:var(--card2);border:1px dashed var(--line);border-radius:6px;padding:6px 8px;margin-bottom:10px;overflow-wrap:anywhere}
+.frm{display:grid;grid-template-columns:auto 1fr;gap:6px 10px;align-items:center}
+.frm input[type=number],.frm select{width:100%;padding:4px 6px;border:1px solid var(--line);border-radius:5px;background:var(--card);font-variant-numeric:tabular-nums}
+input.inp{background:#fff7d6 !important;border-color:#e8cf7a !important}
+@media (prefers-color-scheme:dark){input.inp{background:#3a3320 !important;border-color:#6b5a2a !important}}
+.chips{display:flex;flex-wrap:wrap;gap:4px}
+.chip{border:1px solid var(--line);border-radius:12px;padding:2px 9px;background:var(--card);cursor:pointer;font-size:12px}
+.chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.verdict{display:flex;gap:8px;align-items:center;border:1px solid;border-radius:8px;padding:8px 10px;margin:0 0 10px;font-weight:600}
+.verdict .eta{margin-left:auto;font-variant-numeric:tabular-nums;white-space:nowrap}
+.verdict.ok,.res.ok{background:var(--ok-soft);color:var(--ok);border-color:var(--ok)}
+.verdict.reinf,.res.reinf{background:var(--warn-soft);color:var(--warn);border-color:var(--warn)}
+.verdict.thick,.res.thick{background:var(--bad-soft);color:var(--bad);border-color:var(--bad)}
+.res{display:inline-block;border-radius:10px;padding:0 7px;font-size:11px;font-weight:600}
+.frm4{display:grid;grid-template-columns:auto 1fr auto 1fr;gap:6px 8px;align-items:center}
+.frm4 input{width:100%;padding:4px 6px;border:1px solid var(--line);border-radius:5px;background:var(--card);font-variant-numeric:tabular-nums}
+.flag{display:inline-block;border-radius:10px;padding:1px 8px;background:var(--warn-soft);color:var(--warn);font-size:11px;margin:0 4px 4px 0}
+table.kv{width:100%;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums}
+table.kv td,table.kv th{padding:3px 4px;border-bottom:1px solid var(--line);text-align:right}
+table.kv th{color:var(--muted);font-weight:500}
+table.kv td:first-child,table.kv th:first-child{text-align:left}
+table.kv input{width:54px;padding:2px 4px;border:1px solid var(--line);border-radius:4px;background:var(--card);text-align:right}
+.bar{display:flex;height:12px;border-radius:6px;overflow:hidden;margin:6px 0}
+.bar span{display:block}
+.mini{font-size:11px;color:var(--muted)}
+.row2{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;align-items:center}
+.offrow{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--line)}
+details.tbl{margin:0 16px 16px;background:var(--card);border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow)}
+details.tbl>summary{cursor:pointer;padding:10px 14px;font-weight:600;list-style:none}
+details.tbl>summary::-webkit-details-marker{display:none}
+details.tbl>summary::before{content:'▸ ';color:var(--muted)}
+details.tbl[open]>summary::before{content:'▾ '}
+.tblbar{display:flex;gap:10px;align-items:center;padding:8px 12px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);flex-wrap:wrap}
+.tblbar input{padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:var(--card);min-width:220px}
+.tblwrap{overflow:auto;max-height:60vh}
+#tbl{border-collapse:collapse;width:100%;font-size:12px;font-variant-numeric:tabular-nums}
+#tbl th{position:sticky;top:0;background:var(--card);text-align:right;padding:6px 8px;border-bottom:1px solid var(--line);cursor:pointer;white-space:nowrap;color:var(--muted);font-weight:600}
+#tbl th.l,#tbl td.l{text-align:left}
+#tbl td{padding:4px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+#tbl tr:hover td{background:var(--card2)}
+#tbl tr.sel td{background:var(--accent-soft)}
+#tbl td.fl{white-space:normal;min-width:160px;color:var(--warn)}
+#tbl .sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+/* svg */
+.z{stroke:var(--border);stroke-width:1;vector-effect:non-scaling-stroke;cursor:pointer}
+.z.dim{opacity:.35}
+.z.hl{stroke:var(--sel);stroke-width:3}
+.z.hov{filter:brightness(.93)}
+.noborders .z{stroke:none}
+.noborders .z.hl{stroke:var(--sel)}
+.tool-sup .z{cursor:default;opacity:.75}
+.slabhl{fill:var(--sel);fill-opacity:.1;stroke:var(--sel);stroke-width:3.5;vector-effect:non-scaling-stroke;pointer-events:none}
+tr.slabrow{cursor:pointer}
+tr.slabrow:hover td{background:var(--card2)}
+tr.slabrow.on td{background:var(--accent-soft)}
+.slab{fill:none;stroke:var(--slabline);stroke-width:1.4;vector-effect:non-scaling-stroke;pointer-events:none}
+.holef{fill:url(#holeHatch);stroke:var(--slabline);stroke-width:1;vector-effect:non-scaling-stroke;pointer-events:none}
+.sup{pointer-events:none}
+.tool-sup .sup{pointer-events:all;cursor:pointer}
+.wall{fill:var(--wall)}
+.colr{fill:var(--col)}
+.beamu{fill:var(--beam);opacity:.9}
+.beamx{fill:none;stroke:var(--beam);stroke-width:1;stroke-dasharray:5 4;vector-effect:non-scaling-stroke}
+.tool-sup .beamx{fill:rgba(138,148,168,.15)}
+.sup.off{fill:url(#offHatch);stroke:var(--off);stroke-width:1.2;stroke-dasharray:4 3;vector-effect:non-scaling-stroke;opacity:1}
+.sup.forced{stroke:var(--accent);stroke-width:2;vector-effect:non-scaling-stroke}
+.sup.shov{stroke:var(--meas);stroke-width:3;vector-effect:non-scaling-stroke}
+.sup.added{stroke:var(--accent);stroke-width:1.6;vector-effect:non-scaling-stroke}
+.sup.edited{stroke:var(--warn);stroke-width:1.6;stroke-dasharray:6 3;vector-effect:non-scaling-stroke}
+.sup.esel{stroke:var(--sel);stroke-width:3;stroke-dasharray:none;vector-effect:non-scaling-stroke}
+#plan.tool-edit,#plan.tool-add{cursor:crosshair}
+.tool-edit .sup{pointer-events:all;cursor:pointer}
+.tool-edit .z,.tool-add .z{cursor:crosshair;opacity:.75}
+.tool-edit .bub,.tool-add .bub{pointer-events:none;opacity:.5}
+.hnd circle{fill:var(--card);stroke:var(--sel);stroke-width:2;cursor:grab}
+.hnd.c circle{fill:var(--sel)}
+.bub{cursor:pointer}
+.bub circle{stroke:#fff;stroke-width:1.5}
+.bub text{font-size:11px;font-weight:700;text-anchor:middle;dominant-baseline:central;fill:#1c2230;pointer-events:none}
+.bub .lb{font-size:11px;font-weight:600;text-anchor:start;fill:var(--fg);paint-order:stroke;stroke:var(--plan);stroke-width:3px;stroke-linejoin:round}
+.bub.hl circle{stroke:var(--sel);stroke-width:3}
+.bub.dim{opacity:.4}
+.tool-sup .bub{pointer-events:none;opacity:.5}
+.meas line,.meas polyline,.meas polygon{stroke:var(--meas);stroke-width:1.8;vector-effect:non-scaling-stroke;fill:none}
+.meas polygon{fill:var(--meas);fill-opacity:.1}
+.meas circle{fill:var(--meas)}
+.mlbl text{font-size:12px;font-weight:600;fill:var(--meas);paint-order:stroke;stroke:var(--plan);stroke-width:4px;stroke-linejoin:round;text-anchor:middle;dominant-baseline:central}
+.snap{fill:none;stroke:var(--meas);stroke-width:1.6}
+.pop{position:absolute;left:10px;top:52px;z-index:6;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 12px;box-shadow:0 4px 16px rgba(16,24,40,.18);width:270px;max-height:calc(100% - 64px);overflow:auto}
+.pop h3{margin:8px 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:600}
+.pop h3:first-child{margin-top:0}
+.pop label{display:block;margin:2px 0}
+.pop select{width:100%;padding:4px 6px;border:1px solid var(--line);border-radius:5px;background:var(--card)}
+.steps{margin:0 0 10px;padding:0;list-style:none;counter-reset:st}
+.steps li{counter-increment:st;display:flex;gap:8px;align-items:flex-start;margin:0 0 6px}
+.steps li::before{content:counter(st);flex:none;width:20px;height:20px;border-radius:10px;background:var(--accent-soft);color:var(--accent);font-weight:700;font-size:11px;display:grid;place-items:center}
+.steps li.done::before{content:'✓';background:var(--ok-soft);color:var(--ok)}
+.lnk{border:0;background:none;color:var(--accent);cursor:pointer;padding:0;text-decoration:underline;text-underline-offset:2px}
+.back{border:0;background:none;color:var(--muted);cursor:pointer;padding:0 0 8px;font-size:12px}
+.back:hover{color:var(--accent)}
+.pchips{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.pchip{border:1px solid;border-radius:10px;padding:0 7px;font-size:11px;font-weight:600;cursor:pointer;background:transparent}
+.pchip.reinf{color:var(--warn);border-color:var(--warn)}
+.pchip.thick{color:var(--bad);border-color:var(--bad)}
+.hbox{display:grid;grid-template-columns:auto 90px 1fr;gap:6px 8px;align-items:center}
+.hbox input{width:100%;padding:4px 6px;border:1px solid var(--line);border-radius:5px;background:var(--card);font-variant-numeric:tabular-nums;text-align:right}
+.hbox .mini{line-height:1.3}
+.ch{color:var(--accent);font-weight:600}
+table.kv input.hin{width:58px}
+table.kv input.hin.ch{border-color:var(--accent);color:var(--accent);font-weight:600}
+@media (max-width:1000px){main.work{grid-template-columns:1fr;height:auto}.stage{height:65vh}aside.panel{height:62vh}}
+</style>
+</head>
+<body>
+<header class="top">
+  <div><h1 id="h1"></h1><div class="sub" id="sub"></div></div>
+  <div class="grow"></div>
+  <div class="seg" id="units" title="Units of forces and loads (1 t = 10 kN)"><button data-u="t">t</button><button data-u="kN">kN</button></div>
+  <button class="btn" id="btnRevit" title="Supports, added / edited walls, columns, beams and slab thickness back as in the Revit model. Loads and factors are kept">Reset to Revit</button>
+  <button class="btn" id="btnCsv" title="Point table with the current loads and supports">Export CSV</button>
+</header>
+<main class="work">
+  <section class="stage" id="stage">
+    <svg id="plan" xmlns="http://www.w3.org/2000/svg"></svg>
+    <div class="tools" id="tools">
+      <button data-tool="select" title="Select: click a point/zone, Ctrl for several, drag to pan (V)">
+        <svg viewBox="0 0 16 16"><path d="M3 2l9 5-4 1-2 4z"/></svg>Select</button>
+      <span class="sep"></span>
+      <button data-tool="sup" title="Supports: click a wall, column or beam to switch it on/off as a support. The plan is recomputed (O)">
+        <svg viewBox="0 0 16 16"><path d="M2 13h12M4 13V5h3v8M9 13V8h3v5"/></svg>Supports</button>
+      <button data-tool="edit" title="Edit: click a wall, beam or column; drag an end to shorten / extend it (Shift = free), drag a column centre to move it. Delete removes (E)">
+        <svg viewBox="0 0 16 16"><path d="M2 14l1-4 8-8 3 3-8 8z M9 4l3 3"/></svg>Edit</button>
+      <button data-tool="addw" title="Add a wall or a line support: click the start, click the end. Shift = orthogonal (W)">
+        <svg viewBox="0 0 16 16"><path d="M2 11h9v3H2z M13 2v6M10 5h6"/></svg>Wall</button>
+      <button data-tool="addc" title="Add a column: click its centre (C)">
+        <svg viewBox="0 0 16 16"><path d="M2 8h6v6H2z M13 2v6M10 5h6"/></svg>Column</button>
+      <span class="sep"></span>
+      <button data-tool="len" title="Length: click, click. Shift = orthogonal. Esc = cancel (M)">
+        <svg viewBox="0 0 16 16"><path d="M2 12L12 2l2 2L4 14z M5 9l1 1 M7 7l1 1 M9 5l1 1"/></svg>Length</button>
+      <button data-tool="area" title="Area: click the vertices, double-click or Enter to close (A)">
+        <svg viewBox="0 0 16 16"><path d="M2 4l6-2 6 4-2 8-9-2z"/></svg>Area</button>
+      <button id="clearMeas" title="Delete all measurements (Delete = last one)"><svg viewBox="0 0 16 16"><path d="M3 4h10M6 4V2h4v2M4 4l1 10h6l1-10"/></svg></button>
+      <span class="sep"></span>
+      <button id="fit" title="Fit (F)"><svg viewBox="0 0 16 16"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4"/></svg>Fit</button>
+      <button id="btnView" title="Colouring, labels, layers"><svg viewBox="0 0 16 16"><path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z"/><circle cx="8" cy="8" r="2"/></svg>View</button>
+    </div>
+    <div class="pop" id="viewPop" hidden></div>
+    <div class="busy" id="busy">Recomputing…</div>
+    <div class="hintbar" id="hintbar">Supports mode: click a wall, column or beam to switch it off/on. Esc to exit</div>
+    <div class="legend" id="legend"></div>
+    <div class="status" id="status">—</div>
+    <div class="tip" id="tip"></div>
+  </section>
+  <aside class="panel">
+    <nav class="tabs" id="tabs">
+      <button data-tab="sel" class="on">Results</button><button data-tab="loads">Slabs &amp; loads</button><button data-tab="sup">Supports</button></nav>
+    <div class="tab" id="tab-sel"></div>
+    <div class="tab" id="tab-loads" hidden></div>
+    <div class="tab" id="tab-sup" hidden></div>
+  </aside>
+</main>
+<details class="tbl" id="tblbox">
+  <summary id="tblsum">Punching points table</summary>
+  <div class="tblbar"><div class="chips" id="chips"></div>
+    <input id="q" type="search" placeholder="Search: #, ElementId, flag"><span class="mini" id="tblcount"></span></div>
+  <div class="tblwrap"><table id="tbl"><thead></thead><tbody></tbody></table></div>
+</details>
+<script>/*__ENGINE__*/</script>
+<script type="application/json" id="data">__DATA__</script>
+<script>
+(function () {
+'use strict';
+var D = JSON.parse(document.getElementById('data').textContent);
+var DATA = D.data, ENG = window.TribEngine, NS = 'http://www.w3.org/2000/svg';
+function $(s) { return document.querySelector(s); }
+function mk(tag, attrs, parent) {
+  var e = document.createElementNS(NS, tag);
+  for (var k in attrs) if (attrs[k] != null) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+function h(tag) { return document.createElement(tag); }
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]; }); }
+function num(v) { v = parseFloat(String(v).replace(',', '.')); return isFinite(v) ? v : 0; }
+function fmt(v, d) {
+  if (v == null || !isFinite(v)) return '—';
+  d = d == null ? 2 : d;
+  return v.toLocaleString('en-US', {minimumFractionDigits: d, maximumFractionDigits: d});
+}
+function clone(o) { return JSON.parse(JSON.stringify(o)); }
+var DARK = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
+var KL = {column: 'Column', pylon: 'Pier', wall_L: 'Wall corner L', wall_T: 'Wall T-junction', wall_X: 'Wall crossing X',
+  wall_end: 'Wall end', wall_mid: 'Wall', beam: 'Beam', none: 'Unsupported'};
+var CL = {'int': 'interior', edge: 'edge', corner: 'corner'};
+
+// ------------------------------------------------------------ состояние
+var LSKEY = 'trib:' + D.meta.doc + ':' + D.meta.level;
+var S = {unit: 't', tf: 10, gG: D.defaults.gamma_g, gQ: D.defaults.gamma_q, rho: 25, own: true,
+  floors: {}, hOv: {}, pts: {}, beta: clone(D.params.beta), color: 'check', lbl: 'A',
+  layers: {zones: true, borders: true, walls: true, beams: true, cols: true, nums: true, lbls: true},
+  off: [], beamOn: [], calc: {}, rf: {}, open: {chk: true}, tblOpen: false,
+  edit: newEdit(), esel: null,
+  sel: [], tool: 'select', meas: [], draft: null, filter: 'all', q: '', sort: {k: 'n', d: 1}};
+// правки плана: добавленные опоры (id N1, N2…) и изменённая геометрия опор модели (по ключу w:/c:/b:)
+function newEdit() { return {add: [], geo: {}, seq: 0, nw: {kind: 'w', t: 250}, nc: {b: 400, h: 400}}; }
+function nEdits() { return S.edit.add.length + Object.keys(S.edit.geo).length; }
+var FLOORS = (function () {
+  var m = {}, list = [];
+  function area(p) { var s = 0; for (var i = 0; i < p.length; i++) { var q = p[(i + 1) % p.length]; s += p[i][0] * q[1] - q[0] * p[i][1]; } return Math.abs(s) / 2; }
+  DATA.slabs.forEach(function (sl) {
+    var id = String(sl.id), f = m[id];
+    if (!f) { f = m[id] = {id: id, name: sl.name || '', h: sl.h, area: 0}; list.push(f); }
+    var a = area(sl.outer); (sl.holes || []).forEach(function (hl) { a -= area(hl); });
+    f.area += a / 1e6;
+  });
+  list.sort(function (a, b) { return b.area - a.area; });
+  return list;
+})();
+var FL = {}; FLOORS.forEach(function (f) { FL[f.id] = f; S.floors[f.id] = {g: D.defaults.g_add, q: D.defaults.q_live}; });
+(function load() {
+  try {
+    var o = JSON.parse(localStorage.getItem(LSKEY) || 'null');
+    if (!o) return;
+    if (o.v >= 2 && o.unit) S.unit = o.unit;       // до v2 по умолчанию были кН — теперь тонны
+    if (o.v >= 3) { S.gG = o.gG != null ? o.gG : S.gG; S.gQ = o.gQ != null ? o.gQ : S.gQ; }   // до v3 γ по умолчанию были 1.35 / 1.5
+    ['rho', 'own', 'color', 'lbl', 'off', 'beamOn', 'calc', 'rf', 'open', 'tblOpen'].forEach(function (k) { if (o[k] != null) S[k] = o[k]; });
+    if (o.layers) for (var k in o.layers) S.layers[k] = o.layers[k];
+    if (o.floors) for (var f in o.floors) if (S.floors[f]) S.floors[f] = o.floors[f];
+    if (o.hOv) for (var hf in o.hOv) if (FL[hf]) S.hOv[hf] = o.hOv[hf];
+    if (o.pts) S.pts = o.pts;
+    if (o.beta) for (var b in o.beta) S.beta[b] = o.beta[b];
+    if (o.edit) for (var ek in o.edit) S.edit[ek] = o.edit[ek];
+  } catch (e) {}
+})();
+function save() {
+  RFB = null;
+  try {
+    localStorage.setItem(LSKEY, JSON.stringify({v: 3, unit: S.unit, gG: S.gG, gQ: S.gQ, rho: S.rho, own: S.own, color: S.color, lbl: S.lbl,
+      layers: S.layers, floors: S.floors, hOv: S.hOv, pts: S.pts, beta: S.beta, off: S.off, beamOn: S.beamOn, calc: S.calc, rf: S.rf, open: S.open, tblOpen: S.tblOpen, edit: S.edit}));
+  } catch (e) {}
+}
+
+// ------------------------------------------------------------ расчёт (движок в странице)
+var R = null, PT = {}, PTN = {}, OT = {}, USED = new Set(), MODEL = null;
+function params() { var p = clone(D.params); for (var k in S.calc) p[k] = S.calc[k]; return p; }
+function beamOnMap() {
+  var m = {}; S.beamOn.forEach(function (id) { m[id] = true; });
+  S.edit.add.forEach(function (a) { if (a.type === 'b') m[a.id] = true; });     // добавленная балка — всегда опора
+  return m;
+}
+function skOther(o) { return 'o:' + o.kind + ':' + o.ids.join(','); }
+// опоры с правками плана: геометрия модели + переопределения + добавленные
+function model() {
+  var G = S.edit.geo;
+  function one(type) {
+    return function (o) {
+      var m = G[ENG.objKey(type, o.link, o.id)];
+      if (!m) return o;
+      var r = clone(o); for (var f in m) r[f] = m[f]; r._edited = true; return r;
+    };
+  }
+  var slabs = DATA.slabs.map(function (sl) {          // толщина, изменённая в схеме
+    var hv = S.hOv[String(sl.id)];
+    if (hv == null) return sl;
+    var r = {}; for (var f in sl) r[f] = sl[f]; r.h = hv; return r;
+  });
+  var M = {slabs: slabs, walls: (DATA.walls || []).map(one('w')), columns: (DATA.columns || []).map(one('c')),
+    beams: (DATA.beams || []).map(one('b'))};
+  S.edit.add.forEach(function (a) {
+    var o = clone(a); o._added = true;
+    (a.type === 'w' ? M.walls : a.type === 'c' ? M.columns : M.beams).push(o);
+  });
+  return M;
+}
+function compute() {
+  var t0 = performance.now();
+  RFB = null;
+  MODEL = model(); buildSupports();
+  R = ENG.run(MODEL, params(), {off: new Set(S.off), beamOn: beamOnMap(), regions: true});
+  PT = {}; PTN = {}; OT = {};
+  R.points.forEach(function (p) { p.sk = 'p:' + p.key; PT[p.sk] = p; PTN[p.n] = p; });
+  R.others.forEach(function (o) { o.sk = skOther(o); OT[o.sk] = o; });
+  R.none.sk = 'none';
+  USED = new Set(R.beamsUsed.map(String));
+  S.sel = S.sel.filter(function (sk) { return !!objOf(sk); });
+  R.ms = Math.round(performance.now() - t0);
+  buildDynamic(); restyleSupports(); update();
+  $('#sub').textContent = D.meta.doc + ' · level ' + D.meta.level + ' · ' + R.points.length + ' punching points · ' +
+    D.meta.date + (S.off.length || S.beamOn.length || nEdits() ? ' · supports changed in the plan: ' + (S.off.length + S.beamOn.length + nEdits()) : '') +
+    (nH() ? ' · slab thickness changed: ' + nH() : '');
+  var nr = nRevit(), br = $('#btnRevit');
+  br.textContent = 'Reset to Revit' + (nr ? ' (' + nr + ')' : ''); br.disabled = !nr; br.classList.toggle('primary', nr > 0);
+}
+var pending = null;
+function recompute() {
+  $('#busy').style.display = 'block';
+  clearTimeout(pending);
+  pending = setTimeout(function () { compute(); $('#busy').style.display = 'none'; renderSup(); }, 40);
+}
+function objOf(sk) {
+  if (!sk) return null;
+  if (sk === 'none') return R.none;
+  return sk.charAt(0) === 'p' ? PT[sk] : OT[sk];
+}
+function hOf(fid) { return S.hOv[fid] != null ? S.hOv[fid] : (FL[fid] || {}).h || 0; }
+function nH() { return Object.keys(S.hOv).length; }
+function setH(fid, v) {                // толщина плиты: пересчёт d_m, собственного веса, зон и проверки
+  v = Math.round(num(v));
+  if (!FL[fid] || !(v >= 50 && v <= 3000)) return false;
+  if (v === Math.round(FL[fid].h)) delete S.hOv[fid]; else S.hOv[fid] = v;
+  return true;
+}
+function fl(fid) {
+  var f = S.floors[fid] || {g: 0, q: 0}, gown = S.own ? S.rho * hOf(fid) / 1000 : 0;
+  return {gown: gown, g: gown + num(f.g), q: num(f.q)};
+}
+function calc(o) {
+  var G = 0, Q = 0, A = 0, mf = null, ma = -1;
+  for (var fid in o.af) { var a = o.af[fid], L = fl(fid); G += a * L.g; Q += a * L.q; A += a; if (a > ma) { ma = a; mf = fid; } }
+  var st = (o.key && S.pts[o.key]) || {}, k = st.k != null ? st.k : 1, dv = st.dv || 0;
+  var Vd = k * (S.gG * G + S.gQ * Q) + dv, beta = o.bkey ? S.beta[o.bkey] : null;
+  var qd = mf ? S.gG * fl(mf).g + S.gQ * fl(mf).q : 0;
+  var chk = o.geo ? ENG.punch(o.geo, o.dmExact, Vd, qd, beta, rfOf(o)) : null;
+  return {A: A, G: G, Q: Q, k: k, dv: dv, Vd: Vd, beta: beta, bVd: beta ? beta * Vd : null, qd: qd, chk: chk};
+}
+// плита точки: та, чья толщина совпала с h в точке (на стыке плит), иначе с наибольшей площадью в зоне
+function slabOfPoint(p) {
+  var best = null, ba = -1;
+  for (var fid in p.af) if (Math.round(hOf(fid)) === p.h && p.af[fid] > ba) { ba = p.af[fid]; best = fid; }
+  if (best) return best;
+  for (fid in p.af) if (p.af[fid] > ba) { ba = p.af[fid]; best = fid; }
+  return best;
+}
+// наименьшая толщина плиты точки (шаг 10 мм), при которой проверка — OK. Оценка: класс точки
+// (внутр./у края) и зоны не меняются; растёт d_m, периметры и собственный вес. null — нет в 100…1500
+function minH(p, c) {
+  var fid = slabOfPoint(p);
+  if (!fid || !p.geo || !c.beta) return null;
+  var pp = params(), h0 = hOf(fid), aF = p.af[fid] || 0, inp = rfOf(p);
+  var rnd = p.geo.shape === 'round_int' || (p.geo.flags || []).some(function (f) { return /round column/.test(f); });
+  var col = p.kind === 'column' || p.kind === 'pylon';
+  for (var hh = 100; hh <= 1500; hh += 10) {
+    var dm = Math.max(hh - pp.c_nom - pp.bar_d, 0.3 * hh);
+    var geo = col ? ENG.perim(p.kind, p.cls, p.c1, p.c2, rnd ? 'round' : 'rect', null, dm, p.eax)
+      : ENG.perim(p.kind, null, null, null, null, p.ta, dm, null);
+    var dg = S.own ? S.rho * (hh - h0) / 1000 : 0;
+    var vd = c.Vd + c.k * S.gG * dg * aF, qd = c.qd + S.gG * dg;
+    var ch = ENG.punch(geo, dm, vd, qd, c.beta, inp);
+    if (ch && ch.res === 'ok') return {h: hh, fid: fid};
+  }
+  return {h: null, fid: fid};
+}
+// ------------------------------------------------------------ проверка продавливания (Excel компании, engine.punch)
+var RFB = null;                      // общие входы проверки (params + вкладка Loads), кэш до save()/compute()
+function rfBase() { if (!RFB) { RFB = params(); for (var k in S.rf) RFB[k] = S.rf[k]; } return RFB; }
+function rfOf(o) { return ENG.punchInputs(rfBase(), o.key && S.pts[o.key] ? S.pts[o.key].rf : null); }
+var RFK = [['fck', 'f<sub>ck</sub>, MPa', 5], ['sigma_cp', 'σ<sub>cp</sub>, MPa', 0.5], ['top_d1', 'Ø1, mm', 2], ['top_s1', '@ s1, mm', 25],
+  ['top_d2', 'Ø2, mm', 2], ['top_s2', '@ s2, mm', 25], ['sr', 's<sub>r</sub>, mm (0 = 0.75d)', 10], ['alpha_w', 'α links, °', 5], ['alpha_b', 'α bent, °', 5]];
+var RES_SHORT = {ok: 'OK', reinf: 'Reinforce', thick_max: 'Thicken', thick_c: 'Thicken'};
+var SHAPE_L = {col_int: 'column, interior', round_int: 'round column, interior', col_edge: 'column at edge (EC2, edge at face)',
+  col_corner: 'column at corner (EC2, edges at faces)', wall_end: 'wall end', wall_L: 'wall corner (L)'};
+function resCls(ch) { return !ch ? '' : ch.res === 'ok' ? 'ok' : ch.res === 'reinf' ? 'reinf' : 'thick'; }
+function resBadge(ch) { return ch ? '<span class="res ' + resCls(ch) + '">' + RES_SHORT[ch.res] + '</span>' : '—'; }
+function rfFrm(vals, ph, attr) {
+  return '<div class="frm4">' + RFK.map(function (r) {
+    var v = vals[r[0]], p = ph ? ph[r[0]] : null;
+    return '<label>' + r[1] + '</label><input ' + attr + '="' + r[0] + '" type="number" step="' + r[2] + '" value="' + (v == null ? '' : v) + '"' +
+      (p != null ? ' placeholder="' + p + '"' : '') + '>'; }).join('') + '</div>';
+}
+function chkTop(c) {
+  var ch = c.chk;
+  if (!ch) return '';
+  var html = '<div class="verdict ' + resCls(ch) + '">' + esc(ch.label) + '<span class="eta" title="η = V_eq / V_Rd,c">η ' + fmt(ch.eta, 2) + '</span></div>';
+  if (ch.warn.length) html += '<div>' + ch.warn.map(function (f) { return '<span class="flag">' + esc(f) + '</span>'; }).join('') + '</div>';
+  return html;
+}
+function hHtml(p, c) {                  // толщина плиты в точке: правка и «нужная» толщина
+  var fid = slabOfPoint(p);
+  if (!fid) return '';
+  var mh = c.chk ? minH(p, c) : null, chg = S.hOv[fid] != null, cur = Math.round(hOf(fid));
+  var hint = '';
+  if (mh && mh.h != null) {
+    hint = (c.chk.res === 'ok' ? 'OK down to about <b>' : 'Needs about <b>') + mh.h + '</b> mm' +
+      (mh.h !== cur ? ' · <button class="lnk" id="hSet" data-h="' + mh.h + '">set the minimum h</button>' : '');
+  } else if (mh) hint = 'Not OK even at 1500 mm — reinforcement or supports';
+  return '<div class="card"><h3>Slab thickness</h3><div class="hbox"><label for="hIn">h, mm</label>' +
+    '<input id="hIn" class="inp" type="number" step="10" min="50" value="' + cur + '">' +
+    '<span class="mini">' + (chg ? '<span class="ch">changed</span> · model ' + Math.round(FL[fid].h) + ' <button class="lnk" id="hReset">reset</button>' : 'as in the model') +
+    '<br>d<sub>m</sub> ' + p.dm + ' mm</span></div>' +
+    (hint ? '<p class="mini" style="margin:6px 0 0">' + hint + '</p>' : '') +
+    '<p class="mini" style="margin:4px 0 0">Applies to the whole slab ' + esc(fid) + (FL[fid].name ? ' (' + esc(FL[fid].name) + ')' : '') +
+    ' — all its points are rechecked.</p></div>';
+}
+function bindH(p) {
+  var fid = slabOfPoint(p);
+  if (!fid) return;
+  var go = function (v) { if (setH(fid, v)) { save(); renderLoads(); recompute(); } else renderSel(); };
+  var i = $('#hIn'); if (i) i.addEventListener('change', function () { go(i.value); });
+  var s = $('#hSet'); if (s) s.addEventListener('click', function () { fitH(p.sk, fid, +s.dataset.h, 0); });
+  var r = $('#hReset'); if (r) r.addEventListener('click', function () { go(FL[fid].h); });
+}
+// подбор толщины точно: оценка minH не знает, что с d_m растут зоны углов стен (и площадь) —
+// ставим h, считаем весь уровень, при «не OK» берём новую оценку (не меньше h+10) и повторяем
+function fitH(sk, fid, hh, n) {
+  $('#busy').style.display = 'block';
+  setTimeout(function () {
+    setH(fid, hh); save(); compute();
+    var p = PT[sk], c = p ? calc(p) : null;
+    if (c && c.chk && c.chk.res !== 'ok' && n < 8) {
+      var m = minH(p, c);
+      if (m && m.h != null) { fitH(sk, fid, Math.max(m.h, hh + 10), n + 1); return; }
+    }
+    $('#busy').style.display = 'none'; renderLoads(); renderSup();
+  }, 20);
+}
+function chkHtml(p, c) {
+  var ch = c.chk;
+  if (!ch) return '';
+  var F = function (v) { return fmt(outF(v), 1) + ' ' + uF(); };
+  var html = '';
+  var inp = rfOf(p), rows = [
+    ['V<sub>eq</sub> / V<sub>Rd,c</sub>', F(ch.Veq) + ' / ' + F(ch.VRdc)],
+    ['β·V<sub>d</sub> / V<sub>Rd,max</sub>', F(ch.bVd) + ' / ' + F(ch.VRdmax) + ' (' + fmt(ch.eta_max, 2) + ')'],
+    ['Perimeter type', esc(SHAPE_L[ch.shape] || ch.shape)],
+    ['u<sub>0</sub> / u<sub>1</sub>', fmt(ch.u0, 3) + ' / ' + fmt(ch.u1, 3) + ' m'], ['A<sub>u1</sub>', fmt(ch.Au1, 3) + ' m²'],
+    ['d<sub>m</sub> · K', fmt(p.dmExact, 0) + ' mm · ' + fmt(ch.K, 3)],
+    ['Top bars', 'Ø' + inp.top_d1 + '@' + inp.top_s1 + (inp.top_d2 > 0 ? ' + Ø' + inp.top_d2 + '@' + inp.top_s2 : '') + ' · f<sub>ck</sub> ' + inp.fck + (inp.sigma_cp ? ' · σ<sub>cp</sub> ' + inp.sigma_cp : '')],
+    ['ρ (ρ<sub>min</sub> / ρ<sub>max</sub>)', fmt(ch.rho, 4) + ' (' + fmt(ch.rho_min, 4) + ' / ' + fmt(ch.rho_max, 2) + ')'],
+    ['v<sub>min</sub> / v<sub>Rd,c</sub>(ρ)', fmt(ch.v_min, 3) + ' / ' + fmt(ch.v_c, 3) + ' MPa'],
+    ['q<sub>d</sub>·A<sub>u1</sub>', F(c.qd * ch.Au1)]];
+  if (ch.u_out != null) rows.push(['u<sub>out</sub> / s from face', fmt(ch.u_out, 2) + ' / ' + fmt(ch.s_out, 2) + ' m']);
+  if (ch.Asw != null) rows.push(['A<sub>sw</sub> per perimeter (s<sub>r</sub> ' + fmt(ch.sr * 1000, 0) + ' mm)', fmt(ch.Asw, 2) + ' cm²'],
+    ['Perimeters m', ch.m], ['or bent bars A<sub>sα</sub>', fmt(ch.Asa, 2) + ' cm²']);
+  if (ch.Asb != null) rows.push(['Bottom A<sub>sb</sub> (x+y)', fmt(ch.Asb, 2) + ' cm², anchor 2·l<sub>b</sub>']);
+  html += sec('chk', 'Punching check — numbers', '<table class="kv">' + rows.map(function (r) { return '<tr><td>' + r[0] + '</td><td>' + r[1] + '</td></tr>'; }).join('') + '</table>' +
+    '<p class="mini" style="margin:6px 0 0">Company punching sheet (SI 466.1 amend. 7, B500): V<sub>eq</sub> = β·V<sub>d</sub> − β·q<sub>d</sub>·A<sub>u1</sub>; ' +
+    'u<sub>1</sub> at 2d; 0.7·f<sub>ck</sub>. Thicken if β·V<sub>d</sub> &gt; V<sub>Rd,max</sub> or V<sub>eq</sub> &gt; 1.5·V<sub>Rd,c</sub>.' +
+    (ch.shape === 'col_edge' || ch.shape === 'col_corner' ? ' Edge/corner column: not in the sheet — EC2 perimeter with the slab edge at the column face (conservative).' : '') + '</p>');
+  var ov = (S.pts[p.key] || {}).rf || {}, base = ENG.punchInputs(rfBase(), null);
+  html += sec('rfp', 'Concrete and top bars for this point' + (Object.keys(ov).length ? ' · changed' : ''), rfFrm(ov, base, 'data-rp') +
+    '<div class="row2"><button class="btn sm" id="rfpReset">Use level values</button><span class="mini">empty = level value (Slabs &amp; loads tab)</span></div>');
+  return html;
+}
+function bindChk(p) {
+  var T = $('#tab-sel');
+  T.querySelectorAll('input[data-rp]').forEach(function (inp) {
+    inp.addEventListener('change', function () {
+      var st = S.pts[p.key] || (S.pts[p.key] = {}), rf = st.rf || (st.rf = {});
+      if (inp.value === '') delete rf[inp.dataset.rp]; else rf[inp.dataset.rp] = num(inp.value);
+      if (!Object.keys(rf).length) delete st.rf;
+      save(); update();
+    });
+  });
+  var b = $('#rfpReset'); if (b) b.addEventListener('click', function () { if (S.pts[p.key]) delete S.pts[p.key].rf; save(); update(); });
+}
+function uF() { return S.unit === 't' ? 't' : 'kN'; }
+function uQ() { return S.unit === 't' ? 't/m²' : 'kN/m²'; }
+function outF(v) { return S.unit === 't' ? v / S.tf : v; }
+function inF(v) { return S.unit === 't' ? v * S.tf : v; }
+
+// ------------------------------------------------------------ цвета
+function hsl(hh, s, l) { return 'hsl(' + Math.round(hh) + ',' + s + '%,' + l + '%)'; }
+var TYPE_H = {column: 212, pylon: 190, wall_L: 28, wall_end: 140}, CHK_H = {ok: 135, reinf: 40, thick: 2};
+function lerp(a, b, t) { return a + (b - a) * t; }
+function ramp(t) {
+  var st = DARK ? [[58, 51, 32], [168, 100, 42], [224, 81, 63]] : [[255, 247, 214], [244, 162, 89], [192, 57, 43]];
+  t = Math.max(0, Math.min(1, t));
+  var a = t < .5 ? st[0] : st[1], b = t < .5 ? st[1] : st[2], u = t < .5 ? t * 2 : (t - .5) * 2;
+  return 'rgb(' + Math.round(lerp(a[0], b[0], u)) + ',' + Math.round(lerp(a[1], b[1], u)) + ',' + Math.round(lerp(a[2], b[2], u)) + ')';
+}
+var maxLoad = 1;
+function pointColor(p) {
+  var L = DARK ? 38 : 76;
+  if (S.color === 'type') return hsl(TYPE_H[p.kind] || 0, DARK ? 40 : 60, L + ((p.n % 3) - 1) * (DARK ? 5 : 6));
+  if (S.color === 'load') { var c = calc(p); return ramp((c.bVd != null ? c.bVd : c.Vd) / maxLoad); }
+  if (S.color === 'check') { var rc = resCls(calc(p).chk); return rc ? hsl(CHK_H[rc], DARK ? 45 : 65, DARK ? 36 : 74) : hsl(0, 0, DARK ? 35 : 80); }
+  return hsl((p.n * 137.508) % 360, DARK ? 38 : 58, L);
+}
+function regionFill(rg) {
+  if (rg.t === 'none') return 'url(#noneHatch)';
+  if (rg.t === 'wall_mid') return 'var(--mid)';
+  if (rg.t === 'beam') return 'var(--beamz)';
+  return pointColor(PTN[rg.n]);
+}
+
+// ------------------------------------------------------------ статичная часть схемы
+var svg = $('#plan');
+var xs = [], ys = [];
+DATA.slabs.forEach(function (s) { s.outer.forEach(function (q) { xs.push(q[0]); ys.push(-q[1]); }); });
+var BB = {x0: Math.min.apply(null, xs), y0: Math.min.apply(null, ys), x1: Math.max.apply(null, xs), y1: Math.max.apply(null, ys)};
+function ringD(r) { var s = 'M' + r[0][0] + ',' + (-r[0][1]); for (var i = 1; i < r.length; i++) s += 'L' + r[i][0] + ',' + (-r[i][1]); return s + 'Z'; }
+var defs = mk('defs', {}, svg), clip = mk('clipPath', {id: 'slabclip'}, defs);
+DATA.slabs.forEach(function (s) { mk('path', {d: ringD(s.outer) + (s.holes || []).map(ringD).join(''), 'clip-rule': 'evenodd'}, clip); });
+function hatch(id, color, bg, w) {
+  w = w || 400;
+  var p = mk('pattern', {id: id, width: w, height: w, patternUnits: 'userSpaceOnUse', patternTransform: 'rotate(45)'}, defs);
+  if (bg) mk('rect', {width: w, height: w, fill: bg}, p);
+  mk('line', {x1: 0, y1: 0, x2: 0, y2: w, stroke: color, 'stroke-width': w * 0.22}, p);
+}
+hatch('noneHatch', 'rgba(211,47,47,.55)', 'rgba(211,47,47,.12)');
+hatch('holeHatch', DARK ? '#3a4150' : '#cfd5de', DARK ? '#1d2129' : '#f3f5f8');
+hatch('offHatch', DARK ? 'rgba(255,111,168,.7)' : 'rgba(194,24,91,.55)', DARK ? 'rgba(255,111,168,.12)' : 'rgba(194,24,91,.08)', 160);
+var gZ = mk('g', {'clip-path': 'url(#slabclip)'}, svg), gHoles = mk('g', {}, svg), gSlab = mk('g', {}, svg), gSlabHl = mk('g', {}, svg);
+function drawSlabHl() {               // контур плиты, выбранной в таблице Per slab
+  gSlabHl.innerHTML = '';
+  if (!S.slabHl) return;
+  DATA.slabs.forEach(function (sl) {
+    if (String(sl.id) === S.slabHl) mk('path', {d: ringD(sl.outer) + (sl.holes || []).map(ringD).join(''), 'class': 'slabhl', 'fill-rule': 'evenodd'}, gSlabHl);
+  });
+}
+var gBeam = mk('g', {}, svg), gWall = mk('g', {}, svg), gCol = mk('g', {}, svg);
+var gMeas = mk('g', {'class': 'meas'}, svg), gBub = mk('g', {}, svg), gMl = mk('g', {'class': 'mlbl'}, svg), gHnd = mk('g', {}, svg);
+var snapEl = mk('circle', {'class': 'snap', r: 0, display: 'none'}, svg);
+DATA.slabs.forEach(function (s) {
+  (s.holes || []).forEach(function (hl) { mk('path', {d: ringD(hl), 'class': 'holef'}, gHoles); });
+  mk('path', {d: ringD(s.outer) + (s.holes || []).map(ringD).join(''), 'class': 'slab'}, gSlab);
+});
+function rectPts(x0, y0, x1, y1, hw) {
+  var dx = x1 - x0, dy = y1 - y0, L = Math.sqrt(dx * dx + dy * dy) || 1, nx = -dy / L * hw, ny = dx / L * hw;
+  return [[x0 + nx, y0 + ny], [x1 + nx, y1 + ny], [x1 - nx, y1 - ny], [x0 - nx, y0 - ny]];
+}
+function polyStr(pts) { return pts.map(function (q) { return q[0] + ',' + (-q[1]); }).join(' '); }
+function colPts(c) {
+  var u = [c.ux != null ? +c.ux : 1, c.uy != null ? +c.uy : 0], L = Math.sqrt(u[0] * u[0] + u[1] * u[1]) || 1; u = [u[0] / L, u[1] / L];
+  var v = [-u[1], u[0]], hx = c.b / 2, hy = c.h / 2;
+  return [[1, 1], [-1, 1], [-1, -1], [1, -1]].map(function (s) { return [c.x + u[0] * s[0] * hx + v[0] * s[1] * hy, c.y + u[1] * s[0] * hx + v[1] * s[1] * hy]; });
+}
+function wallLen(w) { return Math.sqrt(Math.pow(w.p1[0] - w.p0[0], 2) + Math.pow(w.p1[1] - w.p0[1], 2)); }
+var SUP = [], SNAP = [];   // SUP: {el, type, obj, key, added, edited}
+function lineHalf(type, o) { return (type === 'w' ? o.t : (o.b || 200)) / 2; }
+function supGeom(s, o) {      // нарисовать опору s по геометрии o (o может быть черновиком при перетаскивании)
+  if (s.type === 'c') {
+    if (o.shape === 'round') { s.el.setAttribute('cx', o.x); s.el.setAttribute('cy', -o.y); s.el.setAttribute('r', o.b / 2); }
+    else s.el.setAttribute('points', polyStr(colPts(o)));
+  } else s.el.setAttribute('points', polyStr(rectPts(o.p0[0], o.p0[1], o.p1[0], o.p1[1], lineHalf(s.type, o))));
+}
+function buildSupports() {
+  gWall.innerHTML = ''; gCol.innerHTML = ''; gBeam.innerHTML = ''; SUP = []; SNAP = [];
+  function add(type, o, parent) {
+    var el = mk(type === 'c' && o.shape === 'round' ? 'circle' : 'polygon', {'class': 'sup'}, parent);
+    var s = {el: el, type: type, obj: o, key: ENG.objKey(type, o.link, o.id), added: !!o._added, edited: !!o._edited};
+    el._sup = s; SUP.push(s); supGeom(s, o);
+    if (type === 'c') { SNAP.push([o.x, -o.y]); colPts(o).forEach(function (q) { SNAP.push([q[0], -q[1]]); }); }
+    else {
+      SNAP.push([o.p0[0], -o.p0[1]], [o.p1[0], -o.p1[1]]);
+      rectPts(o.p0[0], o.p0[1], o.p1[0], o.p1[1], lineHalf(type, o)).forEach(function (q) { SNAP.push([q[0], -q[1]]); });
+    }
+  }
+  MODEL.walls.forEach(function (w) { add('w', w, gWall); });
+  MODEL.columns.forEach(function (c) { add('c', c, gCol); });
+  MODEL.beams.forEach(function (b) { add('b', b, gBeam); });
+  DATA.slabs.forEach(function (s) { [s.outer].concat(s.holes || []).forEach(function (r) { r.forEach(function (q) { SNAP.push([q[0], -q[1]]); }); }); });
+  renderHandles();
+}
+function supByKey(k) { for (var i = 0; i < SUP.length; i++) if (SUP[i].key === k) return SUP[i]; return null; }
+function supState(s) {
+  if (S.off.indexOf(s.key) >= 0) return 'off';
+  if (s.type === 'b') {
+    if (s.added || S.beamOn.indexOf(String(s.obj.id)) >= 0) return 'forced';
+    return USED.has(String(s.obj.id)) ? 'used' : 'rejected';
+  }
+  return 'on';
+}
+function restyleSupports() {
+  SUP.forEach(function (s) {
+    var st = supState(s), base = s.type === 'w' ? 'wall' : s.type === 'c' ? 'colr' : (st === 'used' || st === 'forced' ? 'beamu' : 'beamx');
+    s.el.setAttribute('class', 'sup ' + base + (st === 'off' ? ' off' : '') + (st === 'forced' && !s.added ? ' forced' : '') +
+      (s.added ? ' added' : '') + (s.edited ? ' edited' : '') + (S.esel === s.key ? ' esel' : '') + (supHov === s ? ' shov' : ''));
+  });
+}
+var TYPE_NAME = {w: 'Wall', c: 'Column', b: 'Beam'};
+function supName(s) {
+  var o = s.obj;
+  var nm = (s.added ? 'Added ' + TYPE_NAME[s.type].toLowerCase() : TYPE_NAME[s.type]) + ' ' + o.id;
+  nm += s.type === 'w' ? ' · t ' + Math.round(o.t) + ' · L ' + fmt(wallLen(o) / 1000, 2) + ' m'
+    : s.type === 'c' ? ' · ' + Math.round(o.b) + '×' + Math.round(o.h)
+    : ' · b ' + Math.round(o.b || 200) + ' · L ' + fmt(wallLen(o) / 1000, 2) + ' m';
+  if (o.link) nm += ' · ' + o.link;
+  if (s.edited) nm += ' · edited';
+  return nm;
+}
+function supTitle(s) {
+  return supName(s) + ' — ' + {on: 'support', off: 'SWITCHED OFF', used: 'support', rejected: 'not a support (end not supported)',
+    forced: s.added ? 'support' : 'support (switched on manually)'}[supState(s)];
+}
+function toggleSup(s) {
+  var st = supState(s), i = S.off.indexOf(s.key), idb = String(s.obj.id);
+  if (s.type === 'b') {
+    var j = S.beamOn.indexOf(idb);
+    if (st === 'used' || st === 'forced') { if (j >= 0) S.beamOn.splice(j, 1); S.off.push(s.key); }
+    else { if (i >= 0) S.off.splice(i, 1); if (st === 'rejected' && j < 0) S.beamOn.push(idb); }
+  } else if (i >= 0) S.off.splice(i, 1); else S.off.push(s.key);
+  save(); restyleSupports(); recompute();
+}
+
+// ------------------------------------------------------------ правка плана (добавить / удалить / укоротить)
+function r1(v) { return Math.round(v); }
+function addElem(o) {
+  S.edit.seq += 1; o.id = 'N' + S.edit.seq; o.link = ''; o.name = 'added in the plan';
+  S.edit.add.push(o); S.esel = ENG.objKey(o.type, '', o.id);
+  save(); recompute();
+}
+function addedOf(s) { for (var i = 0; i < S.edit.add.length; i++) if (S.edit.add[i].type === s.type && S.edit.add[i].id === s.obj.id) return S.edit.add[i]; return null; }
+function setGeo(s, patch) {           // правка геометрии: у добавленной — в ней самой, у опоры модели — переопределение
+  var a = s.added ? addedOf(s) : (S.edit.geo[s.key] || (S.edit.geo[s.key] = {}));
+  if (!a) return;
+  for (var f in patch) a[f] = patch[f];
+  save(); recompute();
+}
+function resetGeo(key) { delete S.edit.geo[key]; save(); recompute(); }
+function deleteSup(s) {
+  if (s.added) {
+    S.edit.add = S.edit.add.filter(function (a) { return !(a.type === s.type && a.id === s.obj.id); });
+    var i = S.off.indexOf(s.key); if (i >= 0) S.off.splice(i, 1);
+  } else if (S.off.indexOf(s.key) < 0) S.off.push(s.key);    // опору модели не удалить — выключается
+  if (S.esel === s.key) S.esel = null;
+  save(); recompute();
+}
+function setLength(s, L) {            // новая длина: начало на месте, конец по оси
+  var o = s.obj, dx = o.p1[0] - o.p0[0], dy = o.p1[1] - o.p0[1], L0 = Math.sqrt(dx * dx + dy * dy) || 1;
+  setGeo(s, {p1: [r1(o.p0[0] + dx / L0 * L), r1(o.p0[1] + dy / L0 * L)]});
+}
+var hdrag = null;                     // перетаскивание ручки: {s, end: 0|1|'c', A, u, cur, g}
+function renderHandles() {
+  gHnd.innerHTML = '';
+  var s = S.tool === 'edit' && S.esel ? supByKey(S.esel) : null;
+  if (!s) return;
+  var o = s.obj, ends = s.type === 'c' ? [['c', o.x, o.y]] : [[0, o.p0[0], o.p0[1]], [1, o.p1[0], o.p1[1]]];
+  ends.forEach(function (e) {
+    var g = mk('g', {'class': 'sc hnd' + (e[0] === 'c' ? ' c' : '')}, gHnd);
+    g._x = e[1]; g._y = -e[2];
+    var c = mk('circle', {r: 6}, g); c._hnd = {s: s, end: e[0], g: g};
+  });
+  applyVB();
+}
+function startHandle(h) {
+  var o = h.s.obj;
+  hdrag = {s: h.s, end: h.end, g: h.g, cur: clone({p0: o.p0, p1: o.p1, x: o.x, y: o.y})};
+  if (h.end !== 'c') {
+    var A = h.end === 0 ? o.p1 : o.p0, B = h.end === 0 ? o.p0 : o.p1, L = Math.sqrt(Math.pow(B[0] - A[0], 2) + Math.pow(B[1] - A[1], 2)) || 1;
+    hdrag.A = A; hdrag.u = [(B[0] - A[0]) / L, (B[1] - A[1]) / L];
+  }
+}
+function moveHandle(e) {
+  var d = hdrag, q = snapTo(toUser(e), null), P = [q.x, -q.y], o = d.s.obj, txt;
+  d.moved = true;
+  if (d.end === 'c') {
+    d.cur.x = r1(P[0]); d.cur.y = r1(P[1]);
+    var c = clone(o); c.x = d.cur.x; c.y = d.cur.y; supGeom(d.s, c);
+    d.g._x = c.x; d.g._y = -c.y; txt = 'X ' + fmt(c.x / 1000, 3) + '  Y ' + fmt(c.y / 1000, 3) + ' m';
+  } else {
+    var N;
+    if (e.shiftKey) N = [r1(P[0]), r1(P[1])];
+    else {
+      var t = (P[0] - d.A[0]) * d.u[0] + (P[1] - d.A[1]) * d.u[1];
+      if (!q.snapped) t = Math.round(t / 10) * 10;            // без привязки — длина кратна 10 мм
+      t = Math.max(t, 100);
+      N = [r1(d.A[0] + d.u[0] * t), r1(d.A[1] + d.u[1] * t)];
+    }
+    d.cur[d.end === 0 ? 'p0' : 'p1'] = N;
+    var l = clone(o); l.p0 = d.cur.p0; l.p1 = d.cur.p1; supGeom(d.s, l);
+    d.g._x = N[0]; d.g._y = -N[1]; txt = 'L = ' + fmt(wallLen(l) / 1000, 3) + ' m';
+  }
+  applyVB();
+  placeTip(e, txt + '<br><span class="mini">' + (d.end === 'c' ? 'release to place' : 'along the axis; Shift = free') + '</span>');
+}
+function endHandle() {
+  var d = hdrag; hdrag = null; tip.style.display = 'none';
+  if (!d.moved) return;
+  setGeo(d.s, d.end === 'c' ? {x: d.cur.x, y: d.cur.y} : {p0: d.cur.p0, p1: d.cur.p1});
+}
+
+// ------------------------------------------------------------ зоны и номера (пересобираются после расчёта)
+var REG = [], BUB = {};
+function buildDynamic() {
+  gZ.innerHTML = ''; gBub.innerHTML = ''; REG = []; BUB = {};
+  R.regions.forEach(function (rg) {
+    var sk = rg.t === 'point' ? PTN[rg.n].sk : rg.t === 'none' ? 'none' : R.others[rg.i].sk;
+    var el = mk('path', {d: rg.rings.map(ringD).join(''), 'class': 'z', 'fill-rule': 'nonzero'}, gZ);
+    el._sk = sk; REG.push({rg: rg, el: el, sk: sk});
+  });
+  R.points.forEach(function (p) {
+    var g = mk('g', {'class': 'bub sc'}, gBub);
+    g._x = p.x; g._y = -p.y; g._sk = p.sk;
+    mk('circle', {r: 10}, g); mk('text', {}, g).textContent = p.n;
+    g._lb = mk('text', {'class': 'lb', x: 14, y: 1}, g);
+    BUB[p.n] = g;
+  });
+  applyVB();
+}
+
+// ------------------------------------------------------------ вид
+var VB = {x: 0, y: 0, w: 1, h: 1};
+function upp() { var r = svg.getBoundingClientRect(); return Math.max(VB.w / (r.width || 1), VB.h / (r.height || 1)); }
+function applyVB() {
+  svg.setAttribute('viewBox', VB.x + ' ' + VB.y + ' ' + VB.w + ' ' + VB.h);
+  var u = upp(), list = svg.querySelectorAll('.sc');
+  for (var i = 0; i < list.length; i++) list[i].setAttribute('transform', 'translate(' + list[i]._x + ',' + list[i]._y + ') scale(' + u + ')');
+  if (snapEl.getAttribute('display') !== 'none') snapEl.setAttribute('r', 6 * u);
+  status();
+}
+function fit() {
+  var r = svg.getBoundingClientRect(), W = BB.x1 - BB.x0, H = BB.y1 - BB.y0;
+  var sc = Math.max(W / (r.width || 1), H / (r.height || 1)) * 1.08;
+  VB.w = (r.width || 1) * sc; VB.h = (r.height || 1) * sc;
+  VB.x = (BB.x0 + BB.x1) / 2 - VB.w / 2; VB.y = (BB.y0 + BB.y1) / 2 - VB.h / 2;
+  applyVB();
+}
+function toUser(e) {
+  var r = svg.getBoundingClientRect(), sc = upp();
+  return {x: VB.x + (VB.w - r.width * sc) / 2 + (e.clientX - r.left) * sc, y: VB.y + (VB.h - r.height * sc) / 2 + (e.clientY - r.top) * sc};
+}
+svg.addEventListener('wheel', function (e) {
+  e.preventDefault();
+  var p = toUser(e), k = e.deltaY < 0 ? 0.85 : 1 / 0.85;
+  VB.x = p.x - (p.x - VB.x) * k; VB.y = p.y - (p.y - VB.y) * k; VB.w *= k; VB.h *= k; applyVB();
+}, {passive: false});
+window.addEventListener('resize', applyVB);
+function zoomBy(kf) { var cx = VB.x + VB.w / 2, cy = VB.y + VB.h / 2; VB.w *= kf; VB.h *= kf; VB.x = cx - VB.w / 2; VB.y = cy - VB.h / 2; applyVB(); }
+
+// ------------------------------------------------------------ привязка и измерения
+function snapTo(p, e) {
+  var best = null, bd = 10 * upp(), pts = SNAP.concat(R.points.map(function (q) { return [q.x, -q.y]; }));
+  for (var i = 0; i < pts.length; i++) { var dx = pts[i][0] - p.x, dy = pts[i][1] - p.y, d = Math.sqrt(dx * dx + dy * dy); if (d < bd) { bd = d; best = pts[i]; } }
+  var q = best ? {x: best[0], y: best[1], snapped: true} : {x: p.x, y: p.y}, dr = S.draft;
+  if (e && e.shiftKey && dr && dr.pts.length) {
+    var last = dr.pts[dr.pts.length - 1];
+    if (Math.abs(q.x - last.x) > Math.abs(q.y - last.y)) q.y = last.y; else q.x = last.x;
+    q.snapped = false;
+  }
+  return q;
+}
+function showSnap(q) {
+  if (q && q.snapped) { snapEl.removeAttribute('display'); snapEl.setAttribute('cx', q.x); snapEl.setAttribute('cy', q.y); snapEl.setAttribute('r', 6 * upp()); }
+  else snapEl.setAttribute('display', 'none');
+}
+function dist(a, b) { return Math.sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y)); }
+function polyArea(pts) { var s = 0; for (var i = 0; i < pts.length; i++) { var a = pts[i], b = pts[(i + 1) % pts.length]; s += a.x * b.y - b.x * a.y; } return Math.abs(s) / 2; }
+function mlabel(x, y, text) { var g = mk('g', {'class': 'sc'}, gMl); g._x = x; g._y = y; mk('text', {}, g).textContent = text; }
+var cursor = null;
+function renderMeas() {
+  gMeas.innerHTML = ''; gMl.innerHTML = '';
+  var all = S.meas.slice();
+  if (S.draft && S.draft.pts.length) { var d = {type: S.draft.type, pts: S.draft.pts.slice()}; if (cursor) d.pts.push(cursor); all.push(d); }
+  all.forEach(function (m) {
+    var P = m.pts;
+    if (m.type === 'len' || m.type === 'wall') {
+      if (P.length < 2) { mk('circle', {cx: P[0].x, cy: P[0].y, r: 3 * upp()}, gMeas); return; }
+      mk('line', {x1: P[0].x, y1: P[0].y, x2: P[1].x, y2: P[1].y}, gMeas);
+      P.forEach(function (q) { mk('circle', {cx: q.x, cy: q.y, r: 3 * upp()}, gMeas); });
+      mlabel((P[0].x + P[1].x) / 2, (P[0].y + P[1].y) / 2, fmt(dist(P[0], P[1]) / 1000, 3) + ' m');
+    } else {
+      mk(P.length > 2 ? 'polygon' : 'polyline', {points: P.map(function (q) { return q.x + ',' + q.y; }).join(' ')}, gMeas);
+      P.forEach(function (q) { mk('circle', {cx: q.x, cy: q.y, r: 3 * upp()}, gMeas); });
+      if (P.length > 2) {
+        var cx = 0, cy = 0, per = 0; P.forEach(function (q) { cx += q.x; cy += q.y; });
+        for (var i = 0; i < P.length; i++) per += dist(P[i], P[(i + 1) % P.length]);
+        mlabel(cx / P.length, cy / P.length, fmt(polyArea(P) / 1e6, 2) + ' m² · P ' + fmt(per / 1000, 2) + ' m');
+      }
+    }
+  });
+  applyVB();
+}
+function finishArea() { if (S.draft && S.draft.type === 'area' && S.draft.pts.length >= 3) S.meas.push({type: 'area', pts: S.draft.pts}); S.draft = null; renderMeas(); }
+
+// ------------------------------------------------------------ указатель
+var drag = null, hovEl = null, supHov = null, tip = $('#tip'), lastPos = null, DRAG_PX = 6;
+svg.addEventListener('pointerdown', function (e) {
+  if (e.button !== 0 && e.button !== 1) return;
+  svg.setPointerCapture(e.pointerId);
+  if (e.button === 0 && S.tool === 'edit' && e.target._hnd) { startHandle(e.target._hnd); return; }
+  drag = {x: e.clientX, y: e.clientY, vx: VB.x, vy: VB.y, moved: false, btn: e.button, target: e.target};
+});
+svg.addEventListener('pointermove', function (e) {
+  var p = toUser(e);
+  if (hdrag) { lastPos = p; moveHandle(e); status(); return; }
+  if (drag) {
+    var dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    if (!drag.moved && Math.abs(dx) + Math.abs(dy) > DRAG_PX) { drag.moved = true; svg.classList.add('panning'); tip.style.display = 'none'; }
+    if (drag.moved) { var u = upp(); VB.x = drag.vx - dx * u; VB.y = drag.vy - dy * u; applyVB(); return; }
+  }
+  lastPos = p;
+  if (S.tool === 'len' || S.tool === 'area' || S.tool === 'addw' || S.tool === 'addc') {
+    var q = snapTo(p, e); showSnap(q); cursor = q; if (S.draft) renderMeas();
+    if (S.tool === 'addw' && S.draft) placeTip(e, 'L = ' + fmt(dist(S.draft.pts[0], q) / 1000, 3) + ' m'); else tip.style.display = 'none';
+  }
+  else if (S.tool === 'sup' || S.tool === 'edit') hoverSup(e);
+  else hover(e);
+  status();
+});
+svg.addEventListener('pointerup', function (e) {
+  if (hdrag) { endHandle(); return; }
+  var d = drag; drag = null; svg.classList.remove('panning');
+  if (!d || d.moved || d.btn !== 0) return;
+  if (S.tool === 'select') { clickSelect(e, d.target); return; }
+  if (S.tool === 'sup') { var s = supAt(d.target); if (s) toggleSup(s); return; }
+  if (S.tool === 'edit') {
+    var se = supAt(d.target); S.esel = se ? se.key : null;
+    restyleSupports(); renderHandles(); renderSup(); if (se) showTab('sup'); return;
+  }
+  var q = snapTo(toUser(e), e);
+  if (S.tool === 'addc') {
+    var nc = S.edit.nc;
+    addElem({type: 'c', x: r1(q.x), y: r1(-q.y), b: +nc.b, h: +nc.h, ux: 1, uy: 0, shape: 'rect'});
+    return;
+  }
+  if (S.tool === 'addw') {
+    if (!S.draft) { S.draft = {type: 'wall', pts: [q]}; renderMeas(); return; }
+    var a = S.draft.pts[0]; S.draft = null; renderMeas(); tip.style.display = 'none';
+    if (dist(a, q) < 100) return;                       // короче 100 мм — случайный клик
+    var nw = S.edit.nw, o = {type: nw.kind, p0: [r1(a.x), r1(-a.y)], p1: [r1(q.x), r1(-q.y)]};
+    if (nw.kind === 'w') o.t = +nw.t; else o.b = +nw.t;
+    addElem(o);
+    return;
+  }
+  if (S.tool === 'len') {
+    if (!S.draft) S.draft = {type: 'len', pts: [q]}; else { S.meas.push({type: 'len', pts: [S.draft.pts[0], q]}); S.draft = null; }
+  } else if (S.tool === 'area') {
+    if (!S.draft) S.draft = {type: 'area', pts: [q]};
+    else { if (S.draft.pts.length >= 3 && dist(S.draft.pts[0], q) < 8 * upp()) { finishArea(); return; } S.draft.pts.push(q); }
+  }
+  renderMeas();
+});
+svg.addEventListener('dblclick', function (e) { if (S.tool === 'area') { e.preventDefault(); finishArea(); } });
+svg.addEventListener('pointerleave', function () { tip.style.display = 'none'; setHover(null); setSupHov(null); showSnap(null); });
+function skAt(t) { while (t && t !== svg) { if (t._sk) return t._sk; t = t.parentNode; } return null; }
+function supAt(t) { while (t && t !== svg) { if (t._sup) return t._sup; t = t.parentNode; } return null; }
+function refTitle(sk) {
+  var o = objOf(sk); if (!o) return '';
+  if (sk.charAt(0) === 'p') return '№' + o.n + ' · ' + KL[o.kind] + (o.cls ? ' · ' + CL[o.cls] : '');
+  if (sk === 'none') return 'Unsupported slab';
+  return KL[o.kind] + (o.L ? ' · L ' + fmt(o.L / 1000, 2) + ' m' : '');
+}
+function setHover(el) { if (hovEl && hovEl !== el) hovEl.classList.remove('hov'); hovEl = el; if (el) el.classList.add('hov'); }
+function setSupHov(s) { if (supHov && supHov !== s) supHov.el.classList.remove('shov'); supHov = s; if (s) s.el.classList.add('shov'); }
+function placeTip(e, html) {
+  var r = $('#stage').getBoundingClientRect();
+  tip.innerHTML = html; tip.style.display = 'block';
+  var x = e.clientX - r.left + 14, y = e.clientY - r.top + 14;
+  if (x + tip.offsetWidth > r.width - 8) x = e.clientX - r.left - tip.offsetWidth - 10;
+  if (y + tip.offsetHeight > r.height - 8) y = e.clientY - r.top - tip.offsetHeight - 10;
+  tip.style.left = Math.max(4, x) + 'px'; tip.style.top = Math.max(4, y) + 'px';
+}
+function hover(e) {
+  var sk = skAt(e.target);
+  if (!sk) { tip.style.display = 'none'; setHover(null); return; }
+  var o = objOf(sk), c = calc(o);
+  setHover(e.target.tagName === 'path' ? e.target : null);
+  placeTip(e, '<b>' + esc(refTitle(sk)) + '</b><br>A ' + fmt(c.A, 2) + ' m² · V<sub>d</sub> ' + fmt(outF(c.Vd), 1) + ' ' + uF() +
+    (c.beta ? ' · β·V<sub>d</sub> ' + fmt(outF(c.bVd), 1) : '') + (c.chk ? '<br>' + resBadge(c.chk) + ' η ' + fmt(c.chk.eta, 2) : ''));
+}
+function hoverSup(e) {
+  var s = supAt(e.target);
+  setSupHov(s);
+  if (!s) { tip.style.display = 'none'; return; }
+  var st = supState(s);
+  placeTip(e, esc(supTitle(s)) + '<br><span class="mini">' + (S.tool === 'edit' ? 'click to select, then drag an end; Delete removes'
+    : 'click to ' + (st === 'off' || st === 'rejected' ? 'make it a support' : 'switch off')) + '</span>');
+}
+function clickSelect(e, target) {
+  var sk = skAt(target), multi = e.ctrlKey || e.metaKey || e.shiftKey;
+  if (!sk) { if (!multi) S.sel = []; }
+  else if (multi) { var i = S.sel.indexOf(sk); if (i >= 0) S.sel.splice(i, 1); else S.sel.push(sk); }
+  else S.sel = [sk];
+  refreshSel(); if (S.sel.length) showTab('sel');
+}
+function status() {
+  var u = upp(), bar = u * 100 / 1000;
+  var txt = lastPos ? 'X ' + fmt(lastPos.x / 1000, 3) + '  Y ' + fmt(-lastPos.y / 1000, 3) + ' m   ·   ' : '';
+  $('#status').textContent = txt + '100 px ≈ ' + fmt(bar, bar < 1 ? 2 : 1) + ' m' + (R ? '   ·   computed in ' + R.ms + ' ms' : '');
+}
+
+// ------------------------------------------------------------ перерисовка
+function paint() {
+  maxLoad = 1;
+  R.points.forEach(function (p) { var c = calc(p); maxLoad = Math.max(maxLoad, c.bVd != null ? c.bVd : c.Vd); });
+  REG.forEach(function (r) { r.el.setAttribute('fill', regionFill(r.rg)); });
+  R.points.forEach(function (p) {
+    var g = BUB[p.n], c = calc(p);
+    g.querySelector('circle').setAttribute('fill', pointColor(p));
+    var t = S.lbl === 'A' ? fmt(c.A, 1) + ' m²' : S.lbl === 'Vd' ? fmt(outF(c.Vd), 0) + ' ' + uF()
+      : S.lbl === 'eta' ? (c.chk ? 'η ' + fmt(c.chk.eta, 2) : '')
+      : S.lbl === 'bVd' ? (c.bVd != null ? fmt(outF(c.bVd), 0) + ' ' + uF() : '') : '';
+    g._lb.textContent = S.layers.lbls ? t : '';
+  });
+  gZ.style.display = S.layers.zones ? '' : 'none';
+  svg.classList.toggle('noborders', !S.layers.borders);
+  gWall.style.display = S.layers.walls ? '' : 'none';
+  gBeam.style.display = S.layers.beams ? '' : 'none';
+  gCol.style.display = S.layers.cols ? '' : 'none';
+  gBub.style.display = S.layers.nums ? '' : 'none';
+  legend();
+}
+function refreshSel() {
+  var any = S.sel.length > 0;
+  REG.forEach(function (r) {
+    var on = S.sel.indexOf(r.sk) >= 0;
+    r.el.classList.toggle('hl', on); r.el.classList.toggle('dim', any && !on);
+    if (on) r.el.parentNode.appendChild(r.el);
+  });
+  R.points.forEach(function (p) {
+    var on = S.sel.indexOf(p.sk) >= 0;
+    BUB[p.n].classList.toggle('hl', on); BUB[p.n].classList.toggle('dim', any && !on);
+  });
+  renderSel(); renderTable();
+}
+function legend() {
+  var html;
+  if (S.color === 'load') html = '<div>β·V<sub>d</sub>, ' + uF() + '</div><div class="ramp" style="background:linear-gradient(90deg,' + ramp(0) + ',' + ramp(.5) + ',' + ramp(1) +
+    ')"></div><div class="row" style="justify-content:space-between"><span>0</span><span>' + fmt(outF(maxLoad), 0) + '</span></div>';
+  else if (S.color === 'check') html = [['ok', 'OK — no reinforcement'], ['reinf', 'Punching reinforcement'], ['thick', 'Increase thickness']].map(function (k) {
+    return '<div class="row"><span class="sw" style="background:' + hsl(CHK_H[k[0]], DARK ? 45 : 65, DARK ? 36 : 74) + '"></span>' + k[1] + '</div>'; }).join('');
+  else if (S.color === 'type') html = ['column', 'pylon', 'wall_L', 'wall_end'].map(function (k) {
+    return '<div class="row"><span class="sw" style="background:' + hsl(TYPE_H[k], DARK ? 40 : 60, DARK ? 38 : 76) + '"></span>' + esc(KL[k]) + '</div>'; }).join('');
+  else html = '<div class="row">Each punching point has its own colour</div>';
+  html += '<div class="row"><span class="sw" style="background:var(--mid)"></span>Walls (middle parts, concave junctions)</div>' +
+    '<div class="row"><span class="sw" style="background:var(--beamz)"></span>Supporting beams</div>';
+  if (S.off.length) html += '<div class="row"><span class="sw" style="border-color:var(--off);background:repeating-linear-gradient(45deg,var(--off) 0 2px,transparent 2px 5px)"></span>Switched off in the plan: ' + S.off.length + '</div>';
+  if (R.none.A > 0) html += '<div class="row"><span class="sw" style="background:rgba(211,47,47,.35)"></span>Unsupported</div>';
+  $('#legend').innerHTML = html;
+}
+
+// ------------------------------------------------------------ панели
+function showTab(t) {
+  document.querySelectorAll('#tabs button').forEach(function (b) { b.classList.toggle('on', b.dataset.tab === t); });
+  ['sel', 'loads', 'sup'].forEach(function (k) { $('#tab-' + k).hidden = k !== t; });
+}
+$('#tabs').addEventListener('click', function (e) { if (e.target.dataset.tab) showTab(e.target.dataset.tab); });
+function sec(id, title, html) {
+  return '<details class="sec" data-sec="' + id + '"' + (S.open[id] ? ' open' : '') + '><summary><span>' + title + '</span></summary><div>' + html + '</div></details>';
+}
+function bindSecs(root) {
+  root.querySelectorAll('details.sec').forEach(function (d) { d.addEventListener('toggle', function () { S.open[d.dataset.sec] = d.open; save(); }); });
+}
+function floorRows(o) {
+  var rows = '';
+  Object.keys(o.af).sort(function (a, b) { return o.af[b] - o.af[a]; }).forEach(function (fid) {
+    var L = fl(fid);
+    rows += '<tr><td>' + esc(fid) + '</td><td>' + ((FL[fid] || {}).h || '') + '</td><td>' + fmt(o.af[fid], 2) + '</td><td>' + fmt(outF(L.g), 2) + '</td><td>' + fmt(outF(L.q), 2) + '</td></tr>';
+  });
+  return '<table class="kv"><tr><th>Slab</th><th>h</th><th>A, m²</th><th>SW+DL, ' + uQ() + '</th><th>LL</th></tr>' + rows + '</table>';
+}
+// расчётная нагрузка на м² зоны: q_d = γG·(SW+DL) + γQ·LL (на нескольких плитах — средняя по площади)
+function gf(v) { return String(+(+v).toFixed(3)); }      // γ без лишних нулей и без округления
+function qdAvg(c) { return c.A > 0 ? (S.gG * c.G + S.gQ * c.Q) / c.A : 0; }
+function qdLine(o, c) {
+  var fids = Object.keys(o.af), u = uQ();
+  if (fids.length === 1) {
+    var L = fl(fids[0]), dl = L.g - L.gown;
+    return 'q<sub>d</sub> = ' + gf(S.gG) + '·(SW + DL) + ' + gf(S.gQ) + '·LL = ' + gf(S.gG) + '·(' + fmt(outF(L.gown), 2) + ' + ' + fmt(outF(dl), 2) +
+      ') + ' + gf(S.gQ) + '·' + fmt(outF(L.q), 2) + ' = ' + fmt(outF(qdAvg(c)), 2) + ' ' + u;
+  }
+  return 'q<sub>d</sub> = ' + gf(S.gG) + '·(SW + DL) + ' + gf(S.gQ) + '·LL — average over ' + fids.length + ' slabs = ' + fmt(outF(qdAvg(c)), 2) + ' ' + u;
+}
+function calcText(p, c) {
+  var F = function (v) { return fmt(v, 0); };
+  var lines = ['Point #' + p.n + ' — ' + KL[p.kind] + (p.cls ? ' (' + CL[p.cls] + ')' : ''), 'Calculator: ' + p.calc];
+  if (p.kind === 'column' || p.kind === 'pylon') lines.push('c1 = ' + F(p.c1) + ' mm, c2 = ' + F(p.c2) + ' mm');
+  if (p.kind === 'wall_L') lines.push('la = ' + fmt(p.c1 / 1000, 2) + ' m, lb = ' + fmt(p.c2 / 1000, 2) + ' m, ta = ' + F(p.ta) + ' mm, tb = ' + F(p.tb) + ' mm, angle ' + F(p.angle) + '°');
+  if (p.kind === 'wall_end') lines.push('t = ' + F(p.ta) + ' mm, wall length to next junction ' + fmt(p.c1 / 1000, 2) + ' m');
+  lines.push('h = ' + p.h + ' mm, d_m = ' + p.dm + ' mm');
+  lines.push('V_d = ' + fmt(c.Vd, 1) + ' kN, q_d = ' + fmt(c.qd, 2) + ' kN/m², β = ' + (c.beta || '—'));
+  var ch = c.chk;
+  if (ch) {
+    lines.push('Check: ' + ch.label + ', eta = ' + fmt(ch.eta, 2) + (ch.warn.length ? ' (' + ch.warn.join('; ') + ')' : ''));
+    lines.push('u0 = ' + fmt(ch.u0, 3) + ' m, u1 = ' + fmt(ch.u1, 3) + ' m, Au1 = ' + fmt(ch.Au1, 3) + ' m², K = ' + fmt(ch.K, 3) + ', rho = ' + fmt(ch.rho, 4));
+    lines.push('V_eq = ' + fmt(ch.Veq, 1) + ' kN, V_Rd,c = ' + fmt(ch.VRdc, 1) + ' kN, V_Rd,max = ' + fmt(ch.VRdmax, 1) + ' kN' +
+      (ch.Asw != null ? ', A_sw = ' + fmt(ch.Asw, 2) + ' cm²/perimeter × ' + ch.m + ' @ ' + fmt(ch.sr * 1000, 0) + ' mm' : ''));
+  }
+  lines.push('ElementId: ' + p.ids.join(', ') + (p.links.length ? ' (' + p.links.join(', ') + ')' : ''));
+  return lines.join('\n');
+}
+function copy(text, btn) {
+  function ok() { if (btn) { var t = btn.textContent; btn.textContent = 'Copied'; setTimeout(function () { btn.textContent = t; }, 1200); } }
+  function fallback() { var ta = h('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); ok(); } catch (e) {} document.body.removeChild(ta); }
+  if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(ok, fallback); else fallback();
+}
+function kpi(l, v, u, main) { return '<div class="kpi' + (main ? ' main' : '') + '"><div class="l">' + l + '</div><div class="v">' + v + (u ? ' <small>' + u + '</small>' : '') + '</div></div>'; }
+function renderSel() {
+  var T = $('#tab-sel');
+  if (!S.sel.length) { T.innerHTML = sumHtml(); bindSum(T); return; }
+  var back = '<button class="back" id="selBack">← All results</button>';
+  if (S.sel.length > 1) {
+    var sA = 0, sV = 0, rows = '';
+    S.sel.forEach(function (sk) { var o = objOf(sk), c = calc(o); sA += c.A; sV += c.Vd;
+      rows += '<tr><td>' + esc(refTitle(sk)) + '</td><td>' + fmt(c.A, 2) + '</td><td>' + fmt(outF(c.Vd), 1) + '</td></tr>'; });
+    T.innerHTML = back + '<div class="kpis">' + kpi('Σ A_trib', fmt(sA, 2), 'm²') + kpi('Σ V<sub>d</sub>', fmt(outF(sV), 1), uF(), true) + '</div>' +
+      '<table class="kv"><tr><th>Selected: ' + S.sel.length + '</th><th>A, m²</th><th>V_d, ' + uF() + '</th></tr>' + rows + '</table>';
+    bindBack(); return;
+  }
+  var sk = S.sel[0], o = objOf(sk), c = calc(o), html = back;
+  if (sk.charAt(0) === 'p') {
+    var p = o;
+    html += '<div class="phead"><div class="num" style="background:' + pointColor(p) + '">' + p.n + '</div><div><div class="k">' + esc(KL[p.kind]) +
+      '</div><div class="hint">' + (p.cls ? esc(CL[p.cls]) + ' · ' : '') + esc(p.calc) + '</div></div></div>';
+    if (p.flags.length) html += '<div>' + p.flags.map(function (f) { return '<span class="flag">' + esc(f) + '</span>'; }).join('') + '</div>';
+    html += chkTop(c);
+    html += '<div class="kpis">' + kpi('Tributary area', fmt(c.A, 2), 'm²') + kpi('V<sub>d</sub>', fmt(outF(c.Vd), 1), uF()) +
+      kpi('β·V<sub>d</sub> <span class="mini">(β ' + (c.beta ? fmt(c.beta, 2) : '—') + ')</span>', c.bVd != null ? fmt(outF(c.bVd), 1) : '—', uF(), true) +
+      kpi('η = V<sub>eq</sub> / V<sub>Rd,c</sub>', c.chk ? fmt(c.chk.eta, 2) : '—') + '</div>';
+    html += hHtml(p, c);
+    var kd = c.k !== 1 || c.dv;
+    html += '<div class="formula">' + qdLine(o, c) + '<br>V<sub>d</sub> = ' + (kd ? 'k · ' : '') + 'q<sub>d</sub> · A' + (kd ? ' + ΔV' : '') + ' = ' +
+      (kd ? fmt(c.k, 2) + ' · ' : '') + fmt(outF(qdAvg(c)), 2) + ' · ' + fmt(c.A, 2) + (kd ? ' + ' + fmt(outF(c.dv), 1) : '') +
+      ' = <b>' + fmt(outF(c.Vd), 1) + ' ' + uF() + '</b></div>';
+    html += chkHtml(p, c);
+    html += sec('coef', 'Continuity k and extra load ΔV' + (c.k !== 1 || c.dv ? ' · changed' : ''), '<div class="frm">' +
+      '<label for="pk">Continuity k</label><input id="pk" type="number" step="0.05" min="0.5" max="2" value="' + c.k + '">' +
+      '<span></span><div class="chips">' + [1, 1.1, 1.15, 1.25, 1.3].map(function (v) {
+        return '<span class="chip' + (Math.abs(c.k - v) < 1e-6 ? ' on' : '') + '" data-k="' + v + '">' + fmt(v, v === 1 ? 1 : 2) + '</span>'; }).join('') + '</div>' +
+      '<label for="pdv">ΔV, ' + uF() + '</label><input id="pdv" type="number" step="1" value="' + (+outF(c.dv).toFixed(2)) + '"></div>' +
+      '<p class="mini" style="margin:6px 0 0">k: first interior support ×1.15 (×1.25 for two spans), first interior in both directions ≈1.2–1.3; do not reduce edge supports (guide, sec. 7). ' +
+      'ΔV: facade, parapet, point loads within the zone (design values).</p>');
+    html += sec('floors', 'Load by slab', floorRows(p));
+    var geo = '';
+    if (p.kind === 'column' || p.kind === 'pylon') geo = '<tr><td>Section c1 × c2</td><td>' + p.c1 + ' × ' + p.c2 + ' mm</td></tr>' + (p.edge != null ? '<tr><td>To slab edge</td><td>' + p.edge + ' mm</td></tr>' : '');
+    if (p.kind === 'wall_L') geo = '<tr><td>Legs la / lb</td><td>' + fmt(p.c1 / 1000, 2) + ' / ' + fmt(p.c2 / 1000, 2) + ' m</td></tr><tr><td>Thickness ta / tb</td><td>' + p.ta + ' / ' + p.tb + ' mm</td></tr><tr><td>Angle</td><td>' + p.angle + '°</td></tr>';
+    if (p.kind === 'wall_end') geo = '<tr><td>Wall thickness</td><td>' + p.ta + ' mm</td></tr><tr><td>Wall to next junction</td><td>' + fmt(p.c1 / 1000, 2) + ' m</td></tr>';
+    html += sec('calc', 'Geometry and Revit elements', '<table class="kv">' + geo + '<tr><td>h / d<sub>m</sub></td><td>' + p.h + ' / ' + p.dm + ' mm</td></tr>' +
+      '<tr><td>q<sub>d</sub> on the slab</td><td>' + fmt(outF(c.qd), 2) + ' ' + uQ() + '</td></tr>' +
+      '<tr><td>ElementId</td><td>' + p.ids.map(esc).join(', ') + (p.links.length ? '<div class="mini">link: ' + esc(p.links.join(', ')) + '</div>' : '') + '</td></tr></table>' +
+      '<div class="row2"><button class="btn sm" id="cpCalc">Copy for calculator</button><button class="btn sm" id="cpIds">Copy ElementId</button></div>');
+    T.innerHTML = html; bindSecs(T); bindBack(); bindH(p);
+    var setK = function (v) { var st = S.pts[p.key] || (S.pts[p.key] = {}); st.k = v; save(); update(); };
+    $('#pk').addEventListener('change', function (e) { setK(num(e.target.value) || 1); });
+    T.querySelectorAll('.chip[data-k]').forEach(function (ch) { ch.addEventListener('click', function () { setK(num(ch.dataset.k)); }); });
+    $('#pdv').addEventListener('change', function (e) { var st = S.pts[p.key] || (S.pts[p.key] = {}); st.dv = inF(num(e.target.value)); save(); update(); });
+    $('#cpCalc').addEventListener('click', function (e) { copy(calcText(p, c), e.target); });
+    $('#cpIds').addEventListener('click', function (e) { copy(p.ids.join(', '), e.target); });
+    bindChk(p);
+  } else {
+    // зона стены / балки / без опоры — только то, что нужно для погонной нагрузки
+    var Lm = o.L ? o.L / 1000 : 0;
+    html += '<div class="phead"><div><div class="k">' + esc(KL[o.kind] || 'Zone') + (o.t ? ' · t ' + o.t + ' mm' : '') + '</div></div></div><div class="kpis">' +
+      kpi('Tributary area', fmt(c.A, 2), 'm²') + (Lm ? kpi('Length', fmt(Lm, 2), 'm') : '') + kpi('V<sub>d</sub>', fmt(outF(c.Vd), 1), uF(), !Lm) +
+      (Lm ? kpi('n<sub>d</sub> = V<sub>d</sub> / L', fmt(outF(c.Vd) / Lm, 2), uF() + '/m', true) : '') + '</div>';
+    if (Lm) html += '<div class="formula">' + qdLine(o, c) + '<br>n<sub>d</sub> = q<sub>d</sub> · A / L = ' + fmt(outF(qdAvg(c)), 2) + ' · ' + fmt(c.A, 2) +
+      ' / ' + fmt(Lm, 2) + ' = <b>' + fmt(outF(c.Vd) / Lm, 2) + ' ' + uF() + '/m</b></div>' +
+      (o.kind === 'wall_mid' ? '<p class="mini">Average over the wall length; wall ends and convex corners are separate points.</p>' : '');
+    if (Object.keys(o.af).length > 1) html += sec('floors', 'Load by slab', floorRows(o));
+    T.innerHTML = html; bindSecs(T); bindBack();
+  }
+}
+function bindBack() { var b = $('#selBack'); if (b) b.addEventListener('click', function () { S.sel = []; refreshSel(); }); }
+function selectN(n) { var p = PTN[n]; if (!p) return; S.sel = [p.sk]; refreshSel(); showTab('sel'); centerOn(p); }
+function renderLoads() {
+  var T = $('#tab-loads');
+  var rows = FLOORS.map(function (f) {
+    var L = fl(f.id), st = S.floors[f.id], chg = S.hOv[f.id] != null;
+    return '<tr class="slabrow' + (S.slabHl === f.id ? ' on' : '') + '" data-slab="' + esc(f.id) + '"><td title="Show on the plan">' + esc(f.id) + '<div class="mini">' + esc(f.name) + '</div></td>' +
+      '<td><input class="hin' + (chg ? ' ch' : '') + '" data-h="' + esc(f.id) + '" type="number" step="10" min="50" value="' + Math.round(hOf(f.id)) + '"' +
+      ' title="' + (chg ? 'changed; model ' + Math.round(f.h) + ' mm' : 'as in the model') + '">' + (chg ? '<div class="mini">model ' + Math.round(f.h) + '</div>' : '') + '</td>' +
+      '<td>' + fmt(f.area, 1) + '</td><td>' + fmt(outF(L.gown), 2) + '</td>' +
+      '<td><input class="inp" data-f="' + esc(f.id) + '" data-k="g" type="number" step="0.1" value="' + (+outF(num(st.g)).toFixed(3)) + '"></td>' +
+      '<td><input class="inp" data-f="' + esc(f.id) + '" data-k="q" type="number" step="0.1" value="' + (+outF(num(st.q)).toFixed(3)) + '"></td></tr>';
+  }).join('');
+  var zero = FLOORS.every(function (f) { return !num(S.floors[f.id].g) && !num(S.floors[f.id].q); });
+  var betaRows = Object.keys(S.beta).filter(function (k) { return !/wall_[TX]/.test(k); }).sort().map(function (k) {
+    return '<tr><td>' + esc(k) + '</td><td><input data-b="' + esc(k) + '" type="number" step="0.05" value="' + S.beta[k] + '"></td></tr>'; }).join('');
+  var ri = ENG.punchInputs(rfBase(), null), nRf = Object.keys(S.rf).length;
+  var rfSum = 'f<sub>ck</sub> ' + ri.fck + ' · Ø' + ri.top_d1 + '@' + ri.top_s1 + (ri.top_d2 > 0 ? ' + Ø' + ri.top_d2 + '@' + ri.top_s2 : '');
+  T.innerHTML = (zero ? '<div class="card" style="border-color:var(--warn);background:var(--warn-soft)"><b>No loads entered.</b> V<sub>d</sub> is from the slab self-weight only. ' +
+      'Enter DL and LL below — for all slabs at once or per slab.</div>' : '') +
+    '<div class="card"><h3>All slabs at once</h3><div class="frm"><label>DL, ' + uQ() + '</label><input id="allG" class="inp" type="number" step="0.1" placeholder="finishes, partitions">' +
+    '<label>LL, ' + uQ() + '</label><input id="allQ" class="inp" type="number" step="0.1" placeholder="live load">' +
+    '<label>h, mm</label><input id="allH" class="inp" type="number" step="10" min="50" placeholder="slab thickness"></div>' +
+    '<div class="row2"><button class="btn primary" id="applyAll">Apply to all</button><span class="mini">empty fields are not changed</span></div></div>' +
+    '<div class="card"><h3>Per slab</h3><table class="kv"><tr><th>Slab</th><th>h, mm</th><th>A, m²</th><th title="self-weight">SW</th><th>DL</th><th>LL</th></tr>' + rows + '</table>' +
+    '<p class="mini" style="margin:6px 0 0">Click a row to show the slab on the plan. SW (self-weight), DL, LL in ' + uQ() + '. Thickness changes d<sub>m</sub>, self-weight and the punching check' +
+    (nH() ? ' · <button class="lnk" id="hResetAll">thickness as in the model</button>' : '') + '</p></div>' +
+    '<div class="card"><h3>Combination</h3><div class="frm"><label>γ<sub>G</sub></label><input id="gG" type="number" step="0.05" value="' + S.gG + '">' +
+    '<label>γ<sub>Q</sub></label><input id="gQ" type="number" step="0.05" value="' + S.gQ + '">' +
+    '<label><input id="own" type="checkbox"' + (S.own ? ' checked' : '') + '> self-weight, ρ, ' + uF() + '/m³</label><input id="rho" type="number" step="' + (S.unit === 't' ? 0.05 : 0.5) + '" value="' + (+outF(S.rho).toFixed(3)) + '"></div>' +
+    '<p class="mini" style="margin:6px 0 0">γ per SI 412: 1.4 / 1.6. ρ — unit weight of concrete for the slab self-weight (SW).</p></div>' +
+    sec('rfl', 'Concrete and top bars <span style="text-transform:none;letter-spacing:0;font-weight:400">' + rfSum + (nRf ? ' · changed' : '') + '</span>', rfFrm(ri, null, 'data-rf') +
+    '<p class="mini" style="margin:6px 0 0">Company punching sheet: f<sub>ck</sub> — cube, used as 0.7·f<sub>ck</sub>; top bars over the support in one direction (Ø2 = 0 — none). ' +
+    'A point can override these in its card.</p>') +
+    sec('beta', 'β by support type', '<table class="kv">' + betaRows + '</table><p class="mini" style="margin:6px 0 0">wall_end 1.40 is a default value, to be confirmed. Columns and L corner as in the v6 / wall-corner_v2 calculators.</p>') +
+    '<div class="row2"><button class="btn" id="resetAll">Reset everything on this tab</button></div>';
+  bindSecs(T);
+  $('#gG').addEventListener('change', function (e) { S.gG = num(e.target.value); save(); update(); });
+  $('#gQ').addEventListener('change', function (e) { S.gQ = num(e.target.value); save(); update(); });
+  $('#own').addEventListener('change', function (e) { S.own = e.target.checked; save(); update(); renderLoads(); });
+  $('#rho').addEventListener('change', function (e) { S.rho = inF(num(e.target.value)); save(); update(); renderLoads(); });
+  $('#applyAll').addEventListener('click', function () {
+    var g = $('#allG').value, q = $('#allQ').value, hv = $('#allH').value, hch = false;
+    if (hv !== '' && !(num(hv) >= 50 && num(hv) <= 3000)) { alert('Thickness must be 50…3000 mm'); return; }
+    FLOORS.forEach(function (f) {
+      if (g !== '') S.floors[f.id].g = inF(num(g));
+      if (q !== '') S.floors[f.id].q = inF(num(q));
+      if (hv !== '') { setH(f.id, hv); hch = true; }
+    });
+    save(); renderLoads(); if (hch) recompute(); else update();
+  });
+  T.querySelectorAll('input[data-f]').forEach(function (inp) { inp.addEventListener('change', function () { S.floors[inp.dataset.f][inp.dataset.k] = inF(num(inp.value)); save(); update(); renderLoads(); }); });
+  T.querySelectorAll('input[data-h]').forEach(function (inp) { inp.addEventListener('change', function () {
+    if (setH(inp.dataset.h, inp.value)) { save(); recompute(); }
+    renderLoads(); }); });
+  T.querySelectorAll('tr.slabrow').forEach(function (tr) { tr.addEventListener('click', function (e) {
+    if (e.target.tagName === 'INPUT') return;
+    S.slabHl = S.slabHl === tr.dataset.slab ? null : tr.dataset.slab;
+    drawSlabHl(); T.querySelectorAll('tr.slabrow').forEach(function (r) { r.classList.toggle('on', r.dataset.slab === S.slabHl); });
+  }); });
+  var hr = $('#hResetAll'); if (hr) hr.addEventListener('click', function () { S.hOv = {}; save(); renderLoads(); recompute(); });
+  T.querySelectorAll('input[data-rf]').forEach(function (inp) { inp.addEventListener('change', function () {
+    var k = inp.dataset.rf, v = num(inp.value);
+    if (k === 'fck' && !(v >= 10 && v <= 100)) { renderLoads(); return; }
+    if ((k === 'top_s1' || k === 'top_s2' || k === 'top_d1') && !(v > 0)) { renderLoads(); return; }
+    if (v === +D.params[k]) delete S.rf[k]; else S.rf[k] = v;
+    save(); update(); renderLoads(); }); });
+  T.querySelectorAll('input[data-b]').forEach(function (inp) { inp.addEventListener('change', function () { S.beta[inp.dataset.b] = num(inp.value); save(); update(); }); });
+  $('#resetAll').addEventListener('click', function () {
+    if (!confirm('Reset loads, slab thickness, γ, β, point factors and concrete / bars to the defaults?')) return;
+    FLOORS.forEach(function (f) { S.floors[f.id] = {g: D.defaults.g_add, q: D.defaults.q_live}; });
+    S.gG = D.defaults.gamma_g; S.gQ = D.defaults.gamma_q; S.rho = 25; S.own = true; S.pts = {}; S.rf = {}; S.beta = clone(D.params.beta);
+    var hch = nH() > 0; S.hOv = {};
+    save(); renderLoads(); if (hch) recompute(); else update();
+  });
+}
+var CALCP = [['grid_mm', 'Grid step, mm', [50, 75, 100, 150, 200]], ['k_zone', 'Corner/end zone, ·d<sub>m</sub>'], ['edge_k', 'At edge: face closer than ·d<sub>m</sub>'],
+  ['c_nom', 'c<sub>nom</sub>, mm'], ['bar_d', 'Top bar Ø, mm'], ['pylon_ratio', 'Pier: L ≤ ·t']];
+function renderSup() {
+  var T = $('#tab-sup'), p = params();
+  var offList = S.off.map(function (k) {
+    var s = SUP.filter(function (x) { return x.key === k; })[0];
+    return '<div class="offrow"><span>' + esc(s ? supTitle(s).split(' — ')[0] : k) + '</span><button class="btn sm" data-on="' + esc(k) + '">restore</button></div>'; }).join('');
+  var forced = S.beamOn.map(function (id) {
+    return '<div class="offrow"><span>Beam ' + esc(id) + ' — switched on manually</span><button class="btn sm" data-bauto="' + esc(id) + '">auto</button></div>'; }).join('');
+  var added = S.edit.add.map(function (a) {
+    var k = ENG.objKey(a.type, '', a.id), s = supByKey(k);
+    return '<div class="offrow"><span>' + esc(s ? supName(s) : TYPE_NAME[a.type] + ' ' + a.id) + '</span><button class="btn sm" data-del="' + esc(k) + '">delete</button></div>'; }).join('');
+  var geoL = Object.keys(S.edit.geo).map(function (k) {
+    var s = supByKey(k);
+    return '<div class="offrow"><span>' + esc(s ? supName(s) : k) + '</span><button class="btn sm" data-ungeo="' + esc(k) + '">as in model</button></div>'; }).join('');
+  var nCh = S.off.length + S.beamOn.length + nEdits();
+  var es = S.esel ? supByKey(S.esel) : null, ecard = '';
+  if (es) {
+    var eo = es.obj, est = supState(es);
+    ecard = '<div class="card" style="border-color:var(--sel)"><h3>Selected</h3><div style="margin-bottom:6px"><b>' + esc(supName(es)) + '</b></div><div class="frm">' +
+      (es.type === 'c'
+        ? '<label>b, mm</label><input data-eg="b" type="number" step="50" value="' + Math.round(eo.b) + '"><label>h, mm</label><input data-eg="h" type="number" step="50" value="' + Math.round(eo.h) + '">'
+        : '<label>Length, m</label><input data-eg="L" type="number" step="0.05" value="' + (+(wallLen(eo) / 1000).toFixed(3)) + '">' +
+          '<label>' + (es.type === 'w' ? 't' : 'b') + ', mm</label><input data-eg="' + (es.type === 'w' ? 't' : 'b') + '" type="number" step="10" value="' + Math.round(es.type === 'w' ? eo.t : (eo.b || 200)) + '">') +
+      '</div><p class="mini" style="margin:6px 0 0">' + (es.type === 'c' ? 'Drag the centre handle to move.' : 'Length changes the end; or drag an end handle on the plan (along the axis, Shift = free).') + '</p>' +
+      '<div class="row2">' + (es.added ? '<button class="btn" data-esel="del">Delete</button>'
+        : '<button class="btn" data-esel="tog">' + (est === 'off' ? 'Switch on' : 'Switch off') + '</button>' + (es.edited ? '<button class="btn" data-esel="reset">As in model</button>' : '')) + '</div></div>';
+  }
+  var nw = S.edit.nw, nc = S.edit.nc;
+  var ecardNew = '<div class="card"><h3>Edit the plan</h3><div class="row2" style="margin:0 0 8px">' +
+    ['edit:Edit (E)', 'addw:+ Wall (W)', 'addc:+ Column (C)'].map(function (x) { var t = x.split(':');
+      return '<button class="btn' + (S.tool === t[0] ? ' primary' : '') + '" data-settool="' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div>' +
+    '<div class="frm"><label>New line</label><select id="nwKind"><option value="w"' + (nw.kind === 'w' ? ' selected' : '') + '>wall — ends and corners are punching points</option>' +
+    '<option value="b"' + (nw.kind === 'b' ? ' selected' : '') + '>line support — takes area only</option></select>' +
+    '<label>Thickness, mm</label><input id="nwT" type="number" step="10" value="' + nw.t + '">' +
+    '<label>New column b × h, mm</label><span style="display:flex;gap:6px"><input id="ncB" type="number" step="50" value="' + nc.b + '"><input id="ncH" type="number" step="50" value="' + nc.h + '"></span></div>' +
+    '<p class="mini" style="margin:6px 0 0">Walls and beams take area the same way; a wall also gives punching points at its free ends and convex corners. ' +
+    'Edits live in this browser with the other plan settings; Revit is not changed.' + (nw.kind === 'b' && !+params().use_beams ? ' <b>Beams as supports is off</b> — added line supports are ignored.' : '') + '</p></div>';
+  var frm = CALCP.map(function (c) {
+    var v = p[c[0]], ch = S.calc[c[0]] != null;
+    var inp = c[2] ? '<select data-c="' + c[0] + '">' + c[2].map(function (o) { return '<option' + (+v === o ? ' selected' : '') + '>' + o + '</option>'; }).join('') + '</select>'
+      : '<input data-c="' + c[0] + '" type="number" step="0.1" value="' + v + '">';
+    return '<label>' + c[1] + (ch ? ' <b style="color:var(--accent)">•</b>' : '') + '</label>' + inp; }).join('') +
+    '<label>Beams as supports</label><label><input data-c="use_beams" type="checkbox"' + (+p.use_beams ? ' checked' : '') + '> yes</label>';
+  T.innerHTML = '<div class="card"><h3>How to switch a support off</h3><p class="mini" style="margin:0">With the <b>Supports</b> tool (key O), click a wall, column or beam on the plan: ' +
+    'the support is switched off (hatched) or back on, and the zones are recomputed at once. A switched-off wall forms no corners or ends. ' +
+    'A beam rejected by the calculation (dashed) can be made a support with a click.</p>' +
+    '<div class="row2"><button class="btn primary" id="supTool">' + (S.tool === 'sup' ? 'Exit Supports mode' : 'Enter Supports mode') + '</button></div></div>' +
+    ecard + ecardNew +
+    '<div class="card"><h3>Changed (' + nCh + ')</h3>' + (offList + forced + added + geoL || '<p class="mini" style="margin:0">All supports as in the Revit model.</p>') +
+    (nCh ? '<div class="row2"><button class="btn" id="supReset">Restore all</button></div>' : '') + '</div>' +
+    sec('calcp', 'Calculation parameters' + (Object.keys(S.calc).length ? ' · changed' : ''), '<div class="frm">' + frm + '</div>' +
+      '<div class="row2"><button class="btn" id="calcReset">Defaults</button><span class="mini">computed in ' + (R ? R.ms : '—') + ' ms</span></div>');
+  bindSecs(T);
+  $('#supTool').addEventListener('click', function () { setTool(S.tool === 'sup' ? 'select' : 'sup'); renderSup(); });
+  T.querySelectorAll('[data-on]').forEach(function (b) { b.addEventListener('click', function () { S.off.splice(S.off.indexOf(b.dataset.on), 1); save(); restyleSupports(); recompute(); }); });
+  T.querySelectorAll('[data-bauto]').forEach(function (b) { b.addEventListener('click', function () { S.beamOn.splice(S.beamOn.indexOf(b.dataset.bauto), 1); save(); recompute(); }); });
+  var rs = $('#supReset'); if (rs) rs.addEventListener('click', function () {
+    if (nEdits() && !confirm('Restore all supports as in the Revit model? Added supports and geometry changes are deleted.')) return;
+    var keep = S.edit; S.edit = newEdit(); S.edit.seq = keep.seq; S.edit.nw = keep.nw; S.edit.nc = keep.nc;
+    S.off = []; S.beamOn = []; S.esel = null; save(); recompute(); });
+  T.querySelectorAll('[data-del]').forEach(function (b) { b.addEventListener('click', function () { var s = supByKey(b.dataset.del); if (s) deleteSup(s); }); });
+  T.querySelectorAll('[data-ungeo]').forEach(function (b) { b.addEventListener('click', function () { resetGeo(b.dataset.ungeo); }); });
+  T.querySelectorAll('[data-settool]').forEach(function (b) { b.addEventListener('click', function () { setTool(b.dataset.settool); renderSup(); }); });
+  $('#nwKind').addEventListener('change', function (e) { S.edit.nw.kind = e.target.value; save(); renderSup(); });
+  $('#nwT').addEventListener('change', function (e) { var v = num(e.target.value); if (v > 0) S.edit.nw.t = v; save(); renderSup(); });
+  $('#ncB').addEventListener('change', function (e) { var v = num(e.target.value); if (v > 0) S.edit.nc.b = v; save(); renderSup(); });
+  $('#ncH').addEventListener('change', function (e) { var v = num(e.target.value); if (v > 0) S.edit.nc.h = v; save(); renderSup(); });
+  if (es) {
+    T.querySelectorAll('[data-eg]').forEach(function (inp) { inp.addEventListener('change', function () {
+      var k = inp.dataset.eg, v = num(inp.value), patch = {};
+      if (!(v > 0)) { renderSup(); return; }
+      if (k === 'L') { setLength(es, Math.round(v * 1000)); return; }
+      patch[k] = v; setGeo(es, patch); }); });
+    T.querySelectorAll('[data-esel]').forEach(function (b) { b.addEventListener('click', function () {
+      var a = b.dataset.esel;
+      if (a === 'del') deleteSup(es); else if (a === 'tog') toggleSup(es); else resetGeo(es.key); }); });
+  }
+  T.querySelectorAll('[data-c]').forEach(function (inp) {
+    inp.addEventListener('change', function () {
+      var k = inp.dataset.c, v = inp.type === 'checkbox' ? (inp.checked ? 1 : 0) : num(inp.value);
+      if (k !== 'use_beams' && !(v > 0)) { renderSup(); return; }
+      if (v === +D.params[k]) delete S.calc[k]; else S.calc[k] = v;
+      save(); recompute();
+    });
+  });
+  $('#calcReset').addEventListener('click', function () { S.calc = {}; save(); recompute(); });
+}
+function renderView() {
+  var T = $('#viewPop');
+  var opt = function (list, cur) { return list.map(function (o) { return '<option value="' + o[0] + '"' + (cur === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join(''); };
+  var chk = function (k, label) { return '<label><input type="checkbox" data-l="' + k + '"' + (S.layers[k] ? ' checked' : '') + '> ' + label + '</label>'; };
+  T.innerHTML = '<h3>Zone colour</h3><select id="vColor">' + opt([['check', 'punching check (OK / reinforce / thicken)'], ['load', 'β·V_d (heat map)'],
+      ['type', 'support type'], ['point', 'each point its own colour']], S.color) + '</select>' +
+    '<h3>Label next to the number</h3><select id="vLbl">' + opt([['A', 'tributary area, m²'], ['Vd', 'V_d'], ['bVd', 'β·V_d'], ['eta', 'η = V_eq / V_Rd,c'], ['none', 'no label']], S.lbl) + '</select>' +
+    '<h3>Show</h3>' + chk('zones', 'tributary zones') + chk('borders', 'zone borders') + chk('walls', 'walls') + chk('beams', 'beams') + chk('cols', 'columns') +
+    chk('nums', 'point numbers') + chk('lbls', 'labels');
+  $('#vColor').addEventListener('change', function (e) { S.color = e.target.value; save(); paint(); renderSel(); renderTable(); });
+  $('#vLbl').addEventListener('change', function (e) { S.lbl = e.target.value; save(); paint(); });
+  T.querySelectorAll('input[data-l]').forEach(function (c) { c.addEventListener('change', function () { S.layers[c.dataset.l] = c.checked; save(); paint(); }); });
+}
+$('#btnView').addEventListener('click', function (e) {
+  e.stopPropagation();
+  var P = $('#viewPop'); P.hidden = !P.hidden; $('#btnView').classList.toggle('on', !P.hidden);
+  if (!P.hidden) renderView();
+});
+document.addEventListener('pointerdown', function (e) {
+  var P = $('#viewPop');
+  if (!P.hidden && !P.contains(e.target) && !e.target.closest('#btnView')) { P.hidden = true; $('#btnView').classList.remove('on'); }
+});
+// сводка по уровню — вкладка Results, когда ничего не выбрано
+function sumHtml() {
+  var ck = R.check, tot = ck.area_poly_m2 || 1;
+  var parts = [[ck.area_points_m2, 'var(--accent)', 'punching points'], [ck.area_walls_beams_m2, 'var(--beam)', 'walls and beams'], [ck.area_none_m2, 'var(--bad)', 'unsupported']];
+  var totV = 0, ptV = 0, loadAll = 0, kinds = {}, st = R.stats.nodes || {}, rc = {ok: 0, reinf: 0, thick: 0}, bad = {reinf: [], thick: []}, worst = null;
+  R.points.forEach(function (p) {
+    var cc = calc(p), v = cc.Vd; totV += v; ptV += v; kinds[p.kind] = (kinds[p.kind] || 0) + 1;
+    if (cc.chk) {
+      var r = resCls(cc.chk); rc[r]++; if (bad[r]) bad[r].push(p.n);
+      if (!worst || cc.chk.eta > worst.eta) worst = {n: p.n, eta: cc.chk.eta};
+    }
+  });
+  R.others.forEach(function (o) { totV += calc(o).Vd; }); totV += calc(R.none).Vd;
+  FLOORS.forEach(function (f) { var L = fl(f.id); loadAll += f.area * (S.gG * L.g + S.gQ * L.q); });
+  var loads = !FLOORS.every(function (f) { return !num(S.floors[f.id].g) && !num(S.floors[f.id].q); });
+  var chips = function (r) { return '<div class="pchips">' + bad[r].map(function (n) { return '<button class="pchip ' + r + '" data-n="' + n + '">#' + n + '</button>'; }).join('') + '</div>'; };
+  var html = '<ol class="steps">' +
+    '<li class="' + (loads ? 'done' : '') + '"><span>' + (loads ? 'Loads entered' : 'Enter the loads DL and LL') + ' — <button class="lnk" data-go="loads">Slabs &amp; loads</button>' +
+      (nH() ? ' · slab thickness changed: ' + nH() : '') + '</span></li>' +
+    '<li><span>Click a point on the plan or a row in the table below — its check, required thickness, factors.</span></li>' +
+    '<li><span>Not OK? Change the slab thickness (in the point card), the reinforcement, or the supports — <button class="lnk" data-go="sup">Supports</button>.</span></li></ol>';
+  html += '<div class="card"><h3>Punching check · ' + R.points.length + ' points</h3><table class="kv"><tr><td>' + resBadge({res: 'ok'}) + ' no reinforcement</td><td>' + rc.ok + '</td></tr>' +
+    '<tr><td>' + resBadge({res: 'reinf'}) + ' punching reinforcement' + (bad.reinf.length ? chips('reinf') : '') + '</td><td>' + rc.reinf + '</td></tr>' +
+    '<tr><td>' + resBadge({res: 'thick_c'}) + ' increase thickness' + (bad.thick.length ? chips('thick') : '') + '</td><td>' + rc.thick + '</td></tr>' +
+    (worst ? '<tr><td>max η = V<sub>eq</sub>/V<sub>Rd,c</sub></td><td><button class="lnk" data-n="' + worst.n + '">#' + worst.n + '</button> · ' + fmt(worst.eta, 2) + '</td></tr>' : '') + '</table></div>';
+  html += sec('area', 'Area and load balance', '<div class="bar">' + parts.map(function (x) { return '<span style="width:' + (100 * x[0] / tot) + '%;background:' + x[1] + '" title="' + x[2] + '"></span>'; }).join('') + '</div>' +
+    '<table class="kv"><tr><td>Slab area (outlines)</td><td>' + fmt(ck.area_poly_m2, 2) + ' m²</td></tr>' + parts.map(function (x) { return '<tr><td>' + x[2] + '</td><td>' + fmt(x[0], 2) + ' m²</td></tr>'; }).join('') +
+    '<tr><td>Σ V<sub>d</sub> of all supports</td><td>' + fmt(outF(totV), 1) + ' ' + uF() + '</td></tr>' +
+    '<tr><td>(γG·g + γQ·q) × slab area</td><td>' + fmt(outF(loadAll), 1) + ' ' + uF() + '</td></tr><tr><td>of which punching points</td><td>' + fmt(outF(ptV), 1) + ' ' + uF() + '</td></tr></table>' +
+    '<p class="mini" style="margin:6px 0 0">The load sums match when k = 1 and ΔV = 0 at all points (guide, sec. 8).</p>');
+  html += sec('kinds', 'Punching points by type', '<table class="kv">' + Object.keys(kinds).map(function (k) { return '<tr><td>' + esc(KL[k]) + '</td><td>' + kinds[k] + '</td></tr>'; }).join('') +
+    '<tr><td class="mini">not checked: concave L / T / X</td><td class="mini">' + (st.wall_L_in || 0) + ' / ' + (st.wall_T || 0) + ' / ' + (st.wall_X || 0) + '</td></tr></table>');
+  if (R.notes.length) html += sec('notes', 'Notes (' + R.notes.length + ')', '<ul style="margin:0;padding-left:18px">' + R.notes.map(function (n) { return '<li>' + esc(n) + '</li>'; }).join('') + '</ul>');
+  html += sec('about', 'How it is computed', '<p class="mini" style="margin:0">Zone boundary = perpendicular bisector between neighbouring supports (tributary guide, rule 4); ' +
+    'at a wall, halfway to the next support; a cantilever goes to the nearest support; no area is carried across openings. ' +
+    'Punching points: columns, piers, wall ends and convex L corners. Concave corners, T and X junctions are not checked; their area goes to the walls. ' +
+    'Each point is checked by the company punching sheet (SI 466.1 amend. 7). ' +
+    'Plan: wheel = zoom, drag = pan, Ctrl+click = several points (sum). All changes are kept in this browser; Revit is not changed.</p>');
+  return html;
+}
+function bindSum(T) {
+  bindSecs(T);
+  T.querySelectorAll('[data-n]').forEach(function (b) { b.addEventListener('click', function () { selectN(+b.dataset.n); }); });
+  T.querySelectorAll('[data-go]').forEach(function (b) { b.addEventListener('click', function () { showTab(b.dataset.go); }); });
+}
+
+// ------------------------------------------------------------ таблица
+var COLS = [
+  {k: 'n', t: '#', v: function (p) { return p.n; }},
+  {k: 'kind', t: 'Type', l: 1, v: function (p) { return KL[p.kind]; }},
+  {k: 'cls', t: 'Position', l: 1, v: function (p) { return p.cls ? CL[p.cls] : '—'; }},
+  {k: 'A', t: 'A, m²', v: function (p, c) { return c.A; }, f: 2},
+  {k: 'G', t: 'SW+DL', v: function (p, c) { return outF(c.G); }, f: 1, u: 1},
+  {k: 'Q', t: 'LL', v: function (p, c) { return outF(c.Q); }, f: 1, u: 1},
+  {k: 'k', t: 'k', v: function (p, c) { return c.k; }, f: 2},
+  {k: 'Vd', t: 'V_d', v: function (p, c) { return outF(c.Vd); }, f: 1, u: 1},
+  {k: 'beta', t: 'β', v: function (p, c) { return c.beta; }, f: 2},
+  {k: 'bVd', t: 'β·V_d', v: function (p, c) { return c.bVd != null ? outF(c.bVd) : null; }, f: 1, u: 1},
+  {k: 'Veq', t: 'V_eq', v: function (p, c) { return c.chk ? outF(c.chk.Veq) : null; }, f: 1, u: 1},
+  {k: 'VRdc', t: 'V_Rd,c', v: function (p, c) { return c.chk ? outF(c.chk.VRdc) : null; }, f: 1, u: 1},
+  {k: 'eta', t: 'η', v: function (p, c) { return c.chk ? c.chk.eta : null; }, f: 2},
+  {k: 'res', t: 'Check', l: 1, v: function (p, c) { return c.chk ? RES_SHORT[c.chk.res] : null; }, h: function (p, c) { return resBadge(c.chk); }},
+  {k: 'Asw', t: 'A_sw, cm²', v: function (p, c) { return c.chk ? c.chk.Asw : null; }, f: 2},
+  {k: 'h', t: 'h', v: function (p) { return p.h; }, f: 0},
+  {k: 'dm', t: 'd_m', v: function (p) { return p.dm; }, f: 0},
+  {k: 'dims', t: 'c1×c2 / la×lb', v: function (p) { return p.c1 != null ? (p.c2 != null ? p.c1 + '×' + p.c2 : '' + p.c1) : ''; }},
+  {k: 'calc', t: 'Calculator', l: 1, v: function (p) { return p.calc; }},
+  {k: 'ids', t: 'ElementId', l: 1, v: function (p) { return p.ids.join(', '); }},
+  {k: 'flags', t: 'Flags', l: 1, cls: 'fl', v: function (p) { return p.flags.join('; '); }}
+];
+var FILTERS = [['all', 'All'], ['column', 'Columns'], ['pylon', 'Piers'], ['wall_L', 'L corners'], ['wall_end', 'Wall ends'], ['flags', 'Flagged'],
+  ['thick', 'Thicken'], ['reinf', 'Reinforce']];
+function renderTable() {
+  $('#tblsum').textContent = 'Punching points table (' + R.points.length + ')';
+  if (!$('#tblbox').open) return;
+  var q = S.q.trim().toLowerCase();
+  var list = R.points.map(function (p) { return {p: p, c: calc(p)}; }).filter(function (r) {
+    var p = r.p, rc = resCls(r.c.chk);
+    if (S.filter === 'flags') { if (!p.flags.length) return false; }
+    else if (S.filter === 'thick' || S.filter === 'reinf') { if (rc !== S.filter) return false; }
+    else if (S.filter !== 'all' && p.kind !== S.filter) return false;
+    return !q || String(p.n) === q || p.ids.join(' ').indexOf(q) >= 0 || p.flags.join(' ').toLowerCase().indexOf(q) >= 0 || (KL[p.kind] || '').toLowerCase().indexOf(q) >= 0;
+  });
+  var col = COLS.filter(function (c) { return c.k === S.sort.k; })[0] || COLS[0];
+  list.sort(function (a, b) { var x = col.v(a.p, a.c), y = col.v(b.p, b.c); if (x == null) return 1; if (y == null) return -1; return (x > y ? 1 : x < y ? -1 : 0) * S.sort.d; });
+  $('#tbl thead').innerHTML = '<tr>' + COLS.map(function (c) {
+    return '<th data-k="' + c.k + '"' + (c.l ? ' class="l"' : '') + '>' + esc(c.t) + (c.u ? ', ' + uF() : '') + (S.sort.k === c.k ? (S.sort.d > 0 ? ' ▲' : ' ▼') : '') + '</th>'; }).join('') + '</tr>';
+  $('#tbl tbody').innerHTML = list.map(function (r) {
+    return '<tr data-n="' + r.p.n + '"' + (S.sel.indexOf(r.p.sk) >= 0 ? ' class="sel"' : '') + '>' + COLS.map(function (c, i) {
+      var v = c.v(r.p, r.c), s = c.h ? c.h(r.p, r.c) : c.f != null ? fmt(v, c.f) : esc(v == null ? '—' : v);
+      if (i === 0) s = '<span class="sw" style="background:' + pointColor(r.p) + '"></span>' + s;
+      return '<td' + (c.l ? ' class="l' + (c.cls ? ' ' + c.cls : '') + '"' : '') + '>' + s + '</td>'; }).join('') + '</tr>';
+  }).join('');
+  $('#tblcount').textContent = list.length + ' of ' + R.points.length;
+}
+$('#tblbox').open = !!S.tblOpen;
+$('#tblbox').addEventListener('toggle', function () { S.tblOpen = $('#tblbox').open; save(); renderTable(); });
+$('#tbl thead').addEventListener('click', function (e) { var th = e.target.closest('th'); if (!th) return; var k = th.dataset.k; S.sort = {k: k, d: S.sort.k === k ? -S.sort.d : 1}; renderTable(); });
+$('#tbl tbody').addEventListener('click', function (e) {
+  var tr = e.target.closest('tr'); if (!tr) return;
+  var p = PTN[+tr.dataset.n];
+  if (e.ctrlKey || e.metaKey || e.shiftKey) { var i = S.sel.indexOf(p.sk); if (i >= 0) S.sel.splice(i, 1); else S.sel.push(p.sk); } else S.sel = [p.sk];
+  refreshSel(); showTab('sel'); centerOn(p);
+});
+function centerOn(p) {
+  var r = svg.getBoundingClientRect(), w = Math.min(VB.w, 20000), hh = w * (r.height / (r.width || 1));
+  VB.w = w; VB.h = hh; VB.x = p.x - w / 2; VB.y = -p.y - hh / 2; applyVB();
+}
+$('#chips').innerHTML = FILTERS.map(function (f) { return '<span class="chip' + (S.filter === f[0] ? ' on' : '') + '" data-f="' + f[0] + '">' + f[1] + '</span>'; }).join('');
+$('#chips').addEventListener('click', function (e) {
+  var f = e.target.dataset.f; if (!f) return; S.filter = f;
+  document.querySelectorAll('#chips .chip').forEach(function (c) { c.classList.toggle('on', c.dataset.f === f); });
+  renderTable();
+});
+$('#q').addEventListener('input', function (e) { S.q = e.target.value; renderTable(); });
+
+// ------------------------------------------------------------ экспорт
+function chkCsv(p, c, n2, qq) {
+  var ch = c.chk, inp = rfOf(p);
+  if (!ch) return ['', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''];
+  return [n2(ch.u0, 3), n2(ch.u1, 3), n2(ch.Au1, 3), n2(ch.K, 3), n2(ch.rho, 5), n2(outF(ch.VRdc), 1), n2(outF(ch.VRdmax), 1), n2(outF(ch.Veq), 1), n2(ch.eta, 2),
+    qq(ch.label), n2(ch.Asw, 2), ch.m == null ? '' : ch.m, ch.sr == null ? '' : Math.round(ch.sr * 1000), n2(ch.Asa, 2), n2(ch.Asb, 2), qq(ch.warn.join('; ')),
+    inp.fck, qq('D' + inp.top_d1 + '@' + inp.top_s1 + (inp.top_d2 > 0 ? ' + D' + inp.top_d2 + '@' + inp.top_s2 : ''))];
+}
+$('#btnCsv').addEventListener('click', function () {
+  var n2 = function (v, d) { return v == null || !isFinite(v) ? '' : v.toFixed(d); };
+  var qq = function (s) { return '"' + String(s == null ? '' : s).replace(/"/g, '""') + '"'; };
+  var lines = [['#', 'Type', 'Position', 'A, m²', 'SW+DL, ' + uF(), 'LL, ' + uF(), 'k', 'dV, ' + uF(), 'V_d, ' + uF(), 'beta', 'beta*V_d, ' + uF(), 'h, mm', 'd_m, mm', 'c1/la, mm', 'c2/lb, mm',
+    't_a, mm', 't_b, mm', 'q_d, ' + uQ(), 'u0, m', 'u1, m', 'A_u1, m²', 'K', 'rho', 'V_Rd,c, ' + uF(), 'V_Rd,max, ' + uF(), 'V_eq, ' + uF(), 'eta', 'Check',
+    'A_sw, cm²/perimeter', 'Perimeters', 's_r, mm', 'A_s,bent, cm²', 'A_sb, cm²', 'Check notes', 'fck', 'Top bars',
+    'Calculator', 'X, m', 'Y, m', 'ElementId', 'Link', 'Flags'].map(function (x) { return qq(x); }).join(',')];
+  R.points.forEach(function (p) {
+    var c = calc(p);
+    lines.push([p.n, qq(KL[p.kind]), qq(p.cls ? CL[p.cls] : ''), n2(c.A, 2), n2(outF(c.G), 1), n2(outF(c.Q), 1), n2(c.k, 2), n2(outF(c.dv), 1), n2(outF(c.Vd), 1), n2(c.beta, 2),
+      n2(c.bVd != null ? outF(c.bVd) : null, 1), p.h, p.dm, p.c1 == null ? '' : p.c1, p.c2 == null ? '' : p.c2, p.ta == null ? '' : p.ta, p.tb == null ? '' : p.tb,
+      n2(outF(c.qd), 2)].concat(chkCsv(p, c, n2, qq)).concat([qq(p.calc), n2(p.x / 1000, 3), n2(p.y / 1000, 3), qq(p.ids.join(', ')), qq(p.links.join(', ')), qq(p.flags.join('; '))]).join(','));
+  });
+  if (S.off.length || S.beamOn.length) lines.push('', qq('Supports changed in the plan: switched off ' + S.off.join(', ') + (S.beamOn.length ? '; beams switched on: ' + S.beamOn.join(', ') : '')));
+  var mm = function (q) { return '(' + (q[0] / 1000).toFixed(3) + ';' + (q[1] / 1000).toFixed(3) + ')'; };
+  S.edit.add.forEach(function (a) {
+    lines.push(qq('Added in the plan: ' + TYPE_NAME[a.type] + ' ' + a.id + (a.type === 'c' ? ' ' + a.b + 'x' + a.h + ' at ' + mm([a.x, a.y])
+      : ' ' + (a.type === 'w' ? 't' : 'b') + ' ' + (a.t || a.b) + ' from ' + mm(a.p0) + ' to ' + mm(a.p1)) + ' m'));
+  });
+  Object.keys(S.hOv).forEach(function (fid) { lines.push(qq('Slab thickness changed in the plan: slab ' + fid + ' h ' + S.hOv[fid] + ' mm (model ' + Math.round(FL[fid].h) + ')')); });
+  Object.keys(S.edit.geo).forEach(function (k) { lines.push(qq('Geometry changed in the plan: ' + k + ' ' + JSON.stringify(S.edit.geo[k]))); });
+  var blob = new Blob(['﻿' + lines.join('\r\n')], {type: 'text/csv;charset=utf-8'}), a = h('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = ('tributary_' + D.meta.doc + '_' + D.meta.level + '.csv').replace(/[^\w.\-]+/g, '_');
+  document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+});
+
+// ------------------------------------------------------------ инструменты и клавиши
+var HINTS = {sup: 'Supports mode: click a wall, column or beam to switch it off/on. Esc to exit',
+  edit: 'Edit: click a support, drag an end to shorten / extend (Shift = free), Delete removes. Esc to exit',
+  addw: 'Add wall: click the start, click the end (snaps to walls and slab corners, Shift = orthogonal). Esc to exit',
+  addc: 'Add column: click its centre (snaps to walls and slab corners). Esc to exit'};
+var SUP_TOOLS = {sup: 1, edit: 1, addw: 1, addc: 1};
+function setTool(t) {
+  if (t !== 'edit') S.esel = null;
+  S.tool = t; S.draft = null; cursor = null; showSnap(null); setSupHov(null); tip.style.display = 'none';
+  document.querySelectorAll('#tools [data-tool]').forEach(function (b) { b.classList.toggle('on', b.dataset.tool === t); });
+  svg.classList.toggle('measure', t === 'len' || t === 'area');
+  svg.classList.toggle('tool-sup', t === 'sup');
+  svg.classList.toggle('tool-edit', t === 'edit');
+  svg.classList.toggle('tool-add', t === 'addw' || t === 'addc');
+  $('#hintbar').textContent = HINTS[t] || ''; $('#hintbar').style.display = HINTS[t] ? 'block' : 'none';
+  $('#legend').style.display = SUP_TOOLS[t] ? 'none' : '';
+  if (SUP.length) { restyleSupports(); renderHandles(); }
+  renderMeas();
+}
+$('#tools').addEventListener('click', function (e) { var b = e.target.closest('[data-tool]'); if (b) { setTool(b.dataset.tool); if (SUP_TOOLS[b.dataset.tool]) showTab('sup'); renderSup(); } });
+$('#fit').addEventListener('click', fit);
+$('#clearMeas').addEventListener('click', function () { S.meas = []; S.draft = null; renderMeas(); });
+document.addEventListener('keydown', function (e) {
+  if (/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
+  var k = e.key.toLowerCase();
+  if (k === 'escape') {
+    if (S.draft) { S.draft = null; tip.style.display = 'none'; renderMeas(); }
+    else if (S.tool === 'edit' && S.esel) { S.esel = null; restyleSupports(); renderHandles(); renderSup(); }
+    else if (S.tool !== 'select') { setTool('select'); renderSup(); } else { S.sel = []; refreshSel(); }
+  }
+  else if (k === 'enter' && S.tool === 'area') finishArea();
+  else if (k === 'backspace' && S.draft) { S.draft.pts.pop(); if (!S.draft.pts.length) S.draft = null; renderMeas(); e.preventDefault(); }
+  else if (k === 'delete' && S.tool === 'edit') { var ds = S.esel ? supByKey(S.esel) : null; if (ds) deleteSup(ds); }
+  else if (k === 'delete') { S.meas.pop(); renderMeas(); }
+  else if (k === 'e' || k === 'у') { setTool('edit'); showTab('sup'); renderSup(); }
+  else if (k === 'w' || k === 'ц') { setTool('addw'); showTab('sup'); renderSup(); }
+  else if (k === 'c' || k === 'с') { setTool('addc'); showTab('sup'); renderSup(); }
+  else if (k === 'f' || k === 'а') fit();
+  else if (k === 'v' || k === 'м') { setTool('select'); renderSup(); }
+  else if (k === 'o' || k === 'щ') { setTool('sup'); showTab('sup'); renderSup(); }
+  else if (k === 'm' || k === 'ь') setTool('len');
+  else if (k === 'a' || k === 'ф') setTool('area');
+  else if (k === '+' || k === '=') zoomBy(0.8); else if (k === '-') zoomBy(1.25);
+});
+document.querySelectorAll('#units button').forEach(function (b) { b.addEventListener('click', function () { S.unit = b.dataset.u; save(); unitsUi(); update(); renderLoads(); }); });
+function nRevit() { return S.off.length + S.beamOn.length + nEdits() + nH(); }
+$('#btnRevit').addEventListener('click', function () {
+  var n = nRevit();
+  if (!n || !confirm('Reset the plan to the Revit model?\n\nRemoved: switched-off / switched-on supports, added and edited walls, columns, beams, ' +
+    'changed slab thickness (' + n + ' changes).\nKept: loads, γ, β, k, ΔV, concrete and bars.')) return;
+  var keep = S.edit; S.edit = newEdit(); S.edit.seq = keep.seq; S.edit.nw = keep.nw; S.edit.nc = keep.nc;
+  S.off = []; S.beamOn = []; S.hOv = {}; S.esel = null;
+  save(); renderLoads(); recompute();
+});
+function unitsUi() { document.querySelectorAll('#units button').forEach(function (b) { b.classList.toggle('on', b.dataset.u === S.unit); }); }
+function update() { paint(); renderSel(); renderTable(); }
+
+// ------------------------------------------------------------ старт
+$('#h1').textContent = D.title; document.title = D.title;
+unitsUi(); setTool('select'); fit(); compute(); renderLoads(); renderSup(); fit();
+})();
+</script>
+</body>
+</html>
