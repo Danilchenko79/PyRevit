@@ -56,7 +56,7 @@ PLANE_NAMES = ('TopClipPlane', 'CutPlane', 'BottomClipPlane', 'ViewDepthPlane', 
 
 
 def _levels_sorted(doc):
-    return sorted(FilteredElementCollector(doc).OfClass(Level), key=lambda l: l.Elevation)
+    return sorted(FilteredElementCollector(doc).OfClass(Level), key=lambda l: l.ProjectElevation)
 
 
 def _resolve_range_level(doc, view, lid, levels):
@@ -91,22 +91,22 @@ def view_info(doc, view):
     above = below = None
     if base is not None:
         for l in levels:
-            if l.Elevation > base.Elevation + 1e-6:
+            if l.ProjectElevation > base.ProjectElevation + 1e-6:
                 above = l
                 break
         for l in reversed(levels):
-            if l.Elevation < base.Elevation - 1e-6:
+            if l.ProjectElevation < base.ProjectElevation - 1e-6:
                 below = l
                 break
     info = {
         'view': _name(view),
         'view_type': str(view.ViewType),
         'level': _name(base) if base is not None else None,
-        'level_z': round(base.Elevation * MM) if base is not None else None,
+        'level_z': round(base.ProjectElevation * MM) if base is not None else None,
         'level_above': _name(above) if above is not None else None,
-        'level_above_z': round(above.Elevation * MM) if above is not None else None,
+        'level_above_z': round(above.ProjectElevation * MM) if above is not None else None,
         'level_below': _name(below) if below is not None else None,
-        'level_below_z': round(below.Elevation * MM) if below is not None else None,
+        'level_below_z': round(below.ProjectElevation * MM) if below is not None else None,
         'range': [],
         'cut_z': None,
     }
@@ -125,7 +125,7 @@ def view_info(doc, view):
         except Exception:
             continue
         lvl = _resolve_range_level(doc, view, lid, levels)
-        abs_z = round((lvl.Elevation + off) * MM) if lvl is not None else None
+        abs_z = round((lvl.ProjectElevation + off) * MM) if lvl is not None else None
         info['range'].append({'plane': pname, 'level_id': lid.IntegerValue,
                               'level': _name(lvl) if lvl is not None else None,
                               'offset_mm': round(off * MM), 'abs_mm': abs_z})
@@ -802,7 +802,7 @@ def _view_plane_z(view):
     except Exception:
         pass
     try:
-        zs.append(view.GenLevel.Elevation)
+        zs.append(view.GenLevel.ProjectElevation)
     except Exception:
         pass
     try:
@@ -1387,6 +1387,26 @@ def own_spf_path():
     """Свой файл общих параметров — на случай, если у проекта его нет или он недоступен."""
     return os.path.join(os.environ.get('APPDATA', os.path.expanduser('~')),
                         'WallRebar2D', 'WallRebar2D_shared_params.txt')
+
+
+def central_problem(doc):
+    """Почему нельзя привязать параметры проекта в модели с совместной работой: Revit должен
+    получить право правки у центральной модели. Файл, присланный со стороны (WhatsApp и т.п.),
+    ссылается на центральную, которой на этой машине нет -> ошибка «Central Model is inaccessible».
+    -> None, если всё в порядке, иначе dict(central, local)."""
+    try:
+        if not doc.IsWorkshared or doc.IsDetached or doc.IsModelInCloud:
+            return None
+        mp = doc.GetWorksharingCentralModelPath()
+        if mp is None or mp.ServerPath:
+            return None                               # Revit Server: путь не проверить
+        from Autodesk.Revit.DB import ModelPathUtils
+        central = ModelPathUtils.ConvertModelPathToUserVisiblePath(mp)
+    except Exception:
+        return None
+    if central and os.path.isfile(central):
+        return None
+    return dict(central=central or u'', local=doc.PathName or u'')
 
 
 def ensure_and_bind(doc, names, categories, log=None):
