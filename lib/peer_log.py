@@ -59,7 +59,8 @@ class RunLog(object):
         self._errors.append({'item': self._u(item), 'reason': self._u(reason)})
 
     # --- завершение ---
-    def finish(self, summary=u''):
+    def finish(self, summary=u'', show=True):
+        """show=False — только записать файлы, в окно pyRevit не печатать."""
         self.finished = datetime.datetime.now()
         data = {
             'button': self.button,
@@ -76,7 +77,8 @@ class RunLog(object):
             'errors': self._errors,
         }
         self._write(data)
-        self._print(data)
+        if show:
+            self._print(data)
         return data
 
     # --- внутреннее ---

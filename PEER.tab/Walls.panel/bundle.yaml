@@ -1,3 +1,4 @@
 title: Walls
 layout:
   - CopyRebarBetweenViews
+  - WallRebar2D
