@@ -6,13 +6,13 @@ You need: Revit and [pyRevit](https://github.com/pyrevitlabs/pyRevit/releases). 
 
 **1.** Close Revit.
 
-**2.** Download **[install.bat](https://github.com/Danilchenko79/PyRevit/raw/main/install.bat)**.
+**2.** Download **[PEER_install.zip](https://github.com/Danilchenko79/PyRevit/raw/main/PEER_install.zip)** and open it.
 
-![Download install.bat](docs/img/01-download.png)
+![Download PEER_install.zip](docs/img/01-download.png)
 
-*Figure 1 — Downloading install.bat in the browser*
+*Figure 1 — Downloading PEER_install.zip in the browser*
 
-**3.** Run the file. If Windows shows a warning, click **More info → Run anyway**.
+**3.** Double-click **install.bat** inside the zip. If Windows shows a warning, click **More info → Run anyway**.
 
 ![Windows warning](docs/img/02-smartscreen.png)
 
