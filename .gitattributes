@@ -1,2 +1,5 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Windows batch files: store as-is with CRLF (also for raw download from GitHub)
+*.bat -text
