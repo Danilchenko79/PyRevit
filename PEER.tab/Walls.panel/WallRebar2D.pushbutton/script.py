@@ -93,9 +93,22 @@ def try_add_missing_params(missing, plan, S, log):
     names = revit_io.missing_param_names(missing)
     if not names:
         return missing
+    br = chr(10)
+    cp = revit_io.central_problem(doc)
+    if cp:
+        # без доступа к центральной Revit не даст привязать параметры проекта
+        msg = (u'These parameters are missing: ' + u', '.join(names) + br + br +
+               u'They cannot be added: the central model is not accessible from this computer:' + br +
+               u'    ' + cp['central'] + br + br +
+               u'This file was opened from:' + br + u'    ' + cp['local'] + br + br +
+               u'Close the model, open it again with "Detach from Central" ' +
+               u'(Detach and preserve worksets), save it to a project folder and run again.')
+        output.print_md(u'**Stopped: the central model is not accessible, project parameters '
+                        u'cannot be added.** Central: `{0}`'.format(cp['central']))
+        forms.alert(msg, title=u'Wall Rebar 2D: central model not accessible')
+        return missing
     st = revit_io.shared_param_status(doc, names)
     cats = revit_io.param_categories(doc, S)
-    br = chr(10)
     listed = u', '.join(names)
     from_file = sorted(st['found'])
     to_create = sorted(st['absent'])
