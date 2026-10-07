@@ -8,36 +8,28 @@ You need: Revit and [pyRevit](https://github.com/pyrevitlabs/pyRevit/releases). 
 
 **2.** Download **[PEER_install.zip](https://github.com/Danilchenko79/PyRevit/raw/main/PEER_install.zip)** and open it.
 
-![Download PEER_install.zip](docs/img/01-download.png)
+**3.** Double-click **install.bat** inside the zip. If Windows shows a security warning, click **Run**.
 
-*Figure 1 — Downloading PEER_install.zip in the browser*
+![Security warning](docs/img/01-warning.png)
 
-**3.** Double-click **install.bat** inside the zip. If Windows shows a warning, click **More info → Run anyway**.
-
-![Windows warning](docs/img/02-smartscreen.png)
-
-*Figure 2 — Windows SmartScreen warning: More info → Run anyway*
+*Figure 1 — Windows security warning: click Run*
 
 **4.** Wait for `[OK]`, then press any key.
 
-![Installation complete](docs/img/03-install-ok.png)
-
-*Figure 3 — Installer window after a successful installation*
-
 **5.** Start Revit — the **PEER** tab appears.
 
-![PEER tab](docs/img/04-peer-tab.png)
+![PEER tab](docs/img/02-peer-tab.png)
 
-*Figure 4 — PEER tab in the Revit ribbon*
+*Figure 2 — PEER tab in the Revit ribbon*
 
 ## Updates
 
 Updates install automatically every time Revit starts.
-To update right now, click **pyRevit → Update**.
+To update without restarting Revit, click **pyRevit → Reload**.
 
-![Update button](docs/img/05-update.png)
+![Reload button](docs/img/03-reload.png)
 
-*Figure 5 — Update button on the pyRevit tab*
+*Figure 3 — Reload button on the pyRevit tab*
 
 ## Troubleshooting
 
