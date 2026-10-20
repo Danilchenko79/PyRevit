@@ -3,7 +3,6 @@
 Без зависимостей (IronPython 2.7 / CPython 3). Шаблон страницы — report_template.html рядом."""
 import datetime
 import io
-import json
 import os
 
 from tributary.punching import COLUMNS
@@ -12,6 +11,10 @@ try:
     text_type = unicode  # noqa: F821  (IronPython 2.7)
 except NameError:
     text_type = str
+try:
+    long_type = long  # noqa: F821
+except NameError:
+    long_type = int
 
 TEMPLATE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'report_template.html')
 
@@ -34,6 +37,47 @@ def _u(v):
     if isinstance(v, float):
         return u'{:g}'.format(v)
     return text_type(v)
+
+
+_ESC = {u'"': u'\\"', u'\\': u'\\\\', u'\n': u'\\n', u'\r': u'\\r', u'\t': u'\\t'}
+
+
+def _js(s):
+    out = [u'"']
+    for ch in s:
+        o = ord(ch)
+        if ch in _ESC:
+            out.append(_ESC[ch])
+        elif o < 0x20 or o > 0x7e:
+            out.append(u'\\u{:04x}'.format(o))
+        else:
+            out.append(ch)
+    out.append(u'"')
+    return u''.join(out)
+
+
+def dumps_ascii(v):
+    """Компактный JSON чистым ASCII (\\uXXXX). Свой, т.к. json.dumps(ensure_ascii=True) в IronPython
+    падает на не-ASCII в str («'unknown' codec can't decode byte 0xf8» — имя типа с ø/Ø, иврит)."""
+    if v is None:
+        return u'null'
+    if v is True:
+        return u'true'
+    if v is False:
+        return u'false'
+    if isinstance(v, (int, long_type)):
+        return text_type(int(v))
+    if isinstance(v, float):
+        if v != v or v in (float('inf'), float('-inf')):
+            return u'null'
+        return text_type(repr(v))
+    if isinstance(v, dict):
+        return u'{' + u','.join(_js(text_type(k)) + u':' + dumps_ascii(x) for k, x in v.items()) + u'}'
+    if isinstance(v, (list, tuple)):
+        return u'[' + u','.join(dumps_ascii(x) for x in v) + u']'
+    if isinstance(v, bytes) and bytes is not str:
+        v = v.decode('utf-8', 'replace')
+    return _js(text_type(v))
 
 
 def _q(s):
@@ -102,7 +146,7 @@ def html(res, title=u'Tributary areas'):
         tpl = f.read()
     with io.open(ENGINE, encoding='utf-8') as f:
         eng = f.read()
-    blob = json.dumps(html_data(res, title), ensure_ascii=True, separators=(',', ':'))
+    blob = dumps_ascii(html_data(res, title))
     blob = blob.replace('</', '<\\/')            # «</» внутри <script> закрыл бы тег
     t = (title.replace(u'&', u'&amp;').replace(u'<', u'&lt;'))
     return (tpl.replace(u'/*__ENGINE__*/', eng.replace(u'</script', u'<\\/script'))
@@ -127,5 +171,5 @@ def write_json(res, path):
     out = {'meta': res['meta'], 'params': res['params'], 'check': res['check'],
            'notes': res['notes'], 'counts': res['counts'], 'rows': res['rows']}
     with io.open(path, 'w', encoding='utf-8') as f:
-        f.write(text_type(json.dumps(out, ensure_ascii=False, indent=1)))
+        f.write(dumps_ascii(out))
     return path
