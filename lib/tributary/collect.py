@@ -237,9 +237,8 @@ def export_json(doc, level_key, user_params=None, out_dir=None):
     """Для скилла Claude (revit-py): собрать уровень и записать JSON. Возвращает ASCII-строку."""
     import os
     import io
-    import json
     from tributary import params as P
-    from tributary.report import default_out_dir, safe_name
+    from tributary.report import default_out_dir, dumps_ascii, safe_name
     lv = find_level(doc, level_key)
     if lv is None:
         return 'ERROR level not found: {}'.format(level_key)
@@ -250,7 +249,7 @@ def export_json(doc, level_key, user_params=None, out_dir=None):
         os.makedirs(out_dir)
     path = os.path.join(out_dir, u'{}_{}.json'.format(safe_name(doc.Title), safe_name(lv.Name)))
     with io.open(path, 'w', encoding='utf-8') as f:
-        f.write(json.dumps(data))           # ensure_ascii=True: файл чистый ASCII
+        f.write(dumps_ascii(data))          # чистый ASCII; json.dumps в IronPython падает на не-ASCII
     return ('OK json={} doc={} level={} slabs={} walls={} columns={} beams={} skipped={} links={}'
             .format(path, doc.Title, lv.Name, len(data['slabs']), len(data['walls']),
                     len(data['columns']), len(data['beams']), len(data['skipped']),
