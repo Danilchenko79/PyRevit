@@ -37,7 +37,8 @@ To update without restarting Revit, click **pyRevit → Reload**.
 - **Updates stopped** — close Revit and run `install.bat` again.
 - **`Could not download` error** — check that github.com opens in your browser.
 
-Do not edit files in the extension folder, or updates will stop working.
+Do not edit files in the extension folder: on every Revit start and every Reload the folder is
+reset to the GitHub version, and local changes to its files are lost.
 
 ## Uninstall
 
