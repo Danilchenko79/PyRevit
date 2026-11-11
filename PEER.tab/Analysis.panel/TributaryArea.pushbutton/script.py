@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
 __title__  = 'Tributary\nAreas'
 __author__ = 'Dima'
-__doc__    = u"""Version = 1.4
-Date      = 2026-10-07
+__doc__    = u"""Version = 1.5
+Date      = 2026-10-22
 Description: Tributary areas and punching points of the slab on a level, with the
              punching check by the company sheet (SI 466.1 amend. 7).
+             Support loads mode: line loads on beams and walls, beam reactions,
+             loads on columns. Precast (one-way) slabs by the type name.
              The model is not changed. All work is done in the interactive plan
              that opens in the browser: loads, slab thickness, supports on/off,
              result and required thickness per point.
@@ -13,6 +15,7 @@ How-To:
     2. Run the button and pick a level - the plan opens in the browser.
     3. Slabs & loads tab: enter g, q and, if needed, the slab thickness.
     4. Click a point on the plan: its check, required thickness, factors.
+    5. Header switch Punching / Support loads; one-way slabs - Slabs & loads tab.
     Shift+click - starting settings (zones, cover, bars, fck).
     Files go to Documents\\PEER_Tributary.
 """
@@ -47,7 +50,7 @@ uidoc = __revit__.ActiveUIDocument
 output = script.get_output()
 CFG_SECTION = 'TributaryArea'
 CFG_KEYS = ('k_zone', 'c_nom', 'bar_d', 'edge_k', 'grid_mm', 'pylon_ratio', 'use_beams',
-            'fck', 'top_d1', 'top_s1', 'top_d2', 'top_s2')
+            'fck', 'top_d1', 'top_s1', 'top_d2', 'top_s2', 'precast_mask', 'mode')
 BUTTON_GRID = 150.0
 
 
@@ -66,7 +69,7 @@ def load_params():
 
 def pick_level():
     levels = sorted(FilteredElementCollector(doc).OfClass(Level).ToElements(),
-                    key=lambda l: l.Elevation)
+                    key=lambda l: l.ProjectElevation)
     av = doc.ActiveView
     cur = av.GenLevel if isinstance(av, ViewPlan) else None
     names = [l.Name for l in levels]

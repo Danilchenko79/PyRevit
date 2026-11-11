@@ -18,6 +18,7 @@ from tributary import params as P
 CFG_SECTION = 'TributaryArea'
 NUM_KEYS = ('k_zone', 'edge_k', 'pylon_ratio', 'grid_mm', 'c_nom', 'bar_d',
             'fck', 'top_d1', 'top_s1', 'top_d2', 'top_s2')
+TEXT_KEYS = ('precast_mask', 'mode')
 BUTTON_GRID = 150.0
 
 
@@ -45,6 +46,8 @@ class SettingsWindow(forms.WPFWindow):
         for k in NUM_KEYS:
             self.FindName(k).Text = u'{:g}'.format(float(vals[k]))
         self.FindName('use_beams').IsChecked = float(vals['use_beams']) > 0
+        self.FindName('precast_mask').Text = vals.get('precast_mask') or u''
+        self.FindName('mode_loads').IsChecked = vals.get('mode') == u'loads'
         self.FindName('lblStatus').Text = u''
 
     def on_save(self, sender, args):
@@ -56,6 +59,8 @@ class SettingsWindow(forms.WPFWindow):
                 self.FindName('lblStatus').Text = u'Not a number: {}'.format(self.FindName(k).Text)
                 return
         new['use_beams'] = 1.0 if self.FindName('use_beams').IsChecked else 0.0
+        new['precast_mask'] = u'{}'.format(self.FindName('precast_mask').Text or u'').strip()
+        new['mode'] = u'loads' if self.FindName('mode_loads').IsChecked else u'punch'
         try:
             P.merged(new)
         except ValueError as e:
@@ -74,6 +79,9 @@ def main():
                 cur[k] = float(cfg.get_option(k))
             except (TypeError, ValueError):
                 pass
+    for k in TEXT_KEYS:
+        if cfg.has_option(k):
+            cur[k] = cfg.get_option(k)
     w = SettingsWindow(script.get_bundle_file('SettingsForm.xaml'), cur)
     w.ShowDialog()
     if not w.saved:

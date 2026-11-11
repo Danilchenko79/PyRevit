@@ -13,12 +13,13 @@
 src — геометрия для trib (всегда 7 полей): ('rect', cx, cy, ux, uy, hx, hy)
       | ('round', cx, cy, ux, uy, r, r) | ('seg', ax, ay, ux, uy, L, half_t)
 """
-from tributary.geom import (sub, dot, unit, dist, seg_param, dist_to_seg, line_intersection,
+from tributary.geom import (sub, dot, cross, unit, dist, seg_param, dist_to_seg, line_intersection,
                             angle_deg, rect_dist)
 
 # узлы, где проверяется продавливание: торец и ВЫПУКЛЫЙ угол L (плита снаружи угла).
 # Вогнутые углы (внутренняя сторона L, узлы T и X) продавливания не дают — их полки
 # остаются «серединой стены» и площадь уходит в стену.
+# В режиме «нагрузки на опоры» (p['mode'] == 'loads') зон у узлов нет: стена целиком — одна опора.
 KINDS_NODE = ('wall_L', 'wall_end')
 
 
@@ -108,8 +109,9 @@ BEAM_END_TOL = 100.0     # конец балки дальше грани опо�
 
 
 def _supported_beams(beams, W, cols, notes):
-    """Балка — линейная опора, только если оба конца лежат на стене / колонне / другой принятой
-    балке. Краевые балки-бортики консольных балконов так не проходят и площадь не забирают."""
+    """Балка — линейная опора, если по её длине не меньше двух опор: колонны под ней, стены и
+    принятые балки, которые она пересекает или в которые упирается (неразрезная балка над рядом
+    колонн — тоже). Краевые балки-бортики консольных балконов так не проходят."""
     cand = []
     for b in beams:
         a = (float(b['p0'][0]), float(b['p0'][1]))
@@ -119,48 +121,115 @@ def _supported_beams(beams, W, cols, notes):
             continue
         bm = dict(b)
         bm['_geo'] = (a, unit(sub(c, a)), L, float(b.get('b') or 200.0))
-        bm['_ends'] = (a, c)
         cand.append(bm)
 
-    def on_fixed(P):
-        for w in W:
-            if dist_to_seg(P, w.a, w.u, w.L) <= w.t / 2.0 + BEAM_END_TOL:
-                return True
-        for col in cols:
-            if _col_contains(col, P, BEAM_END_TOL):
-                return True
-        return False
-
     ok = [False] * len(cand)
-    fixed = [[on_fixed(P) for P in bm['_ends']] for bm in cand]
+    fixed = [_fixed_supports(bm['_geo'], W, cols) for bm in cand]
+    sup = [None] * len(cand)
+    order = []
     changed = True
     while changed:
         changed = False
         for i, bm in enumerate(cand):
             if ok[i]:
                 continue
-            ends_ok = []
-            for e, P in enumerate(bm['_ends']):
-                good = fixed[i][e]
-                if not good:
-                    for k, other in enumerate(cand):
-                        if k != i and ok[k]:
-                            oa, ou, oL, ob = other['_geo']
-                            if dist_to_seg(P, oa, ou, oL) <= ob / 2.0 + BEAM_END_TOL:
-                                good = True
-                                break
-                ends_ok.append(good)
-            if all(ends_ok):
+            sp = _merge_supports(fixed[i] + _beam_crossings(bm['_geo'], [(k, cand[k]['_geo']) for k in order]))
+            if len(sp) >= 2:
                 ok[i] = True
+                sup[i] = sp
+                order.append(i)
                 changed = True
     rejected = [bm['id'] for i, bm in enumerate(cand) if not ok[i]]
     if rejected:
-        notes.append(u'beams not supported at both ends are not used as supports ({}): {}'.format(
+        notes.append(u'beams with less than two supports along them are not used as supports ({}): {}'.format(
             len(rejected), u', '.join(u'{}'.format(i) for i in rejected[:20])))
-    return [bm for i, bm in enumerate(cand) if ok[i]]
+    # в порядке принятия: балка опирается только на принятые раньше (главные — первыми)
+    pos = dict((i, n) for n, i in enumerate(order))
+    out = []
+    for i in order:
+        bm = cand[i]
+        bm['_sup'] = [(s, r if r[0] != 'b' else ('b', pos[r[1]], r[2])) for s, r in sup[i]]
+        out.append(bm)
+    return out
+
+
+SUP_MERGE = 300.0        # опоры балки ближе этого друг к другу — одна опора, мм
+_PRIO = {'c': 0, 'w': 1, 'b': 2}
+
+
+def _clamp(s, L):
+    return 0.0 if s < 0.0 else (L if s > L else s)
+
+
+def _crossing(a, u, b, v):
+    """(s, t): a + s·u = b + t·v, или None для параллельных."""
+    den = cross(u, v)
+    if abs(den) < 1e-9:
+        return None
+    d = sub(b, a)
+    return cross(d, v) / den, cross(d, u) / den
+
+
+def _fixed_supports(geo, W, cols):
+    """Опоры балки по всей её длине (не только на концах): колонны под осью балки и стены,
+    которые она пересекает или в которые упирается; стена вдоль балки — опора по концам
+    общего участка. -> [(s вдоль балки, ('c', i) | ('w', i, t вдоль стены))]."""
+    a, u, L, bw = geo
+    out = []
+    for ci, col in enumerate(cols):
+        s = dot(sub((col['x'], col['y']), a), u)
+        if s < -2000.0 or s > L + 2000.0:
+            continue
+        sc = _clamp(s, L)
+        if _col_contains(col, (a[0] + u[0] * sc, a[1] + u[1] * sc), BEAM_END_TOL):
+            out.append((sc, ('c', ci)))
+    for w in W:
+        st = _crossing(a, u, w.a, w.u)
+        if st is None:
+            if abs(cross(u, sub(w.a, a))) <= w.t / 2.0 + BEAM_END_TOL:
+                s0, s1 = dot(sub(w.a, a), u), dot(sub(w.b, a), u)
+                lo, hi = max(min(s0, s1), 0.0), min(max(s0, s1), L)
+                if hi - lo > 1.0:
+                    out.append((lo, ('w', w.i, w.s_of((a[0] + u[0] * lo, a[1] + u[1] * lo)))))
+                    out.append((hi, ('w', w.i, w.s_of((a[0] + u[0] * hi, a[1] + u[1] * hi)))))
+            continue
+        s, t = st
+        r = w.t / 2.0 + BEAM_END_TOL
+        if -r <= s <= L + r and -bw / 2.0 - BEAM_END_TOL <= t <= w.L + bw / 2.0 + BEAM_END_TOL:
+            out.append((_clamp(s, L), ('w', w.i, _clamp(t, w.L))))
+    return out
+
+
+def _beam_crossings(geo, acc):
+    """Принятые балки, которые эта балка пересекает или в которые упирается: [(s, ('b', k, t))]."""
+    a, u, L, bw = geo
+    out = []
+    for k, (oa, ou, oL, ob) in acc:
+        st = _crossing(a, u, oa, ou)
+        if st is None:
+            continue
+        s, t = st
+        r = ob / 2.0 + BEAM_END_TOL
+        if -r <= s <= L + r and -bw / 2.0 - BEAM_END_TOL <= t <= oL + bw / 2.0 + BEAM_END_TOL:
+            out.append((_clamp(s, L), ('b', k, _clamp(t, oL))))
+    return out
+
+
+def _merge_supports(items):
+    """По s; опоры ближе SUP_MERGE — одна (колонна важнее стены, стена — балки)."""
+    items = sorted(items, key=lambda q: (q[0], _PRIO[q[1][0]]))
+    out = []
+    for s, r in items:
+        if out and s - out[-1][2] <= SUP_MERGE:
+            if _PRIO[r[0]] < _PRIO[out[-1][1][0]]:
+                out[-1] = (s, r, out[-1][2])
+            continue
+        out.append((s, r, s))
+    return [(s, r) for s, r, _s0 in out]
 
 
 def build(walls, columns, beams, p, dm_at, slab_at=None):
+    kinds_node = () if p.get('mode') == 'loads' else KINDS_NODE
     tol = p['node_tol']
     min_ang = p['min_angle']
     notes = []
@@ -345,7 +414,7 @@ def build(walls, columns, beams, p, dm_at, slab_at=None):
     # --- зоны k·d_m на осях
     intervals = [[] for _ in range(n)]     # (lo, hi, node_idx, s_node)
     for ni, nd in enumerate(nodes):
-        if nd['kind'] not in KINDS_NODE:
+        if nd['kind'] not in kinds_node:
             continue
         dm = dm_at(nd['pt'][0], nd['pt'][1])
         nd['dm'] = dm
@@ -394,10 +463,10 @@ def build(walls, columns, beams, p, dm_at, slab_at=None):
             mid_src.append(('seg', a[0], a[1], w.u[0], w.u[1], w.L - cur, w.t / 2.0))
         if mid_src:
             others.append({'kind': 'wall_mid', 'ids': [w.id], 'links': [w.link],
-                           'names': [w.name], 'src': mid_src, 'L': w.L, 't': w.t})
+                           'names': [w.name], 'src': mid_src, 'L': w.L, 't': w.t, 'a0': w.a})
 
     for nd in nodes:
-        if nd['kind'] not in KINDS_NODE or not nd.get('src'):
+        if nd['kind'] not in kinds_node or not nd.get('src'):
             continue
         ids, links, names = [], [], []
         for j, _d in nd['legs']:
@@ -412,11 +481,39 @@ def build(walls, columns, beams, p, dm_at, slab_at=None):
                        'links': links, 'names': names, 'dims': dims, 'flags': nd['flags'],
                        'src': nd['src']})
 
-    for bm in _supported_beams(beams, W, cols, notes):
+    used = _supported_beams(beams, W, cols, notes)
+    framed = {}                                   # индекс колонны -> id балок, опёртых на неё
+    for bm in used:
+        for _s, r in bm['_sup']:
+            if r[0] == 'c' and bm['id'] not in framed.setdefault(r[1], []):
+                framed[r[1]].append(bm['id'])
+    for bm in used:
         a, u, L, bw = bm['_geo']
+        sup = []                                  # опоры по длине балки: s — от начала балки, at — по опоре
+        for s, r in bm['_sup']:
+            if r[0] == 'c':
+                sup.append({'t': 'c', 'id': cols[r[1]]['ids'][0], 'link': cols[r[1]]['links'][0], 's': s})
+            elif r[0] == 'w':
+                sup.append({'t': 'w', 'id': W[r[1]].id, 'link': W[r[1]].link, 's': s, 'at': r[2]})
+            else:
+                sup.append({'t': 'b', 'n': r[1], 's': s, 'at': r[2]})
         others.append({'kind': 'beam', 'ids': [bm['id']], 'links': [bm.get('link') or u''],
-                       'names': [bm.get('name') or u''], 'L': L, 't': bw,
+                       'names': [bm.get('name') or u''], 'L': L, 't': bw, 'sup': sup, 'a0': a,
                        'src': [('seg', a[0], a[1], u[0], u[1], L, bw / 2.0)]})
+
+    # колонна, в которую приходят балки, — не точка продавливания: площадь забирают балки,
+    # колонна получает их реакции (+ свою малую зону)
+    if framed:
+        for ci, pt in enumerate(cols):
+            if ci not in framed:
+                continue
+            others.append({'kind': 'column_b', 'ids': pt['ids'], 'links': pt['links'],
+                           'names': pt['names'], 'src': pt['src'], 'dims': pt['dims'],
+                           'x': pt['x'], 'y': pt['y'], 'beams': framed[ci], 'L': 0.0, 't': 0.0})
+        drop = set(id(cols[ci]) for ci in framed)
+        points[:] = [pt for pt in points if id(pt) not in drop]
+        notes.append(u'{} columns with beams framing in are not checked for punching '
+                     u'(the load comes through the beams)'.format(len(framed)))
 
     stats = {'nodes': {}}
     for nd in nodes:

@@ -26,13 +26,14 @@ let s = ''; process.stdin.on('data', c => s += c); process.stdin.on('end', () =>
   const r = E.run(inp.data, inp.p, opts);
   process.stdout.write(JSON.stringify({points: r.points.map(p => ({key: p.key, n: p.n, cls: p.cls, a: p.areaMm2,
     flags: p.flags, c1: p.c1, c2: p.c2, eax: p.eax, geo: p.geo})), others: r.others.map(o => ({kind: o.kind, ids: o.ids, A: o.A})),
-    check: r.check, stats: r.stats, regions: r.regions.length}));
+    check: r.check, stats: r.stats, regions: r.regions.length,
+    loads: inp.q ? E.resolveLoads(r, f => inp.q[f] || 0) : null}));
 });
 """
 
 
-def js_run(data, p, off=None):
-    inp = json.dumps({'data': data, 'p': p, 'off': off or []})
+def js_run(data, p, off=None, q=None):
+    inp = json.dumps({'data': data, 'p': p, 'off': off or [], 'q': q})
     out = subprocess.run([NODE, '-e', RUNNER, ENGINE], input=inp.encode('utf-8'),
                          capture_output=True, timeout=120)
     assert out.returncode == 0, out.stderr.decode('utf-8', 'replace')
@@ -103,3 +104,27 @@ def test_parity_real_floor():
     with open(REAL) as f:
         data = json.load(f)
     compare(data, {'grid_mm': 150})
+
+
+# ------------------------------------------------------------- сборные плиты, балки, режим «опоры»
+
+def test_parity_precast_and_loads():
+    from tributary.tests.test_loads import precast_box, frame, continuous
+    from tributary import loads
+    for data, q in ((precast_box(), {'1': 10.0}), (frame(), {'7': 12.5}), (continuous(), {'1': 8.0})):
+        for mode in ('punch', 'loads'):
+            user = {'grid_mm': 100, 'mode': mode}
+            py, js = compare(data, user)
+            po = sorted((o['kind'], tuple(str(i) for i in o['ids']), round(o['area'] / 1e6, 2)) for o in py['others'])
+            jo = sorted((o['kind'], tuple(o['ids']), o['A']) for o in js['others'])
+            assert po == jo
+            js = js_run(data, params.merged(user), q=q)
+            r = loads.resolve(py['points'], py['others'], dict((int(k), v) for k, v in q.items()))
+            for k, c in r['columns'].items():
+                assert js['loads']['columns'][k]['N'] == pytest.approx(c['N'], rel=1e-9), k
+            for k, w in r['walls'].items():
+                jw = js['loads']['walls'][k]
+                assert jw['W'] == pytest.approx(w['W'], rel=1e-9) and jw['qmax'] == pytest.approx(w['qmax'], rel=1e-9), k
+            for jb, b in zip(js['loads']['beams'], r['beams']):
+                assert jb['R'] == pytest.approx(b['R'], rel=1e-9) and jb['qmax'] == pytest.approx(b['qmax'], rel=1e-9)
+            assert js['loads']['total'] == pytest.approx(r['total'], rel=1e-9)

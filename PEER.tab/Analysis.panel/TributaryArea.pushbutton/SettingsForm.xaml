@@ -46,6 +46,22 @@
       </Grid>
     </GroupBox>
 
+    <GroupBox Header="Precast slabs and mode">
+      <Grid>
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+        <TextBlock Grid.Row="0" Text="One-way (precast) slab: words in the type name"
+                   ToolTip="Comma separated, any case. Hebrew precast word and a thickness like 30+5 are always recognised"/>
+        <TextBox Grid.Row="0" Grid.Column="1" x:Name="precast_mask" Width="150" HorizontalContentAlignment="Left"/>
+        <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Foreground="#6b7385" TextWrapping="Wrap" Margin="0,0,0,4"
+                   Text="Always one-way: type names with the Hebrew precast word or a thickness like 30+5. The span direction is set in the plan."/>
+        <CheckBox Grid.Row="2" Grid.ColumnSpan="2" x:Name="mode_loads"
+                  Content="Open the plan in the Support loads mode (beams, walls, columns)"/>
+      </Grid>
+    </GroupBox>
+
     <GroupBox Header="Effective depth  d_m = h − c_nom − Ø">
       <Grid>
         <Grid.ColumnDefinitions>
