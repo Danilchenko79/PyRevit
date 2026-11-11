@@ -15,6 +15,10 @@ DEFAULTS = {
     'z_tol': 50.0,        # допуск по высоте «опора доходит до низа плиты», мм
     'link_mask': u'-ST-', # колонны/стены берутся из связей, в имени которых есть эта строка
     'use_beams': 1.0,     # 1 — балки выше толщины плиты (прямые и обратные) — линейные опоры
+    'mode': u'punch',     # punch — точки продавливания; loads — нагрузки на балки, стены, колонны
+    'precast_mask': u'PRECAST,HOLLOW',  # сборные плиты (в одну сторону) — слова в имени типа через
+                          # запятую; לוחדים и толщина вида «30+5» узнаются всегда (oneway.is_precast)
+    'bin_mm': 500.0,      # шаг эпюры нагрузки вдоль балки/стены
     # начальные значения для HTML-схемы (там меняются на лету, по плитам)
     'g_add': 0.0,         # постоянная сверх собственного веса (полы, перегородки), кН/м²
     'q_live': 0.0,        # полезная, кН/м²
@@ -66,6 +70,10 @@ def validate(p):
     for k in ('k_zone', 'edge_k', 'opening_k', 'pylon_ratio', 'grid_mm'):
         if p[k] <= 0:
             raise ValueError(u'{} must be > 0'.format(k))
+    if p['mode'] not in (u'punch', u'loads'):
+        raise ValueError(u'mode must be punch or loads')
+    if p['bin_mm'] < 100:
+        raise ValueError(u'bin_mm < 100')
     if p['grid_mm'] < 20 or p['grid_mm'] > 500:
         raise ValueError(u'grid_mm outside 20..500 mm')
     if p['q_d'] < 0:

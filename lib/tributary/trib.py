@@ -197,12 +197,13 @@ def _bbox(c):
     return c[1] - r, c[2] - r, c[1] + r, c[2] + r
 
 
-def assign(grid, sources):
+def assign(grid, sources, kind=None):
     """sources — список src-кортежей (см. supports). Возвращает (labels, dist):
-    labels[idx] — индекс источника или -1 (ячейка плиты без опоры / вне плиты)."""
+    labels[idx] — индекс источника или -1 (ячейка плиты без опоры / вне плиты).
+    kind — свой вид ячеек вместо grid.kind (oneway.kinds_two_way: сборные плиты закрыты)."""
     comp = [_compile(s) for s in sources]
     nx, ny, s = grid.nx, grid.ny, grid.s
-    kind = grid.kind
+    kind = grid.kind if kind is None else kind
     N = nx * ny
     INF = float('inf')
     dist = [INF] * N
@@ -256,18 +257,18 @@ def assign(grid, sources):
                 dist[k] = nd
                 label[k] = li
                 heapq.heappush(heap, (nd, k, li))
-    _fill_hidden(grid, label, dist)
+    _fill_hidden(grid, label, dist, kind)
     return label, dist
 
 
 _NBS = ((-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (1, -1), (-1, 1), (1, 1))
 
 
-def _fill_hidden(grid, label, dist):
+def _fill_hidden(grid, label, dist, kind=None):
     """Проход 2: ячейки плиты, не видимые ни от одной опоры (карман за шахтой, за входящим
     углом), получают метку по кратчайшему пути в обход (геодезическое расстояние по сетке)."""
     nx, ny, s = grid.nx, grid.ny, grid.s
-    kind = grid.kind
+    kind = grid.kind if kind is None else kind
     hidden = set(idx for idx in range(nx * ny) if kind[idx] == SLAB and label[idx] < 0)
     if not hidden:
         return

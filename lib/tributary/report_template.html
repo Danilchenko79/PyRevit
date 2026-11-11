@@ -9,14 +9,14 @@
   --bg:#f4f5f7;--fg:#1c2230;--muted:#6b7385;--line:#dde1e8;--card:#ffffff;--card2:#f8f9fb;
   --accent:#1f5fbf;--accent-soft:#e3ecfa;--warn:#b25b00;--warn-soft:#fff1e0;--bad:#b3261e;--bad-soft:#fde8e6;--ok:#1e7a3c;--ok-soft:#e3f4e8;
   --plan:#ffffff;--wall:#3a4252;--col:#1c2230;--beam:#8a94a8;--slabline:#1c2230;
-  --mid:#eceef2;--beamz:#dde3ee;--border:rgba(255,255,255,.9);--sel:#1f5fbf;--meas:#c2185b;--off:#c2185b;
+  --mid:#eceef2;--beamz:#dde3ee;--colbz:#d3e2f6;--border:rgba(255,255,255,.9);--sel:#1f5fbf;--meas:#c2185b;--off:#c2185b;
   --shadow:0 1px 2px rgba(16,24,40,.06),0 1px 3px rgba(16,24,40,.08);
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
   --bg:#12151b;--fg:#e6e9ef;--muted:#98a0b3;--line:#2a303c;--card:#1a1e26;--card2:#20252f;
   --accent:#6ea2ff;--accent-soft:#1f2b44;--warn:#f0a44b;--warn-soft:#3a2a15;--bad:#ff7a70;--bad-soft:#3a1c1a;--ok:#5cc98a;--ok-soft:#173022;
   --plan:#161a21;--wall:#c9cfdb;--col:#e6e9ef;--beam:#7b86a0;--slabline:#c9cfdb;
-  --mid:#2a2f3a;--beamz:#2c3444;--border:rgba(0,0,0,.55);--sel:#6ea2ff;--meas:#ff6fa8;--off:#ff6fa8;
+  --mid:#2a2f3a;--beamz:#2c3444;--colbz:#22324a;--border:rgba(0,0,0,.55);--sel:#6ea2ff;--meas:#ff6fa8;--off:#ff6fa8;
   --shadow:none;}}
 *{box-sizing:border-box}
 html,body{margin:0;background:var(--bg);color:var(--fg);font:13px/1.45 "Segoe UI",Arial,sans-serif}
@@ -186,6 +186,13 @@ tr.slabrow.on td{background:var(--accent-soft)}
 .ch{color:var(--accent);font-weight:600}
 table.kv input.hin{width:58px}
 table.kv input.hin.ch{border-color:var(--accent);color:var(--accent);font-weight:600}
+.ldl text{font-size:10.5px;font-weight:600;fill:var(--fg);paint-order:stroke;stroke:var(--plan);stroke-width:3px;stroke-linejoin:round;text-anchor:middle;dominant-baseline:central}
+.ldl,.spanar{pointer-events:none}
+.ldl rect{fill:var(--col);stroke:var(--plan);stroke-width:1.5}
+.spanar path{stroke:var(--accent);stroke-width:2;fill:none;stroke-linecap:round}
+.spanar text{font-size:10px;fill:var(--accent);text-anchor:middle;paint-order:stroke;stroke:var(--plan);stroke-width:3px}
+.prof{width:100%;height:64px;display:block;margin:6px 0 2px}
+.prof rect{fill:var(--accent);opacity:.75}
 @media (max-width:1000px){main.work{grid-template-columns:1fr;height:auto}.stage{height:65vh}aside.panel{height:62vh}}
 </style>
 </head>
@@ -193,6 +200,7 @@ table.kv input.hin.ch{border-color:var(--accent);color:var(--accent);font-weight
 <header class="top">
   <div><h1 id="h1"></h1><div class="sub" id="sub"></div></div>
   <div class="grow"></div>
+  <div class="seg" id="modes" title="Punching: punching points and their check. Support loads: line loads on beams and walls, beam reactions, loads on columns"><button data-m="punch">Punching</button><button data-m="loads">Support loads</button></div>
   <div class="seg" id="units" title="Units of forces and loads (1 t = 10 kN)"><button data-u="t">t</button><button data-u="kN">kN</button></div>
   <button class="btn" id="btnRevit" title="Supports, added / edited walls, columns, beams and slab thickness back as in the Revit model. Loads and factors are kept">Reset to Revit</button>
   <button class="btn" id="btnCsv" title="Point table with the current loads and supports">Export CSV</button>
@@ -268,7 +276,7 @@ function fmt(v, d) {
 function clone(o) { return JSON.parse(JSON.stringify(o)); }
 var DARK = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
 var KL = {column: 'Column', pylon: 'Pier', wall_L: 'Wall corner L', wall_T: 'Wall T-junction', wall_X: 'Wall crossing X',
-  wall_end: 'Wall end', wall_mid: 'Wall', beam: 'Beam', none: 'Unsupported'};
+  wall_end: 'Wall end', wall_mid: 'Wall', beam: 'Beam', column_b: 'Column (beams)', none: 'Unsupported'};
 var CL = {'int': 'interior', edge: 'edge', corner: 'corner'};
 
 // ------------------------------------------------------------ состояние
@@ -276,7 +284,7 @@ var LSKEY = 'trib:' + D.meta.doc + ':' + D.meta.level;
 var S = {unit: 't', tf: 10, gG: D.defaults.gamma_g, gQ: D.defaults.gamma_q, rho: 25, own: true,
   floors: {}, hOv: {}, pts: {}, beta: clone(D.params.beta), color: 'check', lbl: 'A',
   layers: {zones: true, borders: true, walls: true, beams: true, cols: true, nums: true, lbls: true},
-  off: [], beamOn: [], calc: {}, rf: {}, open: {chk: true}, tblOpen: false,
+  off: [], beamOn: [], calc: {}, rf: {}, open: {chk: true}, tblOpen: false, mode: D.params.mode === 'loads' ? 'loads' : 'punch', ow: {},
   edit: newEdit(), esel: null,
   sel: [], tool: 'select', meas: [], draft: null, filter: 'all', q: '', sort: {k: 'n', d: 1}};
 // правки плана: добавленные опоры (id N1, N2…) и изменённая геометрия опор модели (по ключу w:/c:/b:)
@@ -301,7 +309,7 @@ var FL = {}; FLOORS.forEach(function (f) { FL[f.id] = f; S.floors[f.id] = {g: D.
     if (!o) return;
     if (o.v >= 2 && o.unit) S.unit = o.unit;       // до v2 по умолчанию были кН — теперь тонны
     if (o.v >= 3) { S.gG = o.gG != null ? o.gG : S.gG; S.gQ = o.gQ != null ? o.gQ : S.gQ; }   // до v3 γ по умолчанию были 1.35 / 1.5
-    ['rho', 'own', 'color', 'lbl', 'off', 'beamOn', 'calc', 'rf', 'open', 'tblOpen'].forEach(function (k) { if (o[k] != null) S[k] = o[k]; });
+    ['rho', 'own', 'color', 'lbl', 'off', 'beamOn', 'calc', 'rf', 'open', 'tblOpen', 'mode', 'ow'].forEach(function (k) { if (o[k] != null) S[k] = o[k]; });
     if (o.layers) for (var k in o.layers) S.layers[k] = o.layers[k];
     if (o.floors) for (var f in o.floors) if (S.floors[f]) S.floors[f] = o.floors[f];
     if (o.hOv) for (var hf in o.hOv) if (FL[hf]) S.hOv[hf] = o.hOv[hf];
@@ -314,13 +322,14 @@ function save() {
   RFB = null;
   try {
     localStorage.setItem(LSKEY, JSON.stringify({v: 3, unit: S.unit, gG: S.gG, gQ: S.gQ, rho: S.rho, own: S.own, color: S.color, lbl: S.lbl,
-      layers: S.layers, floors: S.floors, hOv: S.hOv, pts: S.pts, beta: S.beta, off: S.off, beamOn: S.beamOn, calc: S.calc, rf: S.rf, open: S.open, tblOpen: S.tblOpen, edit: S.edit}));
+      layers: S.layers, floors: S.floors, hOv: S.hOv, pts: S.pts, beta: S.beta, off: S.off, beamOn: S.beamOn, calc: S.calc, rf: S.rf, open: S.open, tblOpen: S.tblOpen, edit: S.edit,
+      mode: S.mode, ow: S.ow}));
   } catch (e) {}
 }
 
 // ------------------------------------------------------------ расчёт (движок в странице)
 var R = null, PT = {}, PTN = {}, OT = {}, USED = new Set(), MODEL = null;
-function params() { var p = clone(D.params); for (var k in S.calc) p[k] = S.calc[k]; return p; }
+function params() { var p = clone(D.params); for (var k in S.calc) p[k] = S.calc[k]; p.mode = S.mode; return p; }
 function beamOnMap() {
   var m = {}; S.beamOn.forEach(function (id) { m[id] = true; });
   S.edit.add.forEach(function (a) { if (a.type === 'b') m[a.id] = true; });     // добавленная балка — всегда опора
@@ -337,10 +346,14 @@ function model() {
       var r = clone(o); for (var f in m) r[f] = m[f]; r._edited = true; return r;
     };
   }
-  var slabs = DATA.slabs.map(function (sl) {          // толщина, изменённая в схеме
-    var hv = S.hOv[String(sl.id)];
-    if (hv == null) return sl;
-    var r = {}; for (var f in sl) r[f] = sl[f]; r.h = hv; return r;
+  var slabs = DATA.slabs.map(function (sl) {          // толщина и работа плиты (в 1 / 2 направлениях), изменённые в схеме
+    var fid = String(sl.id), hv = S.hOv[fid], ow = S.ow[fid];
+    if (hv == null && !ow) return sl;
+    var r = {}; for (var f in sl) r[f] = sl[f];
+    if (hv != null) r.h = hv;
+    if (ow && ow.on != null) r.oneway = ow.on;
+    if (ow && ow.ang != null) r.span = [Math.cos(ow.ang * Math.PI / 180), Math.sin(ow.ang * Math.PI / 180)];
+    return r;
   });
   var M = {slabs: slabs, walls: (DATA.walls || []).map(one('w')), columns: (DATA.columns || []).map(one('c')),
     beams: (DATA.beams || []).map(one('b'))};
@@ -359,11 +372,13 @@ function compute() {
   R.points.forEach(function (p) { p.sk = 'p:' + p.key; PT[p.sk] = p; PTN[p.n] = p; });
   R.others.forEach(function (o) { o.sk = skOther(o); OT[o.sk] = o; });
   R.none.sk = 'none';
+  BEAMS = R.others.filter(function (o) { return o.kind === 'beam'; });
   USED = new Set(R.beamsUsed.map(String));
   S.sel = S.sel.filter(function (sk) { return !!objOf(sk); });
   R.ms = Math.round(performance.now() - t0);
   buildDynamic(); restyleSupports(); update();
-  $('#sub').textContent = D.meta.doc + ' · level ' + D.meta.level + ' · ' + R.points.length + ' punching points · ' +
+  modesUi();
+  $('#sub').textContent = D.meta.doc + ' · level ' + D.meta.level + ' · ' + (S.mode === 'loads' ? 'support loads · ' : R.points.length + ' punching points · ') +
     D.meta.date + (S.off.length || S.beamOn.length || nEdits() ? ' · supports changed in the plan: ' + (S.off.length + S.beamOn.length + nEdits()) : '') +
     (nH() ? ' · slab thickness changed: ' + nH() : '');
   var nr = nRevit(), br = $('#btnRevit');
@@ -373,7 +388,7 @@ var pending = null;
 function recompute() {
   $('#busy').style.display = 'block';
   clearTimeout(pending);
-  pending = setTimeout(function () { compute(); $('#busy').style.display = 'none'; renderSup(); }, 40);
+  pending = setTimeout(function () { compute(); $('#busy').style.display = 'none'; renderSup(); renderLoads(); }, 40);
 }
 function objOf(sk) {
   if (!sk) return null;
@@ -428,6 +443,116 @@ function minH(p, c) {
   }
   return {h: null, fid: fid};
 }
+// ------------------------------------------------------------ нагрузки на опоры (engine.resolveLoads)
+var LR = null, LRB = {}, BEAMS = [];
+function qdF(f) { var L = fl(String(f)); return S.gG * L.g + S.gQ * L.q; }      // расчётная нагрузка плиты, кН/м²
+function resolveLR() {
+  LR = null; LRB = {};
+  if (S.mode !== 'loads' || !R) return;
+  LR = ENG.resolveLoads(R, qdF);
+  LR.beams.forEach(function (b) { LRB[b.ids.join(',')] = b; });
+}
+var SHORT_MM = 1000;      // стена/балка короче — показывается полная нагрузка N, а не q на метр
+function isShort(o) { return (o.kind === 'wall_mid' || o.kind === 'beam') && (o.Lx || 0) < SHORT_MM; }
+function sumP(P) { return P.reduce(function (t, x) { return t + x[1]; }, 0); }
+function aOf(o) { var t = 0; for (var f in o.af) t += o.af[f]; return t; }
+// нагрузка одной опоры: {N — всего на опору, q — max кН/м, R — реакции балки, from — откуда}
+function loadOf(o) {
+  if (!LR || !o || !o.kind) return null;
+  if (o.kind === 'column' || o.kind === 'column_b') {
+    var c = LR.columns[ENG.objKey('c', o.links0, o.ids[0])];
+    return c ? {N: c.N, direct: c.direct, beams: c.beams, from: c.from} : null;
+  }
+  if (o.kind === 'pylon' || o.kind === 'wall_mid') {
+    var w = LR.walls[ENG.objKey('w', o.links0, o.ids[0])];
+    return w ? {N: w.W + sumP(w.P), direct: w.W, beams: sumP(w.P), q: w.qmax, L: w.L, P: w.P,
+      from: w.P.map(function (x) { return x[2]; })} : null;
+  }
+  if (o.kind === 'beam') {
+    var b = LRB[o.ids.join(',')];
+    return b ? {N: b.W, q: b.qmax, L: b.L, R: b.R, P: b.P, free: b.free} : null;
+  }
+  return null;
+}
+function posOf(o) {
+  if (!o) return null;
+  if (o.x != null) return {x: o.x, y: o.y};
+  if (o.axis) return {x: o.axis[0] + o.axis[2] * o.Lx / 2, y: o.axis[1] + o.axis[3] * o.Lx / 2};
+  return null;
+}
+function supTxt(r) {                 // опора балки: колонна / стена / балка
+  if (r.t === 'c') return 'column ' + r.id;
+  if (r.t === 'w') return 'wall ' + r.id;
+  var b = BEAMS[r.n];
+  return 'beam ' + (b ? b.ids[0] : '?');
+}
+function supsTxt(o) {
+  return (o.sup || []).map(function (r) { return supTxt(r) + ' @ ' + fmt(r.s / 1000, 2); }).join('; ');
+}
+function profVals(o) {
+  var nb = 0, v = [], f;
+  for (f in o.prof) nb = Math.max(nb, o.prof[f].length);
+  for (var i = 0; i < nb; i++) {
+    var a = 0, w = o.bin / 1000;
+    for (f in o.prof) if (i < o.prof[f].length) a += qdF(f) * o.prof[f][i];
+    v.push(w > 1e-6 ? a / w : 0);
+  }
+  return v;
+}
+function profSvg(o) {
+  if (!o.prof) return '';
+  var v = profVals(o);
+  if (!v.length) return '';
+  var mx = Math.max.apply(null, v) || 1, W = 300, H = 64, bw = W / v.length;
+  return '<svg class="prof" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">' + v.map(function (x, i) {
+    var hh = x / mx * (H - 4);
+    return '<rect x="' + (i * bw).toFixed(1) + '" y="' + (H - hh).toFixed(1) + '" width="' + Math.max(bw - 0.6, 0.6).toFixed(1) + '" height="' + hh.toFixed(1) + '"/>'; }).join('') +
+    '</svg><div style="display:flex;justify-content:space-between;gap:8px"><span class="mini">0</span><span class="mini">line load q<sub>d</sub>(x), max ' +
+    fmt(outF(mx), 2) + ' ' + uF() + '/m · step ' + fmt(o.bin / 1000, 2) + ' m</span><span class="mini">' + fmt(o.Lx / 1000, 2) + ' m</span></div>';
+}
+function loadCard(o) {
+  var ld = loadOf(o), html = '', F = function (v) { return fmt(outF(v), 1) + ' ' + uF(); };
+  html += '<div class="phead">' + (o.n ? '<div class="num" style="background:' + pointColor(o) + '">' + o.n + '</div>' : '') +
+    '<div><div class="k">' + esc(KL[o.kind] || 'Zone') + (o.t ? ' · ' + (o.kind === 'beam' ? 'b ' : 't ') + o.t + ' mm' : '') + '</div><div class="hint">ElementId ' +
+    esc(o.ids.join(', ')) + (o.links && o.links.length ? ' · ' + esc(o.links.join(', ')) : '') + '</div></div></div>';
+  if (!ld) return html + '<p class="mini">No load data for this support.</p>';
+  var A = aOf(o);
+  if (o.kind === 'beam') {
+    html += '<div class="kpis">' + kpi('Length', fmt(ld.L, 2), 'm') + kpi('Tributary area', fmt(A, 2), 'm²') + kpi('q<sub>d</sub> max', fmt(outF(ld.q), 2), uF() + '/m') +
+      kpi('Total on the beam', fmt(outF(ld.N), 1), uF(), true) + kpi('Supports', String(ld.R.length)) +
+      kpi('R max', ld.R.length ? fmt(outF(Math.max.apply(null, ld.R)), 1) : '—', uF()) + '</div>';
+    html += profSvg(o);
+    html += '<table class="kv"><tr><th>Support</th><th>x, m</th><th>R, ' + uF() + '</th></tr>' + (o.sup || []).map(function (r, j) {
+      return '<tr><td>' + esc(supTxt(r)) + '</td><td>' + fmt(r.s / 1000, 2) + '</td><td>' + fmt(outF(ld.R[j]), 1) + '</td></tr>'; }).join('') +
+      (ld.free ? '<tr><td colspan="3" style="color:var(--bad)">No supports — the load of this beam is lost</td></tr>' : '') + '</table>';
+    if (ld.P.length) html += '<table class="kv"><tr><th>Point load from beams</th><th>x, m</th><th>' + uF() + '</th></tr>' + ld.P.map(function (x) {
+      return '<tr><td></td><td>' + fmt(x[0], 2) + '</td><td>' + fmt(outF(x[1]), 1) + '</td></tr>'; }).join('') + '</table>';
+    html += '<p class="mini">Spans between the supports along the beam are simply supported, an overhang goes to the end support. A beam resting on another beam passes its reaction to it as a point load.</p>';
+  } else if (o.kind === 'wall_mid' || o.kind === 'pylon') {
+    var Lm = ld.L || (o.L ? o.L / 1000 : 0);
+    html += '<div class="kpis">' + (Lm ? kpi('Length', fmt(Lm, 2), 'm') : '') + kpi('Tributary area', fmt(A, 2), 'm²') +
+      (o.kind === 'wall_mid' && !isShort(o) ? kpi('q<sub>d</sub> max', fmt(outF(ld.q), 2), uF() + '/m') + (Lm ? kpi('q<sub>d</sub> average', fmt(outF(ld.direct) / Lm, 2), uF() + '/m') : '') : '') +
+      kpi('Total on the ' + (o.kind === 'pylon' ? 'pier' : 'wall'), fmt(outF(ld.N), 1), uF(), true) + '</div>';
+    if (o.kind === 'wall_mid' && !isShort(o)) html += profSvg(o);
+    if (isShort(o)) html += '<p class="mini">Wall shorter than ' + fmt(SHORT_MM / 1000, 1) + ' m — works as a column: the total load is given, not the load per metre.</p>';
+    if (ld.P.length) html += '<table class="kv"><tr><th>Beam reaction</th><th>at, m</th><th>' + uF() + '</th></tr>' + ld.P.map(function (x) {
+      return '<tr><td>beam ' + esc(x[2]) + '</td><td>' + fmt(x[0], 2) + '</td><td>' + fmt(outF(x[1]), 1) + '</td></tr>'; }).join('') + '</table>';
+  } else {
+    html += '<div class="kpis">' + kpi('Own zone', fmt(A, 2), 'm²') + kpi('From the own zone', fmt(outF(ld.direct), 1), uF()) +
+      kpi('From beams', fmt(outF(ld.beams), 1), uF()) + kpi('N on the column', fmt(outF(ld.N), 1), uF(), true) + '</div>';
+    if (ld.from.length) html += '<p class="mini">Beams framing in: ' + esc(ld.from.join(', ')) + '. The column is not checked for punching.</p>';
+  }
+  if (Object.keys(o.af).length) html += sec('floors', 'Load by slab', floorRows(o));
+  return html;
+}
+function loadTip(o) {
+  var ld = loadOf(o);
+  if (!ld) return '';
+  if (o.kind === 'beam') return 'q max ' + fmt(outF(ld.q), 1) + ' ' + uF() + '/m · R ' + ld.R.map(function (x) { return fmt(outF(x), 1); }).join(' / ') + ' ' + uF();
+  if (o.kind === 'wall_mid' && !isShort(o)) return 'q max ' + fmt(outF(ld.q), 1) + ' ' + uF() + '/m · total ' + fmt(outF(ld.N), 1) + ' ' + uF();
+  return 'N ' + fmt(outF(ld.N), 1) + ' ' + uF();
+}
+
 // ------------------------------------------------------------ проверка продавливания (Excel компании, engine.punch)
 var RFB = null;                      // общие входы проверки (params + вкладка Loads), кэш до save()/compute()
 function rfBase() { if (!RFB) { RFB = params(); for (var k in S.rf) RFB[k] = S.rf[k]; } return RFB; }
@@ -558,7 +683,8 @@ function regionFill(rg) {
   if (rg.t === 'none') return 'url(#noneHatch)';
   if (rg.t === 'wall_mid') return 'var(--mid)';
   if (rg.t === 'beam') return 'var(--beamz)';
-  return pointColor(PTN[rg.n]);
+  if (rg.t === 'column_b') return 'var(--colbz)';
+  return PTN[rg.n] ? pointColor(PTN[rg.n]) : 'var(--mid)';
 }
 
 // ------------------------------------------------------------ статичная часть схемы
@@ -589,6 +715,12 @@ function drawSlabHl() {               // контур плиты, выбранн
 var gBeam = mk('g', {}, svg), gWall = mk('g', {}, svg), gCol = mk('g', {}, svg);
 var gMeas = mk('g', {'class': 'meas'}, svg), gBub = mk('g', {}, svg), gMl = mk('g', {'class': 'mlbl'}, svg), gHnd = mk('g', {}, svg);
 var snapEl = mk('circle', {'class': 'snap', r: 0, display: 'none'}, svg);
+var gSpan = mk('g', {}, svg), gLd = mk('g', {}, svg), LDL = [];
+function ringCenter(r) {
+  var a = 0, cx = 0, cy = 0;
+  for (var i = 0; i < r.length; i++) { var p = r[i], q = r[(i + 1) % r.length], c = p[0] * q[1] - q[0] * p[1]; a += c; cx += (p[0] + q[0]) * c; cy += (p[1] + q[1]) * c; }
+  return Math.abs(a) < 1e-9 ? r[0] : [cx / (3 * a), cy / (3 * a)];
+}
 DATA.slabs.forEach(function (s) {
   (s.holes || []).forEach(function (hl) { mk('path', {d: ringD(hl), 'class': 'holef'}, gHoles); });
   mk('path', {d: ringD(s.outer) + (s.holes || []).map(ringD).join(''), 'class': 'slab'}, gSlab);
@@ -764,6 +896,26 @@ function buildDynamic() {
     g._lb = mk('text', {'class': 'lb', x: 14, y: 1}, g);
     BUB[p.n] = g;
   });
+  // стрелки пролёта сборных плит (в одном направлении)
+  gSpan.innerHTML = '';
+  (R.dirs || []).forEach(function (d, k) {
+    if (!d) return;
+    var c = ringCenter(MODEL.slabs[k].outer), g = mk('g', {'class': 'sc spanar'}, gSpan);
+    g._x = c[0]; g._y = -c[1];
+    mk('path', {d: 'M-34,0L34,0M-34,0l9,-6M-34,0l9,6M34,0l-9,-6M34,0l-9,6', transform: 'rotate(' + (-Math.atan2(d[1], d[0]) * 180 / Math.PI) + ')'}, g);
+    mk('text', {y: -12}, g).textContent = 'one-way';
+  });
+  // подписи нагрузок (режим «опоры»): колонны с балками, балки, стены
+  gLd.innerHTML = ''; LDL = [];
+  if (S.mode === 'loads') R.others.forEach(function (o) {
+    if (o.kind !== 'column_b' && o.kind !== 'beam' && o.kind !== 'wall_mid') return;
+    var ps = posOf(o); if (!ps) return;
+    var g = mk('g', {'class': 'sc ldl'}, gLd);
+    g._x = ps.x; g._y = -ps.y;
+    if (o.kind === 'column_b') mk('rect', {x: -4, y: -4, width: 8, height: 8}, g);
+    g._t = mk('text', {y: o.kind === 'column_b' ? 13 : -8}, g);
+    LDL.push({g: g, o: o});
+  });
   applyVB();
 }
 
@@ -924,6 +1076,7 @@ function hover(e) {
   if (!sk) { tip.style.display = 'none'; setHover(null); return; }
   var o = objOf(sk), c = calc(o);
   setHover(e.target.tagName === 'path' ? e.target : null);
+  if (LR && sk !== 'none') { placeTip(e, '<b>' + esc(refTitle(sk)) + '</b><br>A ' + fmt(c.A, 2) + ' m² · ' + loadTip(o)); return; }
   placeTip(e, '<b>' + esc(refTitle(sk)) + '</b><br>A ' + fmt(c.A, 2) + ' m² · V<sub>d</sub> ' + fmt(outF(c.Vd), 1) + ' ' + uF() +
     (c.beta ? ' · β·V<sub>d</sub> ' + fmt(outF(c.bVd), 1) : '') + (c.chk ? '<br>' + resBadge(c.chk) + ' η ' + fmt(c.chk.eta, 2) : ''));
 }
@@ -950,6 +1103,7 @@ function status() {
 
 // ------------------------------------------------------------ перерисовка
 function paint() {
+  resolveLR();
   maxLoad = 1;
   R.points.forEach(function (p) { var c = calc(p); maxLoad = Math.max(maxLoad, c.bVd != null ? c.bVd : c.Vd); });
   REG.forEach(function (r) { r.el.setAttribute('fill', regionFill(r.rg)); });
@@ -959,8 +1113,14 @@ function paint() {
     var t = S.lbl === 'A' ? fmt(c.A, 1) + ' m²' : S.lbl === 'Vd' ? fmt(outF(c.Vd), 0) + ' ' + uF()
       : S.lbl === 'eta' ? (c.chk ? 'η ' + fmt(c.chk.eta, 2) : '')
       : S.lbl === 'bVd' ? (c.bVd != null ? fmt(outF(c.bVd), 0) + ' ' + uF() : '') : '';
+    if (LR) { var ld = loadOf(p); t = ld ? 'N ' + fmt(outF(ld.N), 0) + ' ' + uF() : ''; }
     g._lb.textContent = S.layers.lbls ? t : '';
   });
+  LDL.forEach(function (l) {
+    var ld = loadOf(l.o);
+    l.g._t.textContent = !ld ? '' : l.o.kind === 'column_b' || isShort(l.o) ? 'N ' + fmt(outF(ld.N), 0) + ' ' + uF() : fmt(outF(ld.q), 1) + ' ' + uF() + '/m';
+  });
+  gLd.style.display = S.layers.lbls && LR ? '' : 'none';
   gZ.style.display = S.layers.zones ? '' : 'none';
   svg.classList.toggle('noborders', !S.layers.borders);
   gWall.style.display = S.layers.walls ? '' : 'none';
@@ -993,6 +1153,10 @@ function legend() {
   else html = '<div class="row">Each punching point has its own colour</div>';
   html += '<div class="row"><span class="sw" style="background:var(--mid)"></span>Walls (middle parts, concave junctions)</div>' +
     '<div class="row"><span class="sw" style="background:var(--beamz)"></span>Supporting beams</div>';
+  if (R.others.some(function (o) { return o.kind === 'column_b'; }))
+    html += '<div class="row"><span class="sw" style="background:var(--colbz)"></span>Columns with beams (load via beams' + (S.mode === 'loads' ? '' : ', no punching') + ')</div>';
+  if ((R.dirs || []).some(Boolean)) html += '<div class="row"><span style="color:var(--accent);font-weight:700">⟷</span>&nbsp;Span of one-way (precast) slabs</div>';
+  if (S.mode === 'loads') html += '<div class="row mini">Labels: N on columns, q<sub>d</sub> max on beams and walls (' + uF() + ', ' + uF() + '/m); walls shorter than 1 m — N</div>';
   if (S.off.length) html += '<div class="row"><span class="sw" style="border-color:var(--off);background:repeating-linear-gradient(45deg,var(--off) 0 2px,transparent 2px 5px)"></span>Switched off in the plan: ' + S.off.length + '</div>';
   if (R.none.A > 0) html += '<div class="row"><span class="sw" style="background:rgba(211,47,47,.35)"></span>Unsupported</div>';
   $('#legend').innerHTML = html;
@@ -1067,6 +1231,7 @@ function renderSel() {
     bindBack(); return;
   }
   var sk = S.sel[0], o = objOf(sk), c = calc(o), html = back;
+  if (LR && sk !== 'none') { T.innerHTML = back + loadCard(o); bindSecs(T); bindBack(); return; }
   if (sk.charAt(0) === 'p') {
     var p = o;
     html += '<div class="phead"><div class="num" style="background:' + pointColor(p) + '">' + p.n + '</div><div><div class="k">' + esc(KL[p.kind]) +
@@ -1121,6 +1286,17 @@ function renderSel() {
 }
 function bindBack() { var b = $('#selBack'); if (b) b.addEventListener('click', function () { S.sel = []; refreshSel(); }); }
 function selectN(n) { var p = PTN[n]; if (!p) return; S.sel = [p.sk]; refreshSel(); showTab('sel'); centerOn(p); }
+function dirOf(fid) {
+  if (!R || !MODEL) return null;
+  for (var k = 0; k < MODEL.slabs.length; k++) if (String(MODEL.slabs[k].id) === fid) return R.dirs[k];
+  return null;
+}
+function spanCell(fid) {
+  var d = dirOf(fid);
+  return '<label class="mini' + (S.ow[fid] ? ' ch' : '') + '" title="' + (S.ow[fid] ? 'changed in the plan' : 'by the type name') + '"><input type="checkbox" data-ow="' + esc(fid) + '"' +
+    (d ? ' checked' : '') + '> 1-way</label>' + (d ? '<div><button class="lnk" data-rot="' + esc(fid) + '" title="Turn the span by 90°">' +
+    ((Math.round(Math.atan2(d[1], d[0]) * 180 / Math.PI) + 360) % 180) + '° ↻</button></div>' : '');
+}
 function renderLoads() {
   var T = $('#tab-loads');
   var rows = FLOORS.map(function (f) {
@@ -1128,6 +1304,7 @@ function renderLoads() {
     return '<tr class="slabrow' + (S.slabHl === f.id ? ' on' : '') + '" data-slab="' + esc(f.id) + '"><td title="Show on the plan">' + esc(f.id) + '<div class="mini">' + esc(f.name) + '</div></td>' +
       '<td><input class="hin' + (chg ? ' ch' : '') + '" data-h="' + esc(f.id) + '" type="number" step="10" min="50" value="' + Math.round(hOf(f.id)) + '"' +
       ' title="' + (chg ? 'changed; model ' + Math.round(f.h) + ' mm' : 'as in the model') + '">' + (chg ? '<div class="mini">model ' + Math.round(f.h) + '</div>' : '') + '</td>' +
+      '<td>' + spanCell(f.id) + '</td>' +
       '<td>' + fmt(f.area, 1) + '</td><td>' + fmt(outF(L.gown), 2) + '</td>' +
       '<td><input class="inp" data-f="' + esc(f.id) + '" data-k="g" type="number" step="0.1" value="' + (+outF(num(st.g)).toFixed(3)) + '"></td>' +
       '<td><input class="inp" data-f="' + esc(f.id) + '" data-k="q" type="number" step="0.1" value="' + (+outF(num(st.q)).toFixed(3)) + '"></td></tr>';
@@ -1143,8 +1320,9 @@ function renderLoads() {
     '<label>LL, ' + uQ() + '</label><input id="allQ" class="inp" type="number" step="0.1" placeholder="live load">' +
     '<label>h, mm</label><input id="allH" class="inp" type="number" step="10" min="50" placeholder="slab thickness"></div>' +
     '<div class="row2"><button class="btn primary" id="applyAll">Apply to all</button><span class="mini">empty fields are not changed</span></div></div>' +
-    '<div class="card"><h3>Per slab</h3><table class="kv"><tr><th>Slab</th><th>h, mm</th><th>A, m²</th><th title="self-weight">SW</th><th>DL</th><th>LL</th></tr>' + rows + '</table>' +
-    '<p class="mini" style="margin:6px 0 0">Click a row to show the slab on the plan. SW (self-weight), DL, LL in ' + uQ() + '. Thickness changes d<sub>m</sub>, self-weight and the punching check' +
+    '<div class="card"><h3>Per slab</h3><table class="kv"><tr><th>Slab</th><th>h, mm</th><th title="one-way (precast) slab and its span direction">Span</th><th>A, m²</th><th title="self-weight">SW</th><th>DL</th><th>LL</th></tr>' + rows + '</table>' +
+    '<p class="mini" style="margin:6px 0 0">Click a row to show the slab on the plan. SW (self-weight), DL, LL in ' + uQ() + '. Thickness changes d<sub>m</sub>, self-weight and the punching check. ' +
+    'Span: 1-way = precast slab (לוחדים, 30+5…) — load only along the span; ↻ turns the span by 90°. For hollow-core planks SW = ρ·h is too high — reduce DL or ρ' +
     (nH() ? ' · <button class="lnk" id="hResetAll">thickness as in the model</button>' : '') + '</p></div>' +
     '<div class="card"><h3>Combination</h3><div class="frm"><label>γ<sub>G</sub></label><input id="gG" type="number" step="0.05" value="' + S.gG + '">' +
     '<label>γ<sub>Q</sub></label><input id="gQ" type="number" step="0.05" value="' + S.gQ + '">' +
@@ -1175,10 +1353,17 @@ function renderLoads() {
     if (setH(inp.dataset.h, inp.value)) { save(); recompute(); }
     renderLoads(); }); });
   T.querySelectorAll('tr.slabrow').forEach(function (tr) { tr.addEventListener('click', function (e) {
-    if (e.target.tagName === 'INPUT') return;
+    if (e.target.tagName === 'INPUT' || e.target.closest('label,button')) return;
     S.slabHl = S.slabHl === tr.dataset.slab ? null : tr.dataset.slab;
     drawSlabHl(); T.querySelectorAll('tr.slabrow').forEach(function (r) { r.classList.toggle('on', r.dataset.slab === S.slabHl); });
   }); });
+  T.querySelectorAll('input[data-ow]').forEach(function (inp) { inp.addEventListener('change', function () {
+    var o = S.ow[inp.dataset.ow] || {}; o.on = inp.checked; if (!inp.checked) delete o.ang;
+    S.ow[inp.dataset.ow] = o; save(); recompute(); }); });
+  T.querySelectorAll('[data-rot]').forEach(function (b) { b.addEventListener('click', function () {
+    var fid = b.dataset.rot, d = dirOf(fid); if (!d) return;
+    var o = S.ow[fid] || {}; o.on = true; o.ang = (Math.round(Math.atan2(d[1], d[0]) * 180 / Math.PI) + 90 + 360) % 360;
+    S.ow[fid] = o; save(); recompute(); }); });
   var hr = $('#hResetAll'); if (hr) hr.addEventListener('click', function () { S.hOv = {}; save(); renderLoads(); recompute(); });
   T.querySelectorAll('input[data-rf]').forEach(function (inp) { inp.addEventListener('change', function () {
     var k = inp.dataset.rf, v = num(inp.value);
@@ -1306,7 +1491,41 @@ document.addEventListener('pointerdown', function (e) {
   if (!P.hidden && !P.contains(e.target) && !e.target.closest('#btnView')) { P.hidden = true; $('#btnView').classList.remove('on'); }
 });
 // сводка по уровню — вкладка Results, когда ничего не выбрано
+function sumLoadsHtml() {
+  var rows = loadRows(), ck = R.check, loadAll = 0, sC = 0, sW = 0, nC = 0, nW = 0, nB = 0, free = [];
+  rows.forEach(function (r) {
+    if (r.o.kind === 'column' || r.o.kind === 'column_b') { sC += r.N || 0; nC++; }
+    else if (r.o.kind === 'wall_mid' || r.o.kind === 'pylon') { sW += r.N || 0; nW++; }
+    else if (r.o.kind === 'beam') { nB++; if (r.ld && r.ld.free) free.push(r.o.ids[0]); }
+  });
+  FLOORS.forEach(function (f) { loadAll += f.area * qdF(f.id); });
+  var loads = !FLOORS.every(function (f) { return !num(S.floors[f.id].g) && !num(S.floors[f.id].q); });
+  var top = rows.filter(function (r) { return r.o.kind === 'column' || r.o.kind === 'column_b' || r.o.kind === 'pylon'; })
+    .sort(function (a, b) { return (b.N || 0) - (a.N || 0); }).slice(0, 10);
+  var html = '<ol class="steps"><li class="' + (loads ? 'done' : '') + '"><span>' + (loads ? 'Loads entered' : 'Enter the loads DL and LL') +
+    ' — <button class="lnk" data-go="loads">Slabs &amp; loads</button> (there also: one-way precast slabs and their span)</span></li>' +
+    '<li><span>Click a beam, wall or column on the plan or in the table below — line load diagram, reactions, N.</span></li></ol>';
+  html += '<div class="card"><h3>Support loads (design values)</h3><table class="kv">' +
+    '<tr><td>Columns and columns with beams · ' + nC + '</td><td>' + fmt(outF(sC), 1) + ' ' + uF() + '</td></tr>' +
+    '<tr><td>Walls and piers · ' + nW + '</td><td>' + fmt(outF(sW), 1) + ' ' + uF() + '</td></tr>' +
+    '<tr><td>Σ to vertical supports</td><td><b>' + fmt(outF(sC + sW), 1) + ' ' + uF() + '</b></td></tr>' +
+    '<tr><td>(γG·g + γQ·q) × slab area</td><td>' + fmt(outF(loadAll), 1) + ' ' + uF() + '</td></tr>' +
+    '<tr><td>Beams (load passed on to the supports)</td><td>' + nB + '</td></tr>' +
+    (ck.area_none_m2 > 0 ? '<tr><td>Unsupported slab</td><td>' + fmt(ck.area_none_m2, 2) + ' m²</td></tr>' : '') + '</table>' +
+    (free.length ? '<p class="mini" style="color:var(--bad)">Beams switched on manually without supports: ' + esc(free.join(', ')) + ' — their load is lost.</p>' : '') + '</div>';
+  if (top.length) html += '<div class="card"><h3>Most loaded columns</h3><table class="kv">' + top.map(function (r) {
+    return '<tr><td><button class="lnk" data-sk="' + esc(r.o.sk) + '">' + esc(KL[r.o.kind]) + ' ' + esc(r.o.ids[0]) + '</button></td><td>' + fmt(outF(r.N), 1) + ' ' + uF() + '</td></tr>'; }).join('') + '</table></div>';
+  if (R.notes.length) html += sec('notes', 'Notes (' + R.notes.length + ')', '<ul style="margin:0;padding-left:18px">' + R.notes.map(function (n) { return '<li>' + esc(n) + '</li>'; }).join('') + '</ul>');
+  html += sec('about', 'How it is computed', '<p class="mini" style="margin:0">Two-way slabs: zone boundary = bisector between neighbouring supports (triangles and trapezoids on beams and walls). ' +
+    'One-way (precast) slabs: each strip goes along the span to the nearest support in front or behind; supports parallel to the span get nothing. ' +
+    'Walls: the whole wall is one support, line load q<sub>d</sub>(x) by ' + fmt((D.params.bin_mm || 500) / 1000, 2) + ' m steps. ' +
+    'Beams: supports are found along the whole beam (columns under it, walls and beams it crosses or ends on); spans between them are simply supported, overhangs go to the end support; ' +
+    'a beam resting on another beam passes its reaction to it as a point load; a column with beams gets their reactions plus its own small zone. ' +
+    'Precast is recognised by the type name (לוחדים, thickness like 30+5, or the words in the settings).</p>');
+  return html;
+}
 function sumHtml() {
+  if (LR) return sumLoadsHtml();
   var ck = R.check, tot = ck.area_poly_m2 || 1;
   var parts = [[ck.area_points_m2, 'var(--accent)', 'punching points'], [ck.area_walls_beams_m2, 'var(--beam)', 'walls and beams'], [ck.area_none_m2, 'var(--bad)', 'unsupported']];
   var totV = 0, ptV = 0, loadAll = 0, kinds = {}, st = R.stats.nodes || {}, rc = {ok: 0, reinf: 0, thick: 0}, bad = {reinf: [], thick: []}, worst = null;
@@ -1349,7 +1568,9 @@ function bindSum(T) {
   bindSecs(T);
   T.querySelectorAll('[data-n]').forEach(function (b) { b.addEventListener('click', function () { selectN(+b.dataset.n); }); });
   T.querySelectorAll('[data-go]').forEach(function (b) { b.addEventListener('click', function () { showTab(b.dataset.go); }); });
+  T.querySelectorAll('[data-sk]').forEach(function (b) { b.addEventListener('click', function () { selectSk(b.dataset.sk); }); });
 }
+function selectSk(sk) { var o = objOf(sk); if (!o) return; S.sel = [sk]; refreshSel(); showTab('sel'); var ps = posOf(o); if (ps) centerOn(ps); }
 
 // ------------------------------------------------------------ таблица
 var COLS = [
@@ -1377,7 +1598,48 @@ var COLS = [
 ];
 var FILTERS = [['all', 'All'], ['column', 'Columns'], ['pylon', 'Piers'], ['wall_L', 'L corners'], ['wall_end', 'Wall ends'], ['flags', 'Flagged'],
   ['thick', 'Thicken'], ['reinf', 'Reinforce']];
+function loadRows() {
+  var out = [];
+  R.points.concat(R.others).forEach(function (o) {
+    if (['column', 'pylon', 'column_b', 'beam', 'wall_mid'].indexOf(o.kind) < 0) return;
+    var ld = loadOf(o) || {};
+    out.push({o: o, ld: ld, A: aOf(o), L: ld.L != null ? ld.L : (o.L ? o.L / 1000 : null), q: ld.q != null ? ld.q : null,
+      nS: ld.R ? ld.R.length : null, Rmax: ld.R && ld.R.length ? Math.max.apply(null, ld.R) : null, N: ld.N != null ? ld.N : null, from: (ld.from || []).join(', ')});
+  });
+  return out;
+}
+var LCOLS = [
+  {k: 'kind', t: 'Type', l: 1, v: function (r) { return KL[r.o.kind] + (r.o.n ? ' #' + r.o.n : ''); }},
+  {k: 'ids', t: 'ElementId', l: 1, v: function (r) { return r.o.ids.join(', '); }},
+  {k: 'L', t: 'L, m', f: 2, v: function (r) { return r.L; }},
+  {k: 'A', t: 'A, m²', f: 2, v: function (r) { return r.A; }},
+  {k: 'q', t: 'q_d max', u: '/m', f: 1, v: function (r) { return r.q != null && !isShort(r.o) ? outF(r.q) : null; }},
+  {k: 'nS', t: 'Supports', f: 0, v: function (r) { return r.nS; }},
+  {k: 'Rmax', t: 'R max', u: '', f: 1, v: function (r) { return r.Rmax != null ? outF(r.Rmax) : null; }},
+  {k: 'N', t: 'N / total', u: '', f: 1, v: function (r) { return r.N != null ? outF(r.N) : null; }},
+  {k: 'from', t: 'From beams', l: 1, v: function (r) { return r.from; }}
+];
+function renderLoadTable() {
+  var rows = loadRows();
+  $('#tblsum').textContent = 'Support loads table (' + rows.length + ')';
+  $('#chips').style.display = 'none';
+  if (!$('#tblbox').open) return;
+  var q = S.q.trim().toLowerCase();
+  var list = rows.filter(function (r) { return !q || r.o.ids.join(' ').indexOf(q) >= 0 || (KL[r.o.kind] || '').toLowerCase().indexOf(q) >= 0; });
+  var col = LCOLS.filter(function (c) { return c.k === S.sort.k; })[0] || LCOLS[0];
+  list.sort(function (a, b) { var x = col.v(a), y = col.v(b); if (x == null) return 1; if (y == null) return -1; return (x > y ? 1 : x < y ? -1 : 0) * S.sort.d; });
+  $('#tbl thead').innerHTML = '<tr>' + LCOLS.map(function (c) {
+    return '<th data-k="' + c.k + '"' + (c.l ? ' class="l"' : '') + '>' + esc(c.t) + (c.u != null ? ', ' + uF() + c.u : '') + (S.sort.k === c.k ? (S.sort.d > 0 ? ' ▲' : ' ▼') : '') + '</th>'; }).join('') + '</tr>';
+  $('#tbl tbody').innerHTML = list.map(function (r) {
+    return '<tr data-sk="' + esc(r.o.sk) + '"' + (S.sel.indexOf(r.o.sk) >= 0 ? ' class="sel"' : '') + '>' + LCOLS.map(function (c) {
+      var v = c.v(r);
+      return '<td' + (c.l ? ' class="l"' : '') + '>' + (c.f != null ? fmt(v, c.f) : esc(v == null || v === '' ? '—' : v)) + '</td>'; }).join('') + '</tr>';
+  }).join('');
+  $('#tblcount').textContent = list.length + ' of ' + rows.length;
+}
 function renderTable() {
+  if (LR) return renderLoadTable();
+  $('#chips').style.display = '';
   $('#tblsum').textContent = 'Punching points table (' + R.points.length + ')';
   if (!$('#tblbox').open) return;
   var q = S.q.trim().toLowerCase();
@@ -1405,9 +1667,10 @@ $('#tblbox').addEventListener('toggle', function () { S.tblOpen = $('#tblbox').o
 $('#tbl thead').addEventListener('click', function (e) { var th = e.target.closest('th'); if (!th) return; var k = th.dataset.k; S.sort = {k: k, d: S.sort.k === k ? -S.sort.d : 1}; renderTable(); });
 $('#tbl tbody').addEventListener('click', function (e) {
   var tr = e.target.closest('tr'); if (!tr) return;
-  var p = PTN[+tr.dataset.n];
-  if (e.ctrlKey || e.metaKey || e.shiftKey) { var i = S.sel.indexOf(p.sk); if (i >= 0) S.sel.splice(i, 1); else S.sel.push(p.sk); } else S.sel = [p.sk];
-  refreshSel(); showTab('sel'); centerOn(p);
+  var sk = tr.dataset.sk || (PTN[+tr.dataset.n] || {}).sk, p = objOf(sk);
+  if (!p) return;
+  if (e.ctrlKey || e.metaKey || e.shiftKey) { var i = S.sel.indexOf(sk); if (i >= 0) S.sel.splice(i, 1); else S.sel.push(sk); } else S.sel = [sk];
+  refreshSel(); showTab('sel'); var ps = posOf(p); if (ps) centerOn(ps);
 });
 function centerOn(p) {
   var r = svg.getBoundingClientRect(), w = Math.min(VB.w, 20000), hh = w * (r.height / (r.width || 1));
@@ -1429,7 +1692,29 @@ function chkCsv(p, c, n2, qq) {
     qq(ch.label), n2(ch.Asw, 2), ch.m == null ? '' : ch.m, ch.sr == null ? '' : Math.round(ch.sr * 1000), n2(ch.Asa, 2), n2(ch.Asb, 2), qq(ch.warn.join('; ')),
     inp.fck, qq('D' + inp.top_d1 + '@' + inp.top_s1 + (inp.top_d2 > 0 ? ' + D' + inp.top_d2 + '@' + inp.top_s2 : ''))];
 }
+function download(lines, name) {
+  var blob = new Blob(['﻿' + lines.join('\r\n')], {type: 'text/csv;charset=utf-8'}), a = h('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = (name + '_' + D.meta.doc + '_' + D.meta.level + '.csv').replace(/[^\w.\-]+/g, '_');
+  document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}
+function loadsCsv() {
+  var n2 = function (v, d) { return v == null || !isFinite(v) ? '' : v.toFixed(d); };
+  var qq = function (s) { return '"' + String(s == null ? '' : s).replace(/"/g, '""') + '"'; };
+  var lines = [['Type', 'ElementId', 'Link', 'L, m', 'A, m²', 'q_d max, ' + uF() + '/m', 'N / total, ' + uF(),
+    'Supports along the beam (x, m)', 'Reactions, ' + uF(), 'From beams', 'X, m', 'Y, m'].map(qq).join(',')];
+  loadRows().forEach(function (r) {
+    var o = r.o, ps = posOf(o) || {};
+    lines.push([qq(KL[o.kind] + (o.n ? ' #' + o.n : '')), qq(o.ids.join(', ')), qq((o.links || []).join(', ')), n2(r.L, 2), n2(r.A, 2),
+      n2(r.q != null && !isShort(o) ? outF(r.q) : null, 2), n2(r.N != null ? outF(r.N) : null, 1),
+      qq(supsTxt(o)), qq(r.ld.R ? r.ld.R.map(function (x) { return outF(x).toFixed(1); }).join('; ') : ''), qq(r.from), n2(ps.x / 1000, 3), n2(ps.y / 1000, 3)].join(','));
+  });
+  lines.push('', qq('Loads: design (gamma_G ' + S.gG + ', gamma_Q ' + S.gQ + '). One-way slabs: ' +
+    ((R.dirs || []).map(function (d, k) { return d ? String(MODEL.slabs[k].id) : null; }).filter(Boolean).join(', ') || 'none')));
+  download(lines, 'support_loads');
+}
 $('#btnCsv').addEventListener('click', function () {
+  if (LR) { loadsCsv(); return; }
   var n2 = function (v, d) { return v == null || !isFinite(v) ? '' : v.toFixed(d); };
   var qq = function (s) { return '"' + String(s == null ? '' : s).replace(/"/g, '""') + '"'; };
   var lines = [['#', 'Type', 'Position', 'A, m²', 'SW+DL, ' + uF(), 'LL, ' + uF(), 'k', 'dV, ' + uF(), 'V_d, ' + uF(), 'beta', 'beta*V_d, ' + uF(), 'h, mm', 'd_m, mm', 'c1/la, mm', 'c2/lb, mm',
@@ -1501,13 +1786,19 @@ document.addEventListener('keydown', function (e) {
   else if (k === '+' || k === '=') zoomBy(0.8); else if (k === '-') zoomBy(1.25);
 });
 document.querySelectorAll('#units button').forEach(function (b) { b.addEventListener('click', function () { S.unit = b.dataset.u; save(); unitsUi(); update(); renderLoads(); }); });
-function nRevit() { return S.off.length + S.beamOn.length + nEdits() + nH(); }
+function nRevit() { return S.off.length + S.beamOn.length + nEdits() + nH() + Object.keys(S.ow).length; }
+function modesUi() { document.querySelectorAll('#modes button').forEach(function (b) { b.classList.toggle('on', b.dataset.m === S.mode); }); }
+document.querySelectorAll('#modes button').forEach(function (b) { b.addEventListener('click', function () {
+  if (S.mode === b.dataset.m) return;
+  S.mode = b.dataset.m; S.sel = []; S.sort = {k: S.mode === 'loads' ? 'N' : 'n', d: S.mode === 'loads' ? -1 : 1};
+  save(); modesUi(); recompute();
+}); });
 $('#btnRevit').addEventListener('click', function () {
   var n = nRevit();
   if (!n || !confirm('Reset the plan to the Revit model?\n\nRemoved: switched-off / switched-on supports, added and edited walls, columns, beams, ' +
-    'changed slab thickness (' + n + ' changes).\nKept: loads, γ, β, k, ΔV, concrete and bars.')) return;
+    'changed slab thickness and one-way slabs (' + n + ' changes).\nKept: loads, γ, β, k, ΔV, concrete and bars.')) return;
   var keep = S.edit; S.edit = newEdit(); S.edit.seq = keep.seq; S.edit.nw = keep.nw; S.edit.nc = keep.nc;
-  S.off = []; S.beamOn = []; S.hOv = {}; S.esel = null;
+  S.off = []; S.beamOn = []; S.hOv = {}; S.ow = {}; S.esel = null;
   save(); renderLoads(); recompute();
 });
 function unitsUi() { document.querySelectorAll('#units button').forEach(function (b) { b.classList.toggle('on', b.dataset.u === S.unit); }); }

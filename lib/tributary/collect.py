@@ -127,7 +127,8 @@ class _Box(object):
 
 def collect(doc, level, p, floor_ids=None):
     data = {'doc_title': doc.Title,
-            'level': {'name': level.Name, 'id': eid_int(level.Id), 'elev_mm': round(level.Elevation * FT, 1)},
+            # ProjectElevation, не Elevation: Elevation считается от базы отметок типа уровня
+            'level': {'name': level.Name, 'id': eid_int(level.Id), 'elev_mm': round(level.ProjectElevation * FT, 1)},
             'slabs': [], 'walls': [], 'columns': [], 'beams': [], 'skipped': [], 'links': []}
     sk = data['skipped']
     for f in level_slabs(doc, level, floor_ids):
@@ -141,7 +142,14 @@ def collect(doc, level, p, floor_ids=None):
         return data
     zb_lo = min(s['z_bot'] for s in data['slabs'])
     zt_hi = max(s['z_top'] for s in data['slabs'])
-    h_max = max(s['h'] for s in data['slabs'])
+    h_min = min(s['h'] for s in data['slabs'])
+
+    def h_at(pt):
+        """Толщина плиты над точкой плана (наибольшая из кусков, в чей габарит попадает), иначе min."""
+        hs = [s['h'] for s in data['slabs']
+              if min(q[0] for q in s['outer']) <= pt[0] <= max(q[0] for q in s['outer'])
+              and min(q[1] for q in s['outer']) <= pt[1] <= max(q[1] for q in s['outer'])]
+        return max(hs) if hs else h_min
     ztol = p['z_tol']
     box = _Box(data['slabs'], 1000.0)
 
@@ -157,9 +165,16 @@ def collect(doc, level, p, floor_ids=None):
             if not isinstance(w, Wall) or not is_structural_wall(w):
                 continue
             try:
-                if w.WallType.Kind in (WallKind.Stacked, WallKind.Curtain):
-                    continue
+                kind = w.WallType.Kind
             except Exception:
+                continue
+            if kind in (WallKind.Stacked, WallKind.Curtain):
+                z0, z1 = _z_range(w, T)
+                bb = w.get_BoundingBox(None)
+                if supports_slab(z0, z1) and bb is not None and \
+                        box.hits([_xy(T.OfPoint(bb.Min)), _xy(T.OfPoint(bb.Max))]):
+                    sk.append({'id': eid_int(w.Id), 'link': lname, 'what': u'wall',
+                               'reason': u'stacked / curtain — ignored'})
                 continue
             z0, z1 = _z_range(w, T)
             if not supports_slab(z0, z1):
@@ -218,7 +233,7 @@ def collect(doc, level, p, floor_ids=None):
             if not isinstance(bm, FamilyInstance):
                 continue
             z0, z1 = _z_range(bm, T)
-            if z0 is None or z1 < zb_lo - ztol or z0 > zt_hi + ztol or z1 - z0 < h_max + ztol:
+            if z0 is None or z1 < zb_lo - ztol or z0 > zt_hi + ztol:
                 continue
             crv = getattr(bm.Location, 'Curve', None)
             if not isinstance(crv, Line):
@@ -226,6 +241,10 @@ def collect(doc, level, p, floor_ids=None):
             a = _xy(T.OfPoint(crv.GetEndPoint(0)))
             b = _xy(T.OfPoint(crv.GetEndPoint(1)))
             if not box.hits([a, b]):
+                continue
+            # балка не глубже плиты над ней — скрытая, не опора (сравнение с плитой у балки,
+            # а не с самой толстой на уровне: под тонкой плитой балки иначе пропадали)
+            if z1 - z0 < h_at(((a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0)) + ztol:
                 continue
             kind, bw, _h = section_dims(bm.Symbol)
             data['beams'].append({'id': eid_int(bm.Id), 'link': lname, 'name': _name(bm),

@@ -3,7 +3,7 @@
 import time
 
 from tributary import params as P
-from tributary import supports, trib, classify, punching, vector
+from tributary import supports, trib, classify, punching, vector, oneway, loads
 
 
 def run(data, user_params=None, with_regions=True):
@@ -31,7 +31,10 @@ def run(data, user_params=None, with_regions=True):
         for s in ot['src']:
             sources.append(s)
             owner.append(('o', i))
-    label, _dist = trib.assign(grid, sources)
+    # сборные плиты: по ним не идёт разбиение «по ближайшей опоре», нагрузка — вдоль пролёта
+    dirs = oneway.setup(slabs, p)
+    label, dist = trib.assign(grid, sources, oneway.kinds_two_way(grid, dirs))
+    oneway.assign(grid, sources, dirs, label, dist, slabs)
     by_slab, none_by_slab = trib.areas_by_slab(grid, label, len(sources))
     none_area = sum(none_by_slab.values())
 
@@ -49,15 +52,19 @@ def run(data, user_params=None, with_regions=True):
             f = floor_of(k)
             obj['area_by_floor'][f] = obj['area_by_floor'].get(f, 0.0) + a
 
+    loads.profiles(grid, label, [i if kind == 'p' else len(points) + i for kind, i in owner],
+                   points + others, p['bin_mm'], floor_of)
+
     none_by_floor = {}
     for k, a in none_by_slab.items():
         none_by_floor[floor_of(k)] = none_by_floor.get(floor_of(k), 0.0) + a
 
     notes = list(topo['notes'])
-    kept, dropped = [], []
+    kept, dropped, under_pc = [], [], []
     for pt in points:
         if pt['area'] <= 0.0:
-            dropped.append(pt)
+            k = grid.slab[grid.index(pt['x'], pt['y'])] if grid.index(pt['x'], pt['y']) >= 0 else -1
+            (under_pc if k >= 0 and dirs[k] is not None else dropped).append(pt)
             continue
         h = grid.h_near(pt['x'], pt['y'])
         pt['h'] = h
@@ -124,9 +131,14 @@ def run(data, user_params=None, with_regions=True):
                      .format(none_area / 1e6))
     if dropped:
         notes.append(u'{} supports outside the slab — skipped'.format(len(dropped)))
+    if under_pc:
+        notes.append(u'{} supports under precast slabs — no punching check'.format(len(under_pc)))
+    pc = sorted(set(u'{}'.format(slabs[k].get('id', k)) for k, d in enumerate(dirs) if d is not None))
+    if pc:
+        notes.append(u'precast (one-way) slabs: {}'.format(u', '.join(pc)))
     nodes = topo['stats']['nodes']
     skipped_nodes = nodes.get('wall_L_in', 0) + nodes.get('wall_T', 0) + nodes.get('wall_X', 0)
-    if skipped_nodes:
+    if skipped_nodes and p['mode'] != u'loads':        # в режиме «опоры» узлы не проверяются вовсе
         notes.append(u'concave corners are not checked: inner L — {}, T — {}, X — {} '
                      u'(their area goes to the walls)'.format(nodes.get('wall_L_in', 0),
                                                         nodes.get('wall_T', 0), nodes.get('wall_X', 0)))
@@ -138,7 +150,7 @@ def run(data, user_params=None, with_regions=True):
         'meta': {'doc_title': data.get('doc_title'), 'level': data.get('level'),
                  'seconds': round(time.time() - t0, 1)},
         'params': p, 'rows': rows, 'points': kept, 'others': others,
-        'dropped': dropped, 'check': check, 'notes': notes, 'counts': counts,
+        'dropped': dropped + under_pc, 'dirs': dirs, 'check': check, 'notes': notes, 'counts': counts,
         'stats': topo['stats'], 'grid': grid, 'labels': label, 'regions': reg,
         'none_by_floor': none_by_floor,
         'data': data,

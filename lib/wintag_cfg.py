@@ -9,6 +9,10 @@ windows above / below when the pier heights are calculated.
 The keyword list lives in the pyRevit config (section WinTag), so it
 follows the user from project to project. Shift+Click on WinTag or
 WinTag Place edits it.
+
+Tag units: the pier strings are written in cm (default) or mm. The choice
+is the user's, stored in the same config section, independent of the
+project units. Shift+Click on WinTag -> "Tag units".
 """
 
 from pyrevit import script, forms
@@ -16,6 +20,56 @@ from pyrevit import script, forms
 SECTION = 'WinTag'
 # mamad, and the Hebrew spellings with and without the gershayim
 EXCLUDE_DEFAULT = [u'mamad', u'ממ"ד', u'ממד']
+UNITS = ('cm', 'mm')
+UNITS_DEFAULT = 'cm'
+
+
+def get_units():
+    """'cm' or 'mm' - the units the tag strings are written in."""
+    try:
+        cfg = script.get_config(SECTION)
+        u = (cfg.get_option('tag_units', None) or u'').strip().lower()
+        if u in UNITS:
+            return u
+    except Exception:
+        pass
+    return UNITS_DEFAULT
+
+
+def set_units(units):
+    cfg = script.get_config(SECTION)
+    cfg.tag_units = units
+    script.save_config()
+    return units
+
+
+def edit_units():
+    """Shift+Click: pick cm / mm. -> chosen units or None (cancelled)."""
+    cur = get_units()
+    opts = [u'cm  (25/225+25/15)', u'mm  (250/2250+250/150)']
+    pick = forms.CommandSwitchWindow.show(
+        opts, message=u'Units of the pier tag strings (now: {}). Run WinTag '
+                      u'afterwards to rewrite the strings.'.format(cur),
+        title=u'WinTag - tag units')
+    if not pick:
+        return None
+    return set_units(pick.split()[0])
+
+
+def shift_menu():
+    """Shift+Click menu of WinTag: what to edit. -> text to show or None."""
+    pick = forms.CommandSwitchWindow.show(
+        [u'Tag units (cm / mm)', u'Excluded window families'],
+        message=u'Tag units: {}   Excluded: {}'.format(
+            get_units(), u', '.join(get_exclude_keywords()) or u'(none)'),
+        title=u'WinTag - settings')
+    if not pick:
+        return None
+    if pick.startswith(u'Tag units'):
+        u = edit_units()
+        return None if u is None else u'Tag units: {}'.format(u)
+    kw = edit_exclude_keywords()
+    return None if kw is None else u'Excluded: {}'.format(u', '.join(kw) or u'(none)')
 
 
 def _split(raw):
