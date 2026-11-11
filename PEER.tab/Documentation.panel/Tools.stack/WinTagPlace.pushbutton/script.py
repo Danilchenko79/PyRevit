@@ -477,9 +477,8 @@ if __name__ == '__main__':
     except NameError:
         _shift = False
     if _shift:
-        _kw = wintag_cfg.edit_exclude_keywords()
-        if _kw is not None:
-            forms.alert(u'Excluded: {}'.format(u', '.join(_kw) or u'(none)'),
-                        title=u'WinTag Place')
+        _msg = wintag_cfg.shift_menu()
+        if _msg:
+            forms.alert(_msg, title=u'WinTag Place')
     else:
         main()

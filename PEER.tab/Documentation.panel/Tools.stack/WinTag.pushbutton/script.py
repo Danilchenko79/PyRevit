@@ -13,7 +13,9 @@ Description:
                         under the window up to its own sill. Filled only
                         when there is no window below and a slab is there,
                         cleared otherwise.
-    RE string format (t = wall thickness, cm):
+    RE string format (t = wall thickness; cm or mm - Shift+Click, "Tag
+    units"; the choice is stored in the pyRevit config, not taken from the
+    project units; heights are still rounded to whole cm):
       t/h1+t2/h2  pier both under and over the slab
       +t2/h2      window head at the slab soffit - only the part above it
       t/h1        no window above, or it stands straight on the slab
@@ -61,18 +63,23 @@ if _os.path.isdir(_lib) and _lib not in _sys.path:
 from peer_log import RunLog
 import wintag_cfg
 
-# Shift+Click - edit the list of excluded window families and stop
+# Shift+Click - settings (tag units cm/mm, excluded window families) and stop
 try:
     _shift = __shiftclick__
 except NameError:
     _shift = False
 if _shift:
-    _kw = wintag_cfg.edit_exclude_keywords()
-    if _kw is not None:
-        forms.alert(u'Excluded: {}'.format(u', '.join(_kw) or u'(none)'),
-                    title=u'WinTag')
+    _msg = wintag_cfg.shift_menu()
+    if _msg:
+        forms.alert(_msg, title=u'WinTag')
     sys.exit()
 EXCLUDE_KW = wintag_cfg.get_exclude_keywords()
+TAG_UNITS  = wintag_cfg.get_units()      # 'cm' | 'mm' - user's choice, not the project units
+
+
+def tag_num(cm):
+    """Whole cm from the calculation -> number for the tag string."""
+    return int(cm) * 10 if TAG_UNITS == 'mm' else int(cm)
 
 doc  = __revit__.ActiveUIDocument.Document
 view = doc.ActiveView
@@ -807,11 +814,12 @@ def compute_for_window(w):
         seg1, seg2 = top_gap, 0
 
     if seg1 > 0 and seg2 > 0:
-        re_tag = u'{}/{}+{}/{}'.format(wall_cm, seg1, above_wall, seg2)
+        re_tag = u'{}/{}+{}/{}'.format(tag_num(wall_cm), tag_num(seg1),
+                                       tag_num(above_wall), tag_num(seg2))
     elif seg2 > 0:
-        re_tag = u'+{}/{}'.format(above_wall, seg2)
+        re_tag = u'+{}/{}'.format(tag_num(above_wall), tag_num(seg2))
     elif seg1 > 0:
-        re_tag = u'{}/{}'.format(wall_cm, seg1)
+        re_tag = u'{}/{}'.format(tag_num(wall_cm), tag_num(seg1))
     else:
         re_tag = u''
 
@@ -874,7 +882,7 @@ def compute_for_window(w):
             if bottom_gap > 0:
                 # the part ABOVE the slab (slab top -> sill), without the
                 # slab thickness - same format as the second part of RE
-                gr_tag    = u'+{}/{}'.format(wall_cm, bottom_gap)
+                gr_tag    = u'+{}/{}'.format(tag_num(wall_cm), tag_num(bottom_gap))
                 gr_reason = u'slab top -> sill'
             else:
                 gr_reason = u'window sits on the slab (gap 0)'
@@ -1058,8 +1066,9 @@ else:
         changed_count, len(window_data), verb))
 
 output.print_md(
-    u'**View:** {}   **Windows handled:** {}   **Written:** {}'
-    .format(view.Name, len(all_windows), updated))
+    u'**View:** {}   **Windows handled:** {}   **Written:** {}   '
+    u'**Tag units:** {} _(Shift+Click to change)_'
+    .format(view.Name, len(all_windows), updated, TAG_UNITS))
 
 if slab_windows:
     output.print_md(
