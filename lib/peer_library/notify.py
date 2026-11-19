@@ -32,9 +32,12 @@ def latest_time(changelog):
     return max(times) if times else u''
 
 
-def news_text(changelog, seen_until, me=u''):
-    """'3 new, 1 updated families' since seen_until (server times), others' changes only."""
+def news_text(changelog, seen_until, me=u'', used=None):
+    """'3 new, 1 updated families (incl. 1 you use: X)' since seen_until (server
+    times), others' changes only. used: IDs this user loaded recently."""
     added = updated = 0
+    mine = []
+    used = set(used or [])
     for e in (changelog or {}).get('entries') or []:
         if (e.get('time') or u'') <= seen_until or (me and e.get('by') == me):
             continue
@@ -42,12 +45,19 @@ def news_text(changelog, seen_until, me=u''):
             added += 1
         elif e.get('action') == 'updated':
             updated += 1
+            if e.get('id') in used and e.get('id') not in mine:
+                mine.append(e.get('id'))
     parts = []
     if added:
         parts.append(u'{0} new'.format(added))
     if updated:
         parts.append(u'{0} updated'.format(updated))
-    return (u', '.join(parts) + u' famil' + (u'y' if added + updated == 1 else u'ies')) if parts else u''
+    if not parts:
+        return u''
+    text = u', '.join(parts) + u' famil' + (u'y' if added + updated == 1 else u'ies')
+    if mine:
+        text += u' - updated that you use: ' + u', '.join(mine[:3]) + (u'…' if len(mine) > 3 else u'')
+    return text
 
 
 def check(toast=True):
@@ -65,7 +75,9 @@ def check(toast=True):
         config.save_local(seen_until=latest_time(log_data), notify_checked=_now())
         return None
     lines = []
-    news = news_text(log_data, seen, cfg.get('user'))
+    from peer_library import userprefs
+    prefs = userprefs.load()
+    news = news_text(log_data, seen, cfg.get('user'), prefs['recent'] + prefs['favorites'])
     if news:
         lines.append(u'Library: ' + news + u'. Open PEER → Library → What’s new.')
     if cfg.get('role') == 'admin':

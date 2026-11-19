@@ -167,6 +167,8 @@
                                         <StackPanel>
                                             <TextBlock x:Name="admin_header" FontWeight="SemiBold" FontSize="11.5"/>
                                             <WrapPanel Margin="0,6,0,0">
+                                                <Button x:Name="newver_btn" Style="{StaticResource Secondary}" Padding="8,2"
+                                                        Margin="0,0,6,6" Click="on_new_version"/>
                                                 <Button x:Name="edit_btn" Style="{StaticResource Secondary}" Padding="8,2"
                                                         Margin="0,0,6,6" Click="on_edit_info"/>
                                                 <Button x:Name="coll_add_btn" Style="{StaticResource Secondary}" Padding="8,2"
@@ -199,7 +201,8 @@
                                 </StackPanel>
                             </ScrollViewer>
                             <StackPanel Grid.Row="1" Margin="14,8,14,14">
-                                <CheckBox x:Name="overwrite_box" Margin="0,0,0,10"/>
+                                <CheckBox x:Name="overwrite_box" Margin="0,0,0,6"/>
+                                <CheckBox x:Name="all_docs_box" Margin="0,0,0,10" Visibility="Collapsed"/>
                                 <StackPanel Orientation="Horizontal">
                                     <Button x:Name="load_btn" Style="{StaticResource Primary}" Click="on_load"/>
                                     <Button x:Name="place_btn" Style="{StaticResource Secondary}" Click="on_place"/>

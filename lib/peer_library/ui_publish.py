@@ -203,6 +203,57 @@ class PublishWindow(forms.WPFWindow):
         else:
             self.status_text.Text = strings.PUBLISH_NEED_ACCEPT
 
+    # ---- card info in Excel --------------------------------------------------
+    def on_csv_export(self, sender, args):
+        from peer_library import cards_csv
+        path = forms.save_file(file_ext='csv', default_name='PEER library info')
+        if not path:
+            return
+        try:
+            n = cards_csv.export(list(self.cards.values()), path)
+        except Exception as ex:
+            log.write(u'csv export', exc=True)
+            U.error(u'{0}'.format(ex))
+            return
+        self.status_text.Text = strings.CSV_EXPORTED.format(n, path)
+        try:
+            os.startfile(path)
+        except Exception:
+            pass
+
+    def on_csv_import(self, sender, args):
+        from peer_library import cards_csv
+        path = forms.pick_file(file_ext='csv')
+        if not path:
+            return
+        try:
+            todo, problems = cards_csv.changes(list(self.cards.values()), path)
+        except Exception as ex:
+            log.write(u'csv import', exc=True)
+            U.error(u'{0}'.format(ex))
+            return
+        if not todo:
+            U.info(strings.CSV_NOTHING + (u'\n\n' + u'\n'.join(problems[:15]) if problems else u''))
+            return
+        sample = u'\n'.join(u'{0}: {1}'.format(t['id'], u', '.join(sorted(t['fields'])))
+                            for t in todo[:12])
+        msg = strings.CSV_ASK.format(len(todo), sample)
+        if problems:
+            msg += u'\n\n' + strings.CSV_PROBLEMS + u'\n' + u'\n'.join(problems[:10])
+        if not U.ask(msg):
+            return
+        ok, failed = 0, []
+        with forms.ProgressBar(title=u'Updating {value} of {max_value}') as pb:
+            for i, t in enumerate(todo):
+                pb.update_progress(i, len(todo))
+                try:
+                    card = self.backend.update_card(t['id'], t['fields'])
+                    self.cards[card['id']] = card
+                    ok += 1
+                except Exception as ex:
+                    failed.append(u'{0}: {1}'.format(t['id'], ex))
+        U.info(strings.CSV_DONE.format(ok) + (u'\n\n' + u'\n'.join(failed[:10]) if failed else u''))
+
     # ---- batch ---------------------------------------------------------
     def on_batch(self, sender, args):
         if revit_family.revit_version(self.app) != checks_file.LIBRARY_REVIT:

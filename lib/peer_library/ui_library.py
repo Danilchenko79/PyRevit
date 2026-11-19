@@ -92,6 +92,11 @@ class LibraryWindow(forms.WPFWindow):
         self.request_btn.Content = strings.BTN_REQUEST
         self.admin_header.Text = strings.ADMIN_HEADER
         self.edit_btn.Content = strings.BTN_EDIT_INFO
+        self.newver_btn.Content = strings.BTN_NEW_VERSION
+        others = self._other_projects()
+        if others:
+            self.all_docs_box.Content = strings.ALL_DOCS.format(len(others))
+            self.all_docs_box.Visibility = Visibility.Visible
         self.coll_add_btn.Content = strings.BTN_COLL_ADD
         self.coll_remove_btn.Content = strings.BTN_COLL_REMOVE
         self.deprecate_btn.Content = strings.BTN_DEPRECATE
@@ -531,7 +536,16 @@ class LibraryWindow(forms.WPFWindow):
             self.status_text.Text = u'{0}'.format(ex)
             U.error(u'{0}'.format(ex))
             return
+        other_failed = []
+        if self.all_docs_box.IsChecked:
+            for d in self._other_projects():
+                try:
+                    loader.load_family(d, path, card['id'], overwrite, types or None)
+                except Exception as ex:
+                    other_failed.append(u'{0}: {1}'.format(d.Title, ex))
         self.Cursor = None
+        if other_failed:
+            U.error(strings.OTHER_DOCS_FAILED + u'\n\n' + u'\n'.join(other_failed))
         was = it.code
         in_project = loader.project_families(self.doc)
         for x in self.items:
@@ -589,6 +603,37 @@ class LibraryWindow(forms.WPFWindow):
         if failed:
             text += u'\n\n' + u'\n'.join(failed[:10])
         U.info(text)
+
+    def _other_projects(self):
+        """Other open, editable project documents (not families, not links)."""
+        out = []
+        try:
+            for d in self.doc.Application.Documents:
+                if d.IsFamilyDocument or d.IsLinked or d.Equals(self.doc):
+                    continue
+                if getattr(d, 'IsReadOnly', False):
+                    continue
+                out.append(d)
+        except Exception:
+            log.write(u'other projects', exc=True)
+        return out
+
+    def on_new_version(self, sender, args):
+        it = self.current
+        if it is None or not self.is_admin:
+            return
+        import os
+        from pyrevit import HOST_APP
+        from peer_library.ui_publish import PublishWindow
+        xaml = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__)))), 'PEER.tab', 'Library.panel', 'Publish.smartbutton',
+            'PublishWindow.xaml')
+        win = PublishWindow(xaml, HOST_APP.app, self.backend, {'family_id': it.card['id']})
+        win.ShowDialog()
+        if win.published:
+            self._refresh_item(it, win.published)
+            self._refresh_statuses()
+            self._show_details(it)
 
     # ---- requests & issues ---------------------------------------------
     def on_request(self, sender, args):

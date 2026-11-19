@@ -52,6 +52,9 @@ ISSUE_L2 = u'What is wrong (view, parameter, type, project)'
 # ---- admin in the library window --------------------------------------------------
 ADMIN_HEADER = u'Admin'
 BTN_EDIT_INFO = u'Edit info…'
+BTN_NEW_VERSION = u'New version…'
+ALL_DOCS = u'Also load into the other open projects ({0})'
+OTHER_DOCS_FAILED = u'Loaded here, but not into:'
 BTN_COLL_ADD = u'Add to collection…'
 BTN_COLL_REMOVE = u'Remove from this collection'
 BTN_DEPRECATE = u'Deprecate…'
@@ -81,6 +84,14 @@ PS_CURRENT = u'Up to date'
 PROJ_SELECT_LIBRARY = u'Select families that are in the library.'
 PROJ_SELECT_ONE_NOTLIB = u'Select one family that is not in the library.'
 PROJ_NOT_EDITABLE = u'This family cannot be exported (system or not editable).'
+
+# ---- card info in Excel -----------------------------------------------------------
+CSV_EXPORTED = u'{0} families written to {1}. Edit name / group / tags / description / help_url, ' \
+               u'save as CSV, then "Info from Excel".'
+CSV_NOTHING = u'No changes found in the file.'
+CSV_ASK = u'Update the info of {0} families (no new versions, files are not touched)?\n\n{1}'
+CSV_PROBLEMS = u'Skipped:'
+CSV_DONE = u'Updated {0} families.'
 
 # ---- kinds of proposals ------------------------------------------------------------
 KIND_LABELS = {'new': u'New family', 'fix': u'Improvement', 'request': u'Request',

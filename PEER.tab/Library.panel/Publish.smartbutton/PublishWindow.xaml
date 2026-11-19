@@ -117,8 +117,14 @@
                     <Button x:Name="check_btn" Content="Check file" Style="{StaticResource Secondary}"
                             Click="on_check"/>
                 </StackPanel>
-                <Button x:Name="batch_btn" Content="Publish a sorted folder..." HorizontalAlignment="Right"
-                        Style="{StaticResource Secondary}" Margin="0" Click="on_batch"/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button x:Name="csv_out_btn" Content="Info to Excel..." Style="{StaticResource Secondary}"
+                            Click="on_csv_export" ToolTip="All family names, groups, tags, descriptions to a CSV for Excel"/>
+                    <Button x:Name="csv_in_btn" Content="Info from Excel..." Style="{StaticResource Secondary}"
+                            Click="on_csv_import" ToolTip="Apply the edited CSV: only changed fields, no new versions"/>
+                    <Button x:Name="batch_btn" Content="Publish a sorted folder..."
+                            Style="{StaticResource Secondary}" Margin="0" Click="on_batch"/>
+                </StackPanel>
             </Grid>
         </StackPanel>
     </Grid>

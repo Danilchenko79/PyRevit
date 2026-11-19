@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Library core without Revit:  py -3 -m unittest discover -s lib/peer_library/tests"""
 
+import io
 import os
 import shutil
 import sys
@@ -266,6 +267,9 @@ class TestChecks(unittest.TestCase):
         self.assertEqual(notify.news_text(log, '2026-11-10T00:00:00', 'dima'),
                          u'1 new, 1 updated families')
         self.assertEqual(notify.news_text(log, '2026-11-20T12:00:00'), u'')
+        log['entries'][2]['id'] = 'PEER_A'
+        self.assertIn(u'that you use: PEER_A',
+                      notify.news_text(log, '2026-11-10T00:00:00', 'dima', ['PEER_A']))
         self.assertEqual(notify.latest_time(log), '2026-11-20T12:00:00')
 
     def test_import_names_and_tags(self):
@@ -276,6 +280,30 @@ class TestChecks(unittest.TestCase):
         self.assertEqual(m.info_for('21E', u'04 Rebar\\3D Rebar\\Shapes\\21E.rfa')['name'],
                          u'Rebar shape 21E')
         self.assertEqual(m.folder_tags(u'01 Annotation\\TAGS\\BEAMS\\x.rfa'), [u'Tags', u'Beams'])
+
+    def test_cards_csv_round_trip(self):
+        from peer_library import cards_csv
+        tmp = tempfile.mkdtemp()
+        try:
+            cards = [index.new_card(id='PEER_A', name=u'Балка, "T"', group='01_Framing',
+                                    tags=[u'балка', u'T'], description=u'line1\nline2', version=2),
+                     index.new_card(id='PEER_B', name=u'B', group='05_Details', version=1)]
+            p = os.path.join(tmp, 'cards.csv')
+            self.assertEqual(cards_csv.export(cards, p), 2)
+            ch, probs = cards_csv.changes(cards, p)
+            self.assertEqual(ch, [{'id': 'PEER_A', 'fields': {'description': u'line1 / line2'}}])
+            with io.open(p, 'r', encoding='utf-8-sig') as f:
+                text = f.read()
+            text = text.replace(u'05_Details', u'09_Openings').replace(u'balka', u'x')
+            text = text.replace(u'PEER_B,B,', u'PEER_B,Беam,') + u'PEER_X,x,01_Framing,,,,,1\r\n'
+            with io.open(p, 'w', encoding='utf-8-sig') as f:
+                f.write(text)
+            ch, probs = cards_csv.changes(cards, p)
+            got = dict((c['id'], c['fields']) for c in ch)
+            self.assertEqual(got['PEER_B'], {'name': u'Беam', 'group': '09_Openings'})
+            self.assertEqual(probs, [u'PEER_X: not in the library'])
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
 
     def test_card_validation(self):
         self.assertEqual(index.validate(index.new_card(id='PEER_A', group='01_Framing',
