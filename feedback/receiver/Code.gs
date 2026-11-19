@@ -424,18 +424,41 @@ function setup() {
   if (inbox.getLastRow() < 2) rebuildInbox_();
   orderSheets_();
 
-  // installable "on edit" trigger: a simple onEdit does not run in a
-  // standalone script (SPREADSHEET_ID) - this one does, in both cases
-  ScriptApp.getProjectTriggers().forEach(function (t) {
-    if (t.getHandlerFunction() === 'onSheetEdit') ScriptApp.deleteTrigger(t);
-  });
-  ScriptApp.newTrigger('onSheetEdit').forSpreadsheet(book_()).onEdit().create();
-
   var props = PropertiesService.getScriptProperties();
   if (!props.getProperty('PEER_KEY')) {
     props.setProperty('PEER_KEY', Utilities.getUuid().replace(/-/g, ''));
   }
   Logger.log('PEER_KEY = ' + props.getProperty('PEER_KEY'));
+
+  installEditTrigger();
+}
+
+/**
+ * Installable "on edit" trigger for onSheetEdit (a simple onEdit does not run
+ * in a standalone script). Google sometimes answers "server error" here: three
+ * tries, then the manual steps in the log - setup never fails because of it.
+ * Can be run on its own from the editor.
+ */
+function installEditTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'onSheetEdit') ScriptApp.deleteTrigger(t);
+  });
+  var id = book_().getId();
+  var last;
+  for (var i = 0; i < 3; i++) {
+    try {
+      ScriptApp.newTrigger('onSheetEdit').forSpreadsheet(id).onEdit().create();
+      Logger.log('Edit trigger installed.');
+      return true;
+    } catch (err) {
+      last = err;
+      Utilities.sleep(2000);
+    }
+  }
+  Logger.log('Edit trigger NOT installed (' + last + '). Run installEditTrigger again in a ' +
+    'few minutes, or add it by hand: Triggers (clock icon) -> Add trigger -> function ' +
+    'onSheetEdit, event source "From spreadsheet", event type "On edit" -> Save.');
+  return false;
 }
 
 /** Run from the editor to cut off an old key; then update PEER settings. */

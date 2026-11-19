@@ -66,6 +66,7 @@ const sheetOrder = [];
 const sheets = {};
 const book = { active: null };
 const triggers = [];
+const triggerFailures = { left: 2 };   // the first setup() hits two "server errors" 
 const drive = { created: 0, files: [], folder: null };
 drive.folder = {
   getId: () => 'F1',
@@ -80,6 +81,7 @@ const ctx = {
   LockService: { getScriptLock: () => ({ waitLock: () => {}, releaseLock: () => {} }) },
   SpreadsheetApp: {
     getActiveSpreadsheet: () => loose({
+      getId: () => 'SHEET1',
       getSheetByName: (n) => sheets[n] || null,
       insertSheet: (n) => (sheets[n] = fakeSheet(n)),
       setActiveSheet: (sh) => { book.active = sh.name; return sh; },
@@ -104,6 +106,7 @@ const ctx = {
   },
   Utilities: {
     getUuid: () => '11111111-2222-3333-4444-555555555555',
+    sleep: () => {},
     formatDate: (d, tz, f) => d.toISOString().slice(0, 10),
     base64Decode: (b64) => Array.from(Buffer.from(b64, 'base64')),
     newBlob: (bytes, type, name) => ({ bytes, type, name }),
@@ -118,7 +121,10 @@ const ctx = {
     getProjectTriggers: () => triggers.slice(),
     deleteTrigger: (t) => { triggers.splice(triggers.indexOf(t), 1); },
     newTrigger: (fn) => {
-      const b = loose({ create: () => { const t = { getHandlerFunction: () => fn }; triggers.push(t); return t; } });
+      const b = loose({ create: () => {
+        if (triggerFailures.left > 0) { triggerFailures.left -= 1; throw new Error('server error'); }
+        const t = { getHandlerFunction: () => fn }; triggers.push(t); return t;
+      } });
       return b;
     },
     WeekDay: { MONDAY: 1 },
@@ -351,5 +357,17 @@ assert.strictEqual(top[icol('Error')], 'Exception: no wall selected');
 assert.strictEqual(top[icol('Topic')], 'Bug');
 assert.strictEqual(top[icol('Request')], '');            // "(error report)" placeholder hidden
 assert.strictEqual(top[icol('From')], 'dima');            // "(DIMA-PC)" dropped
+
+// edit trigger: Google refusing every time never breaks setup; the key is still there
+triggerFailures.left = 99;
+triggers.length = 0;
+ctx.setup();
+assert.strictEqual(triggers.length, 0);
+assert.strictEqual(props.PEER_KEY, key);
+assert.strictEqual(ctx.installEditTrigger(), false);
+triggerFailures.left = 0;
+assert.strictEqual(ctx.installEditTrigger(), true);
+ctx.installEditTrigger();
+assert.strictEqual(triggers.filter((t) => t.getHandlerFunction() === 'onSheetEdit').length, 1, 'no duplicates');
 
 console.log('receiver: all checks passed');
