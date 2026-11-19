@@ -82,7 +82,12 @@ def folder_of(card):
 
 
 def rel_path(card, ext):
-    """'01_Framing/PEER_Beam.rfa' - path inside PEER-Library, '/' separated."""
+    """Path inside PEER-Library, '/' separated. The service stores every
+    version under its own key (card['files']: '01_Framing/PEER_Beam/v3.rfa');
+    a plain folder library uses '01_Framing/PEER_Beam.rfa'."""
+    files = card.get('files') or {}
+    if files.get(ext):
+        return files[ext]
     return u'{0}/{1}{2}'.format(folder_of(card), card['id'], ext)
 
 

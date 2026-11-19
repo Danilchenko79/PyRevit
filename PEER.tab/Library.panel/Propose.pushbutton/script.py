@@ -15,7 +15,7 @@ import os
 
 from pyrevit import forms, revit
 
-from peer_library import config, log, strings
+from peer_library import config, log, session, strings
 
 XAML = os.path.join(os.path.dirname(__file__), 'ProposeWindow.xaml')
 
@@ -30,7 +30,9 @@ def main():
         forms.alert(strings.NOT_CONFIGURED + u'\n\n(Shift+Click on Library)', title=strings.APP)
         return
     from peer_library.ui_propose import ProposeWindow
-    ProposeWindow(XAML, doc, revit.uidoc, config.make_backend(cfg)).ShowDialog()
+    backend = session.connect(cfg)
+    if backend is not None:
+        ProposeWindow(XAML, doc, revit.uidoc, backend).ShowDialog()
 
 
 try:

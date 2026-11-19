@@ -1,0 +1,14 @@
+# Cloudflare Worker of the PEER Library. See README.md for the first deploy.
+name = "peer-library"
+main = "src/worker.js"
+compatibility_date = "2026-11-01"
+
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "peer-library"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "peer-library"
+# Paste the id printed by:  npx wrangler d1 create peer-library
+database_id = "PASTE-DATABASE-ID-HERE"

@@ -9,7 +9,7 @@ file still works; a missing one raises OfflineError.
 import os
 
 from peer_library import index, jsonio, rfa_info
-from peer_library.backend_base import LibraryError, OfflineError
+from peer_library.backend_base import AccessError, LibraryError, OfflineError
 
 HASH_FIELD = {'.rfa': 'sha1', '.png': 'png_sha1', '.txt': 'catalog_sha1'}
 INDEX_COPY = 'index.json'
@@ -38,12 +38,18 @@ class Cache(object):
             jsonio.write(copy, data)
             self.online = True
             return data, True
+        except AccessError:
+            raise                       # key revoked / not signed in: no offline copy
         except OfflineError:
             self.online = False
         except (IOError, OSError, LibraryError):
             if not os.path.exists(copy):
                 raise
             self.online = False
+        allowed = getattr(self.backend, 'offline_allowed', None)
+        if allowed is not None and not allowed():
+            raise AccessError(u'No connection, and the library key was last checked more than '
+                              u'14 days ago. Connect to the internet to continue.')
         data = jsonio.read(copy)
         if data is None:
             raise OfflineError(u'No connection to the library and no saved copy yet.')
@@ -87,4 +93,19 @@ class Cache(object):
             raise CorruptError(u'"{0}": the downloaded file does not match the library '
                                u'(still syncing or changed by hand). Try again later.'
                                .format(card['id']))
+        self._drop_old_versions(path, ext)
         return path
+
+    @staticmethod
+    def _drop_old_versions(path, ext):
+        """Service layout <group>/<ID>/v<N>.<ext>: keep only the newest copy."""
+        folder, name = os.path.split(path)
+        if not (name.startswith('v') and name[1:-len(ext)].isdigit()):
+            return
+        for other in os.listdir(folder):
+            if other != name and other.startswith('v') and other.endswith(ext) \
+                    and other[1:-len(ext)].isdigit():
+                try:
+                    os.remove(os.path.join(folder, other))
+                except OSError:
+                    pass

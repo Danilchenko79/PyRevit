@@ -5,3 +5,6 @@
 .venv/
 __pycache__/
 *.pyc
+
+service/node_modules/
+service/.wrangler/

@@ -18,7 +18,9 @@ Publish и Inbox — smartbutton: у роли `user` скрыты (`__selfinit__
 {"backend": "local", "root": "\\\\server\\share\\PEER", "role": "admin"}
 ```
 `root` — папка, в которой лежат `PEER-Library` и `PEER-Inbox`. Кэш — `%LOCALAPPDATA%\PEER\Library`, лог — `%APPDATA%\PEER\library.log`.
-В локальном варианте роль берётся из настроек (для пробы в офисе); настоящую защиту даёт сервис (задача 4, `backend_http.py` — не сделан).
+В локальном варианте роль берётся из настроек (для пробы в офисе); настоящую защиту даёт сервис:
+`backend: "http"` + `url` → `backend_http.py`, личный ключ (DPAPI, `keystore.py`), вход — `session.py`,
+кнопка Keys (админ). Развёртывание сервиса — `service/README.md`.
 
 ## Формат
 Формат библиотеки — **Revit 2024** (`checks_file.LIBRARY_REVIT`). Публиковать только из Revit 2024.

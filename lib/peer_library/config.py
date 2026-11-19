@@ -26,7 +26,10 @@ DEFAULTS = {
     'role': u'user',
     'user': u'',
     'overwrite_params': False,
+    'last_ok': u'',      # http: last successful key check (ISO), 14 days offline grace
 }
+
+OFFLINE_DAYS = 14
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO_FILE = os.path.join(HERE, 'settings.json')

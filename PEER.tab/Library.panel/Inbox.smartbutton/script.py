@@ -12,7 +12,7 @@ import os
 
 from pyrevit import HOST_APP, forms
 
-from peer_library import config, log, strings
+from peer_library import config, log, session, strings
 
 HERE = os.path.dirname(__file__)
 XAML = os.path.join(HERE, 'InboxWindow.xaml')
@@ -26,7 +26,7 @@ def __selfinit__(script_cmp, ui_button_cmp, __rvt__):
         if cfg['role'] != 'admin':
             ui_button_cmp.visible = False
             return True
-        if config.is_configured(cfg):
+        if cfg['backend'] == 'local' and config.is_configured(cfg):   # no network at Revit start
             n = sum(1 for p in config.make_backend(cfg).list_proposals()
                     if p.get('status') == 'pending')
             if n:
@@ -45,7 +45,13 @@ def main():
         forms.alert(strings.NOT_CONFIGURED, title=strings.APP)
         return
     from peer_library.ui_inbox import InboxWindow
-    win = InboxWindow(XAML, config.make_backend(cfg), PUBLISH_XAML, HOST_APP.app)
+    backend = session.connect(cfg)
+    if backend is None:
+        return
+    if backend.role != 'admin':
+        forms.alert(strings.NOT_ADMIN, title=strings.APP)
+        return
+    win = InboxWindow(XAML, backend, PUBLISH_XAML, HOST_APP.app)
     win.ShowDialog()
     if win.open_path:
         HOST_APP.uiapp.OpenAndActivateDocument(win.open_path)

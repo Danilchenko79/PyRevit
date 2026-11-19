@@ -9,43 +9,64 @@ families with a type catalog only the ticked types are loaded.
 Values changed in the project are kept unless you tick the overwrite box.
 
 Tabs: What's new (feed of published families) and My proposals.
+First start: paste your personal library key (from an admin).
 
-Shift+Click: library folder, open the cache or the log.
+Shift+Click: change key, sign out, library address / folder, cache, log.
 """
 
 import os
 
 from pyrevit import EXEC_PARAMS, forms, revit
 
-from peer_library import config, loader, log, strings
-from peer_library.ui_library import LibraryWindow
+from peer_library import config, keystore, loader, log, session, strings
 
 XAML = os.path.join(os.path.dirname(__file__), 'LibraryWindow.xaml')
 
 
-def pick_root(cfg):
+def pick_root():
     folder = forms.pick_folder(title=strings.PICK_ROOT)
     if not folder:
         return None
-    if not os.path.isdir(os.path.join(folder, 'PEER-Library')) and \
-            os.path.basename(folder.rstrip('\\/')) == 'PEER-Library':
+    if os.path.basename(folder.rstrip('\\/')) == 'PEER-Library':
         folder = os.path.dirname(folder.rstrip('\\/'))
     return config.save_local(root=folder, backend='local')
 
 
 def settings():
     cfg = config.load()
-    opts = [u'Library folder: {0}'.format(cfg['root'] or u'(not set)'),
+    key = keystore.load()
+    if cfg['backend'] == 'http':
+        where = u'Service: {0}'.format(cfg['url'] or u'(not set)')
+    else:
+        where = u'Folder: {0}'.format(cfg['root'] or u'(not set)')
+    opts = [u'Change my key ({0})'.format(keystore.mask(key) or u'none'),
+            u'Sign out on this computer',
+            u'Library service address...',
+            u'Use a folder instead (office trial)...',
             u'Open the local cache folder',
             u'Open the log file']
-    pick = forms.CommandSwitchWindow.show(opts, message=strings.APP)
+    pick = forms.CommandSwitchWindow.show(opts, message=u'{0}\n{1}'.format(strings.APP, where))
     if pick == opts[0]:
-        pick_root(cfg)
+        if cfg['backend'] != 'http':
+            forms.alert(u'Keys are used with the library service only.', title=strings.APP)
+            return
+        session.login(config.make_backend(cfg))
     elif pick == opts[1]:
+        session.sign_out()
+        forms.alert(u'Signed out. The next start asks for the key.', title=strings.APP)
+    elif pick == opts[2]:
+        url = forms.ask_for_string(default=cfg['url'] or u'https://',
+                                   prompt=u'Address of the library service (https://...)',
+                                   title=strings.APP)
+        if url and url.strip().startswith('https://'):
+            config.save_local(url=url.strip().rstrip('/'), backend='http')
+    elif pick == opts[3]:
+        pick_root()
+    elif pick == opts[4]:
         if not os.path.isdir(cfg['cache']):
             os.makedirs(cfg['cache'])
         os.startfile(cfg['cache'])
-    elif pick == opts[2]:
+    elif pick == opts[5]:
         if os.path.exists(log.log_file()):
             os.startfile(log.log_file())
 
@@ -64,10 +85,13 @@ def main():
     cfg = config.load()
     if not config.is_configured(cfg):
         forms.alert(strings.NOT_CONFIGURED, title=strings.APP)
-        cfg = pick_root(cfg)
+        cfg = pick_root()
         if not cfg or not config.is_configured(cfg):
             return
-    win = LibraryWindow(XAML, doc, revit.uidoc, config.make_backend(cfg), cfg)
+    backend = session.connect(cfg)
+    if backend is None:
+        return
+    win = LibraryWindow(XAML, doc, revit.uidoc, backend, config.load())
     win.ShowDialog()
     if win.place_symbol is not None:
         try:
@@ -75,6 +99,8 @@ def main():
         except Exception as ex:
             forms.alert(u'{0}'.format(ex), title=strings.APP)
 
+
+from peer_library.ui_library import LibraryWindow  # noqa: E402
 
 try:
     main()

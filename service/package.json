@@ -1,0 +1,10 @@
+{
+  "name": "peer-library-service",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test test",
+    "dev": "node test/dev_server.mjs",
+    "deploy": "npx wrangler deploy"
+  }
+}

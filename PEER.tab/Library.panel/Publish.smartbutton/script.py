@@ -15,7 +15,7 @@ import os
 
 from pyrevit import HOST_APP, forms
 
-from peer_library import config, log, strings
+from peer_library import config, log, session, strings
 
 XAML = os.path.join(os.path.dirname(__file__), 'PublishWindow.xaml')
 
@@ -38,8 +38,14 @@ def main():
     if not config.is_configured(cfg):
         forms.alert(strings.NOT_CONFIGURED, title=strings.APP)
         return
+    backend = session.connect(cfg)
+    if backend is None:
+        return
+    if backend.role != 'admin':
+        forms.alert(strings.NOT_ADMIN, title=strings.APP)
+        return
     from peer_library.ui_publish import PublishWindow
-    PublishWindow(XAML, HOST_APP.app, config.make_backend(cfg)).ShowDialog()
+    PublishWindow(XAML, HOST_APP.app, backend).ShowDialog()
 
 
 if __name__ == '__main__':
