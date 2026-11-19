@@ -19,6 +19,11 @@
 //   POST   /keys                 {name, role} -> key shown once      admin
 //   DELETE /keys/<id>            revoke                              admin
 //   GET    /audit?limit=N        last actions                        admin
+//   POST   /card                 {id, fields} info w/o new version   admin
+//   GET    /collections          kits of families                    any key
+//   PUT    /collections          {collections: [...]}                admin
+//   GET    /stats?days=90        downloads per family                any key
+//   POST   /resolve              {id, status, comment} request/issue admin
 //   POST   /access/request       {name, note} -> {id, token}         no key (sign-in window)
 //   POST   /access/status        {id, token} -> status / key once    no key
 //   GET    /access               waiting access requests             admin
@@ -39,7 +44,7 @@ const GROUPS = ['01_Framing', '02_Foundations', '03_Rebar_2D', '04_Rebar_3D_Embe
                 '06_Tags', '07_Sheets', '08_Steel', '09_Openings'];
 const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9 _\-.()+,&]*$/;
 const CARD_FIELDS = ['id', 'name', 'group', 'revit_category', 'tags', 'revit', 'description',
-                     'help_url'];
+                     'help_url', 'types'];
 
 export class HttpError extends Error {
   constructor(status, message) { super(message); this.status = status; }
@@ -267,6 +272,78 @@ async function deprecate(request, env, who) {
   });
 }
 
+// ---- card info without a new version (admin) --------------------------------------
+const INFO_FIELDS = ['name', 'tags', 'description', 'help_url', 'group', 'types', 'revit_category'];
+
+async function updateCardInfo(request, env, who) {
+  needAdmin(who);
+  const body = await request.json().catch(() => ({}));
+  const changes = body.fields || {};
+  return withLock(env, 'publish', `${who.id}:${randomToken(6)}`, async () => {
+    const index = await readJson(env, LIB + 'index.json', { format: 1, families: [] });
+    const fam = (index.families || []).find(c => c.id === String(body.id || ''));
+    if (!fam) throw new HttpError(404, 'Not in the library: ' + body.id);
+    for (const k of INFO_FIELDS) {
+      if (changes[k] === undefined) continue;
+      if (k === 'group' && !GROUPS.includes(changes[k])) throw new HttpError(400, 'unknown group');
+      if ((k === 'tags' || k === 'types') && !Array.isArray(changes[k])) throw new HttpError(400, k + ' must be a list');
+      fam[k] = k === 'types' ? changes[k].slice(0, 2000).map(String) : changes[k];
+    }
+    fam.info_updated = nowIso();
+    await putJson(env, LIB + `${fam.group}/${fam.id}/card.json`, fam);
+    await writeIndex(env, index.families);
+    await audit(env, who, 'card_info', fam.id, Object.keys(changes).join(','));
+    return json(fam);
+  });
+}
+
+// ---- collections (kits) ----------------------------------------------------------
+async function putCollections(request, env, who) {
+  needAdmin(who);
+  const body = await request.json().catch(() => null);
+  const list = body && Array.isArray(body.collections) ? body.collections : null;
+  if (!list) throw new HttpError(400, 'collections must be a list');
+  const out = [];
+  const seen = new Set();
+  for (const c of list.slice(0, 200)) {
+    const name = String(c.name || '').trim().slice(0, 80);
+    if (!name) continue;
+    const id = String(c.id || name).replace(/[^A-Za-z0-9_-]+/g, '-').slice(0, 60) || randomToken(6);
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push({ id, name, description: String(c.description || '').slice(0, 500),
+               families: (Array.isArray(c.families) ? c.families : []).slice(0, 500).map(String),
+               updated: nowIso(), by: who.name });
+  }
+  await putJson(env, LIB + 'collections.json', { format: 1, collections: out });
+  await audit(env, who, 'collections', '', String(out.length));
+  return json({ format: 1, collections: out });
+}
+
+// ---- popularity --------------------------------------------------------------------
+function familyOfPath(p) {
+  const parts = String(p || '').split('/');
+  if (parts.length >= 3) return parts[1];                       // <group>/<ID>/v<N>.rfa
+  return (parts[parts.length - 1] || '').replace(/\.rfa$/i, '');  // <group>/<ID>.rfa
+}
+
+async function stats(env, url) {
+  const days = Math.max(1, Math.min(365, parseInt(url.searchParams.get('days') || '90', 10) || 90));
+  const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 19);
+  const r = await env.DB.prepare(
+    "SELECT target, COUNT(*) AS n, COUNT(DISTINCT key_id) AS u FROM audit WHERE action = 'download' AND time >= ? GROUP BY target")
+    .bind(since).all();
+  const out = {};
+  for (const row of r.results || []) {
+    const id = familyOfPath(row.target);
+    const cur = out[id] || { downloads: 0, users: 0 };
+    cur.downloads += row.n;
+    cur.users = Math.max(cur.users, row.u);
+    out[id] = cur;
+  }
+  return json({ days, families: out });
+}
+
 // ---- proposals ----------------------------------------------------------------
 function proposalOut(row) {
   const data = JSON.parse(row.data || '{}');
@@ -279,16 +356,17 @@ async function sendProposal(request, env, who) {
   const form = await request.formData();
   let meta;
   try { meta = JSON.parse(form.get('meta') || '{}'); } catch (e) { throw new HttpError(400, 'meta is not JSON'); }
-  const rfa = await fileOf(form, 'rfa', true);
+  const fileless = meta.kind === 'request' || meta.kind === 'issue';   // "need a family" / "problem with one"
+  const rfa = await fileOf(form, 'rfa', !fileless);
   const shot = await fileOf(form, 'screenshot', false);
   const slug = (String(meta.family_id || meta.name || 'family').replace(/[^A-Za-z0-9_-]+/g, '-')
     .replace(/^-+|-+$/g, '').slice(0, 40)) || 'family';
   const user = String(who.name).replace(/[^A-Za-z0-9_-]+/g, '').slice(0, 20) || 'user';
   const stamp = nowIso().replace('T', '_').replace(/:/g, '');
   const id = `${stamp}_${user}_${slug}_${randomToken(3)}`;
-  await env.BUCKET.put(INBOX + id + '/family.rfa', rfa);
+  if (rfa) await env.BUCKET.put(INBOX + id + '/family.rfa', rfa);
   if (shot) await env.BUCKET.put(INBOX + id + '/screenshot.png', shot, { httpMetadata: { contentType: 'image/png' } });
-  const data = { ...meta, has_screenshot: !!shot };
+  const data = { ...meta, has_screenshot: !!shot, has_file: !!rfa };
   delete data.author; delete data.status; delete data.comment;
   await env.DB.prepare('INSERT INTO proposals (id, author, author_key, status, sent, data) VALUES (?, ?, ?, ?, ?, ?)')
     .bind(id, who.name, who.id, 'pending', nowIso(), JSON.stringify(data)).run();
@@ -443,6 +521,23 @@ async function route(request, env) {
     if (!obj) throw new HttpError(404, 'No such file');
     return fileResponse(obj, m[2]);
   }
+  if (method === 'POST' && path === '/resolve') {          // requests / issues: done or declined
+    needAdmin(who);
+    const body = await request.json().catch(() => ({}));
+    const status = body.status === 'accepted' ? 'accepted' : 'rejected';
+    if (status === 'rejected' && !String(body.comment || '').trim()) {
+      throw new HttpError(400, 'Write why the proposal is rejected.');
+    }
+    await resolveProposal(env, who, String(body.id || ''), status, String(body.comment || ''));
+    await audit(env, who, 'resolve', body.id, status);
+    return json({ id: body.id, status });
+  }
+  if (method === 'POST' && path === '/card') return updateCardInfo(request, env, who);
+  if (method === 'GET' && path === '/collections') {
+    return json(await readJson(env, LIB + 'collections.json', { format: 1, collections: [] }));
+  }
+  if (method === 'PUT' && path === '/collections') return putCollections(request, env, who);
+  if (method === 'GET' && path === '/stats') return stats(env, url);
   if (method === 'POST' && path === '/reject') {
     needAdmin(who);
     const body = await request.json().catch(() => ({}));

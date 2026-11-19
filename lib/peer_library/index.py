@@ -36,6 +36,7 @@ CARD_DEFAULTS = {
     'help_url': u'',
     'status': u'active',
     'history': [],
+    'types': [],          # type names (family + catalog) - search finds "HE200A"
 }
 STATUSES = ('active', 'deprecated')
 

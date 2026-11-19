@@ -38,6 +38,21 @@ def project_families(doc):
     return out
 
 
+def project_family_list(doc):
+    """[(family name, category name, PEER_Version or None)] of loadable families."""
+    out = []
+    for fam in DB.FilteredElementCollector(doc).OfClass(DB.Family):
+        try:
+            if fam.IsInPlace:
+                continue
+            cat = fam.FamilyCategory
+            out.append((fam.Name, cat.Name if cat else u'', _family_version(doc, fam)))
+        except Exception:
+            continue
+    out.sort(key=lambda r: (r[1].lower(), r[0].lower()))
+    return out
+
+
 def _family_version(doc, fam):
     for sid in fam.GetFamilySymbolIds():
         sym = doc.GetElement(sid)

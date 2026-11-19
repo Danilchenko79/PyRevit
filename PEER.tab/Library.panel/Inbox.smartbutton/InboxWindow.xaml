@@ -68,7 +68,7 @@
                     <TextBlock x:Name="d_checks" TextWrapping="Wrap"/>
                     <TextBlock Style="{StaticResource L}" Text="Screenshot"/>
                     <Image x:Name="d_shot" MaxHeight="260" Stretch="Uniform" HorizontalAlignment="Left"/>
-                    <TextBlock Style="{StaticResource L}" Text="Comment for the author (required to reject)"/>
+                    <TextBlock Style="{StaticResource L}" Text="Comment for the author (required to reject; shown to them)"/>
                     <TextBox x:Name="comment_box" Height="60" TextWrapping="Wrap" AcceptsReturn="True"
                              Padding="6,4"/>
                     <TextBlock x:Name="d_work" Margin="0,8,0,0" Foreground="#57534E" TextWrapping="Wrap"/>
@@ -82,6 +82,8 @@
                         Click="on_open"/>
                 <Button x:Name="publish_btn" Content="Publish..." Style="{StaticResource Btn}"
                         Click="on_publish"/>
+                <Button x:Name="done_btn" Content="Mark done" Style="{StaticResource Btn}"
+                        Click="on_done_req"/>
                 <Button x:Name="reject_btn" Content="Reject" Style="{StaticResource Btn2}"
                         Click="on_reject"/>
             </StackPanel>

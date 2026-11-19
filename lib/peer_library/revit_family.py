@@ -323,7 +323,7 @@ def prepare_family(app, source, family_id, version, workdir):
     results: list of (level, code, text); any 'error' = do not publish.
     """
     out = {'results': [], 'rfa': None, 'png': None, 'catalog': None,
-           'category': u'', 'revit': None}
+           'category': u'', 'revit': None, 'types': []}
     res = out['results']
     file_res, year = checks_file.check_file(source, family_id)
     res.extend(file_res)
@@ -359,6 +359,10 @@ def prepare_family(app, source, family_id, version, workdir):
             return out
         doc_res, out['category'] = family_checks(fd)
         res.extend(doc_res)
+        try:
+            out['types'] = [t.Name for t in fd.FamilyManager.Types if t.Name and t.Name.strip()]
+        except Exception:
+            out['types'] = []
         if checks_file.errors(res):
             return out
         try:

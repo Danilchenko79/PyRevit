@@ -82,7 +82,16 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
+            <ComboBox x:Name="category_box" Grid.Column="1" Width="190" Margin="10,0,0,0"
+                      VerticalContentAlignment="Center" SelectionChanged="on_filter"/>
+            <CheckBox x:Name="catalog_only" Grid.Column="2" Margin="10,0,0,0" VerticalAlignment="Center"
+                      Checked="on_filter" Unchecked="on_filter"/>
+            <ComboBox x:Name="sort_box" Grid.Column="3" Width="130" Margin="10,0,0,0"
+                      VerticalContentAlignment="Center" SelectionChanged="on_sort"/>
             <Border CornerRadius="6" Background="White" BorderBrush="#111827" BorderThickness="1.5">
                 <Grid>
                     <TextBlock x:Name="search_hint" Margin="10,7" Foreground="#78716C"
@@ -91,7 +100,7 @@
                              Padding="8,7" FontSize="14" TextChanged="on_search"/>
                 </Grid>
             </Border>
-            <TextBlock x:Name="user_text" Grid.Column="1" Margin="14,0,0,0"
+            <TextBlock x:Name="user_text" Grid.Column="4" Margin="14,0,0,0"
                        VerticalAlignment="Center" Foreground="#57534E"/>
         </Grid>
 
@@ -147,6 +156,28 @@
                                     <TextBlock x:Name="d_tags" Margin="0,6,0,0" Foreground="#57534E"
                                                TextWrapping="Wrap"/>
                                     <TextBlock x:Name="d_help" Margin="0,6,0,0"/>
+                                    <TextBlock x:Name="d_stats" Margin="0,6,0,0" Foreground="#57534E"
+                                               TextWrapping="Wrap"/>
+                                    <WrapPanel Margin="0,8,0,0">
+                                        <Button x:Name="issue_btn" Style="{StaticResource Secondary}" Padding="8,2"
+                                                Margin="0,0,6,6" Click="on_issue"/>
+                                    </WrapPanel>
+                                    <Border x:Name="admin_panel" Background="#FAFAF9" BorderBrush="#D6D3D1"
+                                            BorderThickness="1" Padding="8" Margin="0,4,0,0">
+                                        <StackPanel>
+                                            <TextBlock x:Name="admin_header" FontWeight="SemiBold" FontSize="11.5"/>
+                                            <WrapPanel Margin="0,6,0,0">
+                                                <Button x:Name="edit_btn" Style="{StaticResource Secondary}" Padding="8,2"
+                                                        Margin="0,0,6,6" Click="on_edit_info"/>
+                                                <Button x:Name="coll_add_btn" Style="{StaticResource Secondary}" Padding="8,2"
+                                                        Margin="0,0,6,6" Click="on_coll_add"/>
+                                                <Button x:Name="coll_remove_btn" Style="{StaticResource Secondary}" Padding="8,2"
+                                                        Margin="0,0,6,6" Click="on_coll_remove"/>
+                                                <Button x:Name="deprecate_btn" Style="{StaticResource Secondary}" Padding="8,2"
+                                                        Margin="0,0,6,6" Click="on_deprecate"/>
+                                            </WrapPanel>
+                                        </StackPanel>
+                                    </Border>
 
                                     <StackPanel x:Name="types_panel">
                                         <TextBlock x:Name="types_header" Style="{StaticResource H}"/>
@@ -178,6 +209,35 @@
                     </Border>
                 </Grid>
             </TabItem>
+            <TabItem x:Name="tab_project" Header="This project">
+                <Grid Margin="0,8,0,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                        <TextBlock x:Name="proj_summary" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                        <ComboBox x:Name="proj_filter" Width="220" Margin="14,0,0,0" SelectionChanged="on_proj_filter"/>
+                    </StackPanel>
+                    <ListView x:Name="proj_list" Grid.Row="1" BorderBrush="#D6D3D1" SelectionMode="Extended">
+                        <ListView.View>
+                            <GridView>
+                                <GridViewColumn Header="Family" Width="330" DisplayMemberBinding="{Binding family}"/>
+                                <GridViewColumn Header="Category" Width="170" DisplayMemberBinding="{Binding category}"/>
+                                <GridViewColumn Header="Status" Width="230" DisplayMemberBinding="{Binding status}"/>
+                                <GridViewColumn Header="In project" Width="80" DisplayMemberBinding="{Binding pv}"/>
+                                <GridViewColumn Header="Library" Width="80" DisplayMemberBinding="{Binding lv}"/>
+                            </GridView>
+                        </ListView.View>
+                    </ListView>
+                    <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,8,0,0">
+                        <Button x:Name="proj_update_btn" Style="{StaticResource Primary}" Click="on_proj_update"/>
+                        <Button x:Name="proj_propose_btn" Style="{StaticResource Secondary}" Click="on_proj_propose"/>
+                        <Button x:Name="proj_refresh_btn" Style="{StaticResource Secondary}" Click="on_proj_refresh"/>
+                    </StackPanel>
+                </Grid>
+            </TabItem>
             <TabItem x:Name="tab_news" Header="What's new">
                 <ListBox x:Name="news_list" Margin="0,8,0,0" BorderBrush="#D6D3D1" Background="White"/>
             </TabItem>
@@ -190,10 +250,16 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
             <TextBlock x:Name="status_text" Foreground="#44403C" TextWrapping="Wrap" VerticalAlignment="Center"/>
-            <Button x:Name="update_all_btn" Grid.Column="1" Style="{StaticResource Primary}" Margin="8,0,0,0"
+            <Button x:Name="coll_load_btn" Grid.Column="1" Style="{StaticResource Primary}" Margin="8,0,0,0"
+                    Visibility="Collapsed" Click="on_coll_load"/>
+            <Button x:Name="update_all_btn" Grid.Column="2" Style="{StaticResource Primary}" Margin="8,0,0,0"
                     Visibility="Collapsed" Click="on_update_all"/>
+            <Button x:Name="request_btn" Grid.Column="3" Style="{StaticResource Secondary}" Margin="8,0,0,0"
+                    Click="on_request"/>
         </Grid>
     </Grid>
 </Window>

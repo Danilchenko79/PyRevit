@@ -168,6 +168,26 @@ class TestHttp(unittest.TestCase):
         self.assertEqual(keystore.load(), st['key'])
         self.assertNotIn('key', newbie.access_status(r['id'], r['token']))
 
+    def test_card_info_collections_stats_requests(self):
+        admin, user = self.backend(self.admin_key), self.backend(self.user_key)
+        self.publish(admin)
+        with self.assertRaises(AccessError):
+            user.update_card('PEER_Beam', {'name': u'x'})
+        c = admin.update_card('PEER_Beam', {'name': u'Балка', 'tags': [u'балка'], 'types': ['B1']})
+        self.assertEqual((c['name'], c['version'], c['types']), (u'Балка', 1, ['B1']))
+        admin.put_collections([{'name': u'Старт', 'families': ['PEER_Beam']}])
+        cc = cache.Cache(os.path.join(self.tmp, 'cache'), user)
+        self.assertEqual(cc.collections()[0]['families'], ['PEER_Beam'])
+        idx, _ = cc.index()
+        cc.get(idx['families'][0])
+        self.assertEqual(cc.stats()['PEER_Beam']['downloads'], 1)
+        pid = user.send_proposal({'kind': 'request', 'name': u'Анкер M24', 'reason': u'нужен'})
+        self.assertIsNone(admin.download_proposal(pid, os.path.join(self.tmp, 'w')))
+        admin.resolve_proposal(pid, 'accepted', u'добавлен')
+        self.assertEqual(user.my_proposals()[0]['status'], 'accepted')
+        self.stop()
+        self.assertEqual(cc.collections()[0]['name'], u'Старт')      # offline: saved copy
+
     def test_offline_grace(self):
         admin, user = self.backend(self.admin_key), self.backend(None)
         self.publish(admin)

@@ -314,9 +314,10 @@ class HttpBackend(Backend):
         return json.loads(self._call('POST', '/deprecate', json_body={'id': family_id, 'note': note}))
 
     # ---- proposals ------------------------------------------------------------
-    def send_proposal(self, meta, rfa, screenshot=None):
-        parts = [('meta', None, json.dumps(meta, ensure_ascii=True)),
-                 ('rfa', 'family.rfa', rfa)]
+    def send_proposal(self, meta, rfa=None, screenshot=None):
+        parts = [('meta', None, json.dumps(meta, ensure_ascii=True))]
+        if rfa:
+            parts.append(('rfa', 'family.rfa', rfa))
         if screenshot:
             parts.append(('screenshot', 'screenshot.png', screenshot))
         return json.loads(self._call('POST', '/inbox', parts=parts,
@@ -332,14 +333,17 @@ class HttpBackend(Backend):
         if not os.path.isdir(target_dir):
             os.makedirs(target_dir)
         rfa = os.path.join(target_dir, 'family.rfa')
-        self.download_to('/inbox/{0}/family.rfa'.format(_quote(proposal_id)), rfa)
-        for p in self.list_proposals(include_done=True):
-            if p['id'] == proposal_id and p.get('has_screenshot'):
-                try:
-                    self.download_to('/inbox/{0}/screenshot.png'.format(_quote(proposal_id)),
-                                     os.path.join(target_dir, 'screenshot.png'))
-                except LibraryError:
-                    pass
+        info = dict((p['id'], p) for p in self.list_proposals(include_done=True)).get(proposal_id, {})
+        if info.get('has_file', True):
+            self.download_to('/inbox/{0}/family.rfa'.format(_quote(proposal_id)), rfa)
+        else:
+            rfa = None
+        if info.get('has_screenshot'):
+            try:
+                self.download_to('/inbox/{0}/screenshot.png'.format(_quote(proposal_id)),
+                                 os.path.join(target_dir, 'screenshot.png'))
+            except LibraryError:
+                pass
         return rfa
 
     def download_to(self, path, target):
@@ -350,10 +354,25 @@ class HttpBackend(Backend):
         return target
 
     def resolve_proposal(self, proposal_id, status, comment=u''):
-        if status != 'rejected':
-            raise LibraryError(u'Proposals are accepted by publishing them.')
-        return json.loads(self._call('POST', '/reject',
-                                     json_body={'id': proposal_id, 'comment': comment}))
+        """rejected (comment required) / accepted - for requests and issues;
+        a family proposal is accepted by publishing it."""
+        return json.loads(self._call('POST', '/resolve', json_body={
+            'id': proposal_id, 'status': status, 'comment': comment}))
+
+    # ---- card info, collections, popularity ---------------------------------------
+    def update_card(self, family_id, fields):
+        return json.loads(self._call('POST', '/card', json_body={'id': family_id,
+                                                                 'fields': fields}))
+
+    def get_collections(self):
+        return self._get_json('/collections')
+
+    def put_collections(self, collections):
+        return json.loads(self._call('PUT', '/collections',
+                                     json_body={'collections': collections}))
+
+    def get_stats(self, days=90):
+        return self._get_json('/stats?days={0}'.format(int(days)))
 
     # ---- keys (admin) ---------------------------------------------------------
     def list_keys(self):

@@ -68,6 +68,25 @@ class Cache(object):
         except Exception:
             return jsonio.read(copy, {'entries': []}) or {'entries': []}
 
+    def _remember(self, name, fetch, default):
+        """Fetch from the storage and keep a copy; offline -> the copy."""
+        copy = os.path.join(self.folder, name)
+        try:
+            data = fetch()
+            jsonio.write(copy, data)
+            return data
+        except Exception:
+            data = jsonio.read(copy)
+            return data if data is not None else default
+
+    def collections(self):
+        return self._remember('collections.json', self.backend.get_collections,
+                              {'collections': []}).get('collections') or []
+
+    def stats(self):
+        return self._remember('stats.json', self.backend.get_stats,
+                              {'families': {}}).get('families') or {}
+
     def has(self, card, ext='.rfa'):
         path = self.local_path(card, ext)
         want = card.get(HASH_FIELD[ext])

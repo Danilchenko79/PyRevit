@@ -56,6 +56,10 @@ class InboxWindow(forms.WPFWindow):
             ch = U.chip(label, code)
             ch.Margin = Thickness(0, 0, 8, 0)
             head.Children.Add(ch)
+            kind = TextBlock()
+            kind.Text = strings.KIND_LABELS.get(p.get('kind') or 'new', strings.KIND_NEW) + u':  '
+            kind.Foreground = U.brush(U.MUTED)
+            head.Children.Add(kind)
             t = TextBlock()
             t.Text = p.get('name') or p['id']
             head.Children.Add(t)
@@ -79,15 +83,19 @@ class InboxWindow(forms.WPFWindow):
 
     def _show(self, p):
         has = p is not None
-        for b in (self.open_btn, self.publish_btn, self.reject_btn):
-            b.IsEnabled = has and p.get('status') == 'pending'
+        pending = has and p.get('status') == 'pending'
+        fileless = has and p.get('kind') in ('request', 'issue')
+        self.open_btn.IsEnabled = pending and not fileless
+        self.publish_btn.IsEnabled = pending and not fileless
+        self.done_btn.IsEnabled = pending and fileless
+        self.reject_btn.IsEnabled = pending
         if not has:
             for t in (self.d_name, self.d_meta, self.d_reason, self.d_checks, self.d_work):
                 t.Text = u''
             self.d_shot.Source = None
             return
         self.d_name.Text = p.get('name') or p['id']
-        kind = strings.KIND_FIX if p.get('kind') == 'fix' else strings.KIND_NEW
+        kind = strings.KIND_LABELS.get(p.get('kind') or 'new', strings.KIND_NEW)
         self.d_meta.Text = u'{0} · {1} · {2} · {3} {4}\nRevit {5}'.format(
             p.get('author', u''), (p.get('sent') or u'')[:16].replace(u'T', u' '),
             groups.title(p.get('group')), kind, p.get('family_id') or u'', p.get('revit') or u'?')
@@ -165,4 +173,18 @@ class InboxWindow(forms.WPFWindow):
             return
         finally:
             self.Cursor = None
+        self._fill()
+
+    def on_done_req(self, sender, args):
+        """Request / problem handled (family published or fixed): close it with a note."""
+        p = self._current()
+        if p is None:
+            return
+        comment = (self.comment_box.Text or u'').strip() or u'Done'
+        try:
+            self.backend.resolve_proposal(p['id'], 'accepted', comment)
+        except Exception as ex:
+            log.write(u'mark done', exc=True)
+            U.error(u'{0}'.format(ex))
+            return
         self._fill()

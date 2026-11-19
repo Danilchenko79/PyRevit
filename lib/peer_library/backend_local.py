@@ -254,9 +254,12 @@ class LocalBackend(Backend):
                 return d
         raise NotFoundError(u'Proposal not found: ' + proposal_id)
 
-    def send_proposal(self, meta, rfa, screenshot=None):
+    def send_proposal(self, meta, rfa=None, screenshot=None):
         self._check_root()
-        if not os.path.isfile(rfa):
+        fileless = meta.get('kind') in ('request', 'issue')
+        if rfa is None and not fileless:
+            raise LibraryError(u'A family file is needed.')
+        if rfa is not None and not os.path.isfile(rfa):
             raise LibraryError(u'File not found: ' + rfa)
         slug = re.sub(r'[^A-Za-z0-9_-]+', '-', meta.get('family_id') or meta.get('name') or 'family')
         slug = slug.strip('-')[:40] or 'family'
@@ -268,14 +271,15 @@ class LocalBackend(Backend):
         if os.path.isdir(tmp):
             shutil.rmtree(tmp)
         os.makedirs(tmp)
-        shutil.copyfile(rfa, os.path.join(tmp, 'family.rfa'))
+        if rfa:
+            shutil.copyfile(rfa, os.path.join(tmp, 'family.rfa'))
         if screenshot and os.path.isfile(screenshot):
             shutil.copyfile(screenshot, os.path.join(tmp, 'screenshot.png'))
         data = dict(meta)
         data.update({'author': self.user, 'sent': index.now(), 'status': 'pending',
                      'comment': u'', 'resolved_by': u'', 'resolved': u'',
-                     'source_file': os.path.basename(rfa),
-                     'has_screenshot': bool(screenshot)})
+                     'source_file': os.path.basename(rfa) if rfa else u'',
+                     'has_file': bool(rfa), 'has_screenshot': bool(screenshot)})
         jsonio.write(os.path.join(tmp, 'proposal.json'), data)
         os.rename(tmp, d)
         return pid
@@ -296,7 +300,8 @@ class LocalBackend(Backend):
         jsonio.makedirs(target_dir)
         for name in os.listdir(d):
             shutil.copyfile(os.path.join(d, name), os.path.join(target_dir, name))
-        return os.path.join(target_dir, 'family.rfa')
+        rfa = os.path.join(target_dir, 'family.rfa')
+        return rfa if os.path.isfile(rfa) else None
 
     def resolve_proposal(self, proposal_id, status, comment=u''):
         self._need_admin()
@@ -314,4 +319,55 @@ class LocalBackend(Backend):
         if os.path.dirname(d) != done:
             jsonio.makedirs(done)
             shutil.move(d, os.path.join(done, os.path.basename(d)))
+        return data
+
+    # ---- card info, collections -------------------------------------------------
+    INFO_FIELDS = ('name', 'tags', 'description', 'help_url', 'group', 'types', 'revit_category')
+
+    def update_card(self, family_id, fields):
+        self._need_admin()
+        lock = self._lock()
+        try:
+            cur = index.find_card(self.lib, family_id)
+            if not cur or cur['id'] != family_id:
+                raise NotFoundError(u'Not in the library: ' + family_id)
+            new = dict(cur)
+            for k in self.INFO_FIELDS:
+                if k in fields:
+                    new[k] = fields[k]
+            problems = index.validate(new)
+            if problems:
+                raise LibraryError(u'Card is not valid: ' + u'; '.join(problems))
+            new['info_updated'] = index.now()
+            old_dir = os.path.join(self.lib, index.folder_of(cur))
+            new_dir = os.path.join(self.lib, index.folder_of(new))
+            if old_dir != new_dir:
+                jsonio.makedirs(new_dir)
+                for ext in EXTS:
+                    p = os.path.join(old_dir, family_id + ext)
+                    if os.path.exists(p):
+                        shutil.move(p, os.path.join(new_dir, family_id + ext))
+            jsonio.write(os.path.join(new_dir, family_id + '.json'), new)
+            index.build_index(self.lib)
+            return new
+        finally:
+            self._unlock(lock)
+
+    def get_collections(self):
+        self._check_root()
+        data = jsonio.read(os.path.join(self.lib, 'collections.json'), {}) or {}
+        return {'format': 1, 'collections': list(data.get('collections') or [])}
+
+    def put_collections(self, collections):
+        self._need_admin()
+        out = []
+        for c in collections or []:
+            name = (c.get('name') or u'').strip()
+            if name:
+                out.append({'id': c.get('id') or name, 'name': name,
+                            'description': c.get('description') or u'',
+                            'families': list(c.get('families') or []),
+                            'updated': index.now(), 'by': self.user})
+        data = {'format': 1, 'collections': out}
+        jsonio.write(os.path.join(self.lib, 'collections.json'), data)
         return data

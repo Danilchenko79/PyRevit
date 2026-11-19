@@ -164,6 +164,47 @@ test('access request: reject, name required, spam limit', async () => {
   assert.equal((await call('POST', '/access/request', null, { name: 'one more' })).status, 429);
 });
 
+test('card info without a new version', async () => {
+  await call('POST', '/publish', ADMIN, publishForm('PEER_Beam', 1));
+  assert.equal((await call('POST', '/card', USER, { id: 'PEER_Beam', fields: { name: 'x' } })).status, 403);
+  const r = await call('POST', '/card', ADMIN, { id: 'PEER_Beam',
+    fields: { name: 'Балка T', tags: ['балка', 'T'], types: ['300x600'], group: '05_Details', version: 99 } });
+  assert.equal(r.status, 200);
+  const c = (await call('GET', '/index', USER)).data.families[0];
+  assert.deepEqual([c.name, c.version, c.group, c.types[0]], ['Балка T', 1, '05_Details', '300x600']);
+  assert.equal(c.files['.rfa'], '01_Framing/PEER_Beam/v1.rfa');      // files stay where they are
+  assert.equal((await call('POST', '/card', ADMIN, { id: 'PEER_Beam', fields: { group: 'nope' } })).status, 400);
+});
+
+test('collections and popularity', async () => {
+  assert.deepEqual((await call('GET', '/collections', USER)).data.collections, []);
+  assert.equal((await call('PUT', '/collections', USER, { collections: [] })).status, 403);
+  const put = await call('PUT', '/collections', ADMIN, { collections: [
+    { name: 'Фундаменты: старт', families: ['PEER_Beam'] }, { name: '' }] });
+  assert.equal(put.data.collections.length, 1);
+  assert.equal((await call('GET', '/collections', USER)).data.collections[0].families[0], 'PEER_Beam');
+  const r = await call('POST', '/publish', ADMIN, publishForm('PEER_Beam', 1));
+  await call('GET', '/file/' + encodeURI(r.data.files['.rfa']), USER);
+  await call('GET', '/file/' + encodeURI(r.data.files['.rfa']), ADMIN);
+  const s = await call('GET', '/stats', USER);
+  assert.deepEqual(s.data.families.PEER_Beam, { downloads: 2, users: 2 });
+});
+
+test('request and issue without a file; resolve', async () => {
+  const fd = new FormData();
+  fd.append('meta', JSON.stringify({ kind: 'request', name: 'Анкер M24', reason: 'нужен на проект' }));
+  const sent = await call('POST', '/inbox', USER, fd);
+  assert.equal(sent.status, 200);
+  const fd2 = new FormData();
+  fd2.append('meta', JSON.stringify({ kind: 'new', name: 'no file' }));
+  assert.equal((await call('POST', '/inbox', USER, fd2)).status, 400);   // proposals still need a file
+  const p = (await call('GET', '/inbox', ADMIN)).data[0];
+  assert.equal(p.has_file, false);
+  assert.equal((await call('POST', '/resolve', ADMIN, { id: p.id, status: 'rejected' })).status, 400);
+  assert.equal((await call('POST', '/resolve', ADMIN, { id: p.id, status: 'accepted', comment: 'добавлен' })).status, 200);
+  assert.equal((await call('GET', '/inbox/mine', USER)).data[0].status, 'accepted');
+});
+
 test('audit records downloads and publishes', async () => {
   const r = await call('POST', '/publish', ADMIN, publishForm('PEER_Beam', 1));
   await call('GET', '/file/' + encodeURI(r.data.files['.rfa']), USER);

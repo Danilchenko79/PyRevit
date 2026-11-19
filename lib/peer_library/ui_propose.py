@@ -58,7 +58,7 @@ def export_family(doc, fam):
 
 class ProposeWindow(forms.WPFWindow):
 
-    def __init__(self, xaml_path, doc, uidoc, backend):
+    def __init__(self, xaml_path, doc, uidoc, backend, preset_file=None):
         forms.WPFWindow.__init__(self, xaml_path)
         self.doc, self.uidoc, self.backend = doc, uidoc, backend
         self.sent = None
@@ -77,7 +77,11 @@ class ProposeWindow(forms.WPFWindow):
         except Exception as ex:
             log.write(u'propose index: {0}'.format(ex))
         self.fam = None
-        if doc.IsFamilyDocument:
+        if preset_file:                       # from Library -> This project
+            self.src_file.IsChecked = True
+            self.file_box.Text = preset_file
+            self.name_box.Text = os.path.splitext(os.path.basename(preset_file))[0]
+        elif doc.IsFamilyDocument:
             self.src_editor.IsChecked = True
         elif selected_family(doc, uidoc) is not None:
             self.src_selected.IsChecked = True

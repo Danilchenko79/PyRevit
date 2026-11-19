@@ -43,6 +43,7 @@ def publish_one(app, backend, source, draft, note=u'', accept_warnings=False,
         card['version'] = version
         card['revit'] = checks_file.LIBRARY_REVIT
         card['revit_category'] = prep['category'] or draft.get('revit_category', u'')
+        card['types'] = all_type_names(prep)
         stored = backend.publish(card, prep['rfa'], prep['png'], prep['catalog'], note,
                                  proposal_id=proposal_id)
         return stored, results
@@ -51,6 +52,26 @@ def publish_one(app, backend, source, draft, note=u'', accept_warnings=False,
         return None, [('error', 'storage', u'{0}'.format(ex))]
     finally:
         shutil.rmtree(work, ignore_errors=True)
+
+
+MAX_TYPES = 2000
+
+
+def all_type_names(prep):
+    """Types of the family + of its catalog, unique, for search."""
+    names = list(prep.get('types') or [])
+    if prep.get('catalog'):
+        try:
+            from peer_library import catalog
+            names += catalog.type_names(prep['catalog'])
+        except Exception:
+            log.write(u'catalog names', exc=True)
+    out, seen = [], set()
+    for n in names:
+        if n and n not in seen:
+            seen.add(n)
+            out.append(n)
+    return out[:MAX_TYPES]
 
 
 def folder_items(folder):
@@ -70,8 +91,10 @@ def publish_folder(app, backend, folder, progress=None, cancelled=None, note=u'I
     """Initial import: every <group>/<ID>.rfa not yet in the library.
     Warnings are accepted, errors are skipped. Writes a CSV report into
     the folder and returns (counts, report_path)."""
+    from peer_library import importmeta
     existing = set(c['id'].lower() for c in backend.get_index().get('families', []))
     items = folder_items(folder)
+    sources = importmeta.read_sort_log(folder)
     rows, counts = [], {'published': 0, 'skipped': 0, 'failed': 0}
     for i, (g, fid, path) in enumerate(items):
         if cancelled and cancelled():
@@ -82,7 +105,8 @@ def publish_folder(app, backend, folder, progress=None, cancelled=None, note=u'I
             counts['skipped'] += 1
             rows.append((fid, g, 'skipped', u'already in the library'))
             continue
-        draft = index.new_card(id=fid, name=fid, group=g)
+        info = importmeta.info_for(fid, sources.get(fid, u''))
+        draft = index.new_card(id=fid, name=info['name'], group=g, tags=info['tags'])
         try:
             card, results = publish_one(app, backend, path, draft, note, accept_warnings=True)
         except Exception as ex:

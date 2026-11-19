@@ -137,6 +137,26 @@ class TestPublish(Base):
         self.assertEqual(self.user.get_index()['families'][0]['status'], 'deprecated')
 
 
+class TestInfoLocal(Base):
+
+    def test_update_card_moves_group_and_keeps_version(self):
+        self.publish()
+        c = self.admin.update_card('PEER_Beam_Rect', {'group': '05_Details', 'tags': [u'x']})
+        self.assertEqual((c['group'], c['version'], c['tags']), ('05_Details', 1, [u'x']))
+        lib = os.path.join(self.root, 'PEER-Library')
+        self.assertTrue(os.path.exists(os.path.join(lib, '05_Details', 'PEER_Beam_Rect.rfa')))
+        with self.assertRaises(AccessError):
+            self.user.update_card('PEER_Beam_Rect', {'name': u'y'})
+
+    def test_collections_and_request(self):
+        self.admin.put_collections([{'name': u'Старт', 'families': ['A']}, {'name': u''}])
+        self.assertEqual(len(self.user.get_collections()['collections']), 1)
+        pid = self.user.send_proposal({'kind': 'issue', 'name': u'x', 'family_id': 'A'})
+        self.assertIsNone(self.admin.download_proposal(pid, os.path.join(self.tmp, 'w')))
+        self.admin.resolve_proposal(pid, 'accepted', u'fixed')
+        self.assertEqual(self.user.my_proposals()[0]['status'], 'accepted')
+
+
 class TestCache(Base):
 
     def test_download_and_corrupted_copy(self):
@@ -247,6 +267,15 @@ class TestChecks(unittest.TestCase):
                          u'1 new, 1 updated families')
         self.assertEqual(notify.news_text(log, '2026-11-20T12:00:00'), u'')
         self.assertEqual(notify.latest_time(log), '2026-11-20T12:00:00')
+
+    def test_import_names_and_tags(self):
+        from peer_library import importmeta as m
+        self.assertEqual(m.display_name('PEER-Concrete-Column-Rectangular'), u'Concrete Column Rectangular')
+        self.assertEqual(m.info_for('EU_HE - Wide-Flange', u'STEEL\\01 Framing\\Generic\\x.rfa'),
+                         {'name': u'HE - Wide-Flange', 'tags': [u'EU', u'Generic']})
+        self.assertEqual(m.info_for('21E', u'04 Rebar\\3D Rebar\\Shapes\\21E.rfa')['name'],
+                         u'Rebar shape 21E')
+        self.assertEqual(m.folder_tags(u'01 Annotation\\TAGS\\BEAMS\\x.rfa'), [u'Tags', u'Beams'])
 
     def test_card_validation(self):
         self.assertEqual(index.validate(index.new_card(id='PEER_A', group='01_Framing',

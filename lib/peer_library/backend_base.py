@@ -60,8 +60,25 @@ class Backend(object):
     def deprecate(self, family_id, note=u''):
         raise NotImplementedError
 
-    def send_proposal(self, meta, rfa, screenshot=None):
-        """Any user. Returns proposal id."""
+    def update_card(self, family_id, fields):
+        """Admin: name / tags / description / help_url / group / types without a new version."""
+        raise NotImplementedError
+
+    def get_collections(self):
+        """{'collections': [{'id', 'name', 'description', 'families': [ids]}]}"""
+        raise NotImplementedError
+
+    def put_collections(self, collections):
+        """Admin: replace all collections."""
+        raise NotImplementedError
+
+    def get_stats(self, days=90):
+        """{'families': {id: {'downloads': n, 'users': n}}} - {} where not tracked."""
+        return {'families': {}}
+
+    def send_proposal(self, meta, rfa=None, screenshot=None):
+        """Any user. Returns proposal id. meta['kind']: new / fix (with a file),
+        request / issue (no file)."""
         raise NotImplementedError
 
     def list_proposals(self, include_done=False):

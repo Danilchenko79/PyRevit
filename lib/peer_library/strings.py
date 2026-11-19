@@ -24,6 +24,67 @@ UPDATE_ALL_ASK = (u'Update {0} families in this project to the library version?\
                   u'Parameter values changed in the project are kept.')
 UPDATE_ALL_DONE = u'Updated {0} families.'
 NOTE_NEEDED = u'Write what changed in this version (it goes to the history and What’s new).'
+GROUP_POPULAR = u'Popular (90 days)'
+ALL_CATEGORIES = u'All Revit categories'
+FILTER_CATALOG = u'With type catalog'
+SORTS = [u'Sort: name', u'Sort: newest', u'Sort: popular']
+STATS_LINE = u'Loaded {0} times by {1} people in 90 days'
+TAB_PROJECT = u'This project'
+
+# ---- requests / issues -------------------------------------------------------
+BTN_REQUEST = u'Request a family…'
+BTN_ISSUE = u'Report a problem…'
+BTN_SEND = u'Send'
+FILL_BOTH = u'Fill in both fields.'
+TITLE_REQUEST = u'PEER - Request a family'
+REQUEST_HEAD = u'Which family do you need?'
+REQUEST_HINT = (u'The admins see the request in Inbox and answer in Library → My proposals. '
+                u'Have a family file already? Use Propose family instead.')
+REQUEST_L1 = u'What (e.g. "Pile cap 4 piles, chamfered")'
+REQUEST_L2 = u'What for, project, deadline, examples'
+REQUEST_SENT = u'Sent. The answer comes in Library → My proposals.'
+TITLE_ISSUE = u'PEER - Report a problem'
+ISSUE_HEAD = u'Problem with {0}'
+ISSUE_HINT = u'Describe what is wrong; the admins fix it and publish a new version.'
+ISSUE_L1 = u'Family'
+ISSUE_L2 = u'What is wrong (view, parameter, type, project)'
+
+# ---- admin in the library window --------------------------------------------------
+ADMIN_HEADER = u'Admin'
+BTN_EDIT_INFO = u'Edit info…'
+BTN_COLL_ADD = u'Add to collection…'
+BTN_COLL_REMOVE = u'Remove from this collection'
+BTN_DEPRECATE = u'Deprecate…'
+INFO_SAVED = u'Saved: {0} (no new version).'
+NEW_COLLECTION = u'+ New collection…'
+NEW_COLLECTION_PROMPT = u'Name of the new collection (e.g. "Foundations - start kit")'
+COLL_ADDED = u'{0} added to "{1}".'
+DEPRECATE_ASK = (u'Deprecate {0}? It disappears from the library window; projects keep it. '
+                 u'Why (shown in the history):')
+BTN_COLL_LOAD = u'Load collection ({0})'
+COLL_LOAD_ASK = u'Load {0} families of this collection into the project?'
+COLL_DONE = u'Loaded {0} families.'
+COLL_NOTHING = u'Everything of this collection is already in the project.'
+COLL_CATALOGS = u'With a type catalog - choose the types one by one: {0}'
+
+# ---- this project --------------------------------------------------------------
+BTN_PROJ_UPDATE = u'Update selected from library'
+BTN_PROJ_PROPOSE = u'Propose selected to library…'
+BTN_REFRESH = u'Refresh'
+PROJ_SUMMARY = u'{0} families in the project · {1} from the library · {2} outdated'
+PROJ_FILTERS = [u'All families', u'Need update', u'Not in the library', u'From the library']
+PS_NOT_IN_LIBRARY = u'Not in the library'
+PS_NO_VERSION = u'In library, project copy has no version'
+PS_OUTDATED = u'Outdated - library has v{0}'
+PS_NEWER = u'Newer than the library'
+PS_CURRENT = u'Up to date'
+PROJ_SELECT_LIBRARY = u'Select families that are in the library.'
+PROJ_SELECT_ONE_NOTLIB = u'Select one family that is not in the library.'
+PROJ_NOT_EDITABLE = u'This family cannot be exported (system or not editable).'
+
+# ---- kinds of proposals ------------------------------------------------------------
+KIND_LABELS = {'new': u'New family', 'fix': u'Improvement', 'request': u'Request',
+               'issue': u'Problem'}
 GROUP_NEW = u'New (14 days)'
 GROUP_IN_PROJECT = u'In this project'
 GROUP_OUTDATED = u'Need update'
