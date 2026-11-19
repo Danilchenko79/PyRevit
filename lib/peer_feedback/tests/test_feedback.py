@@ -148,10 +148,13 @@ def test_config_defaults_and_http_not_allowed(home):
     assert not config.is_configured(dict(cfg, url='http://x/exec', key='k'))
 
 
-def test_repo_settings_file_ships_empty():
-    """The public repo must not carry a key by accident."""
+def test_repo_settings_file_is_valid():
+    """settings.json reaches every computer with the PEER update: it must load."""
     data = json.load(io.open(os.path.join(LIB, 'peer_feedback', 'settings.json'), encoding='utf-8'))
-    assert data.get('key', '') == ''
+    assert set(data) <= set(config.DEFAULTS)
+    if data.get('url'):
+        assert data['url'].startswith('https://script.google.com/') and data['url'].endswith('/exec')
+        assert len(data.get('key', '')) == 32
 
 
 def test_peer_version(tmp_path):

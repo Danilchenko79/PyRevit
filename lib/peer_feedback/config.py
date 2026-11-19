@@ -7,10 +7,11 @@ Two files, the second wins key by key:
     2. %APPDATA%/PEER/feedback.json     - on this computer only. Written by
        Shift+Click on Contact -> "Receiver address and key".
 
-The repo is public on GitHub, so a key committed to settings.json can be read
-by anyone. The receiver can only append rows (no reads of the table), so the
-worst case is spam rows; the key is changed in the receiver's Script
-Properties and in settings.json, then everyone gets it with the next update.
+settings.json in the repo carries the group's receiver address and key, so
+Contact works on every computer without setup. The repo is public: anyone can
+read the key. With it the receiver only appends rows / pictures and returns
+the status of a request id one already knows - it never returns the table.
+Spam -> run rotateKey in Apps Script, put the new key here, push.
 """
 
 import io

@@ -42,22 +42,18 @@ Open the Web app URL. The page must say `PEER receiver is running.`
 
 ## 3. Give PEER the address and the key
 
-Two options — pick one.
+They are in `lib/peer_feedback/settings.json` in the repo: every computer
+gets them with the PEER update, nobody types anything.
 
-**A. On each computer (recommended while the repo is public).**
-Shift+Click on **Contact** → **Receiver address and key** → paste the URL,
-then the key. The check runs right away and must say
-`Receiver answered in … ms`. Stored in `%APPDATA%\PEER\feedback.json`, not
-touched by PEER updates.
+The repo is public, so the key can be read by anyone. With it the receiver
+only adds rows and pictures and returns the status of a request whose id
+one already knows; the table, the texts and the pictures stay readable by
+you only. If junk starts arriving: run **rotateKey** in Apps Script, put
+the new key into `settings.json`, push.
 
-**B. For everyone at once, through the repo.** Put both values into
-`lib/peer_feedback/settings.json` and push to `main`; every computer gets
-them with the next update. The repo `Danilchenko79/PyRevit` is **public**:
-anyone can read the key there and add junk rows (nothing else). If you go
-this way, make the repo private first — then `install.bat` and the
-auto-update need GitHub credentials on every computer.
-
-The local file (A) wins over the repo file (B) key by key.
+A computer can still override them (testing another receiver):
+Shift+Click on **Contact** → **Receiver address and key** — stored in
+`%APPDATA%\PEER\feedback.json`, which wins over the repo file.
 
 ## 4. First check (stage 1 gate)
 
