@@ -87,7 +87,13 @@ class LoadOptions(DB.IFamilyLoadOptions):
         self.overwrite = bool(overwrite)
         self.family_id = family_id
 
+    # Out-parameters: IronPython hands them in as references (StrongBox) - set
+    # .Value (as pyRevit's own revit.db.create does). Some IronPython builds
+    # instead expect them as extra return values - then return a tuple.
     def OnFamilyFound(self, familyInUse, overwriteParameterValues):
+        if hasattr(overwriteParameterValues, 'Value'):
+            overwriteParameterValues.Value = self.overwrite
+            return True
         return True, self.overwrite
 
     def OnSharedFamilyFound(self, sharedFamily, familyInUse, source, overwriteParameterValues):
@@ -96,6 +102,11 @@ class LoadOptions(DB.IFamilyLoadOptions):
                       .format(self.family_id, sharedFamily.Name))
         except Exception:
             pass
+        if hasattr(source, 'Value'):
+            source.Value = DB.FamilySource.Family
+            if hasattr(overwriteParameterValues, 'Value'):
+                overwriteParameterValues.Value = self.overwrite
+            return True
         return True, DB.FamilySource.Family, self.overwrite
 
 
@@ -157,9 +168,9 @@ def family_type_names(doc, fam):
         return []
     names = []
     for i in fam.GetFamilySymbolIds():
-        p = doc.GetElement(i).get_Parameter(DB.BuiltInParameter.SYMBOL_NAME_PARAM)
-        if p is not None and p.AsString():
-            names.append(p.AsString())
+        n = symbol_name(doc.GetElement(i))
+        if n:
+            names.append(n)
     return names
 
 
@@ -170,9 +181,15 @@ def first_symbol(doc, fam, prefer=None):
     syms = [s for s in syms if s is not None]
     if prefer:
         for s in syms:
-            if s.Name in prefer:
+            if symbol_name(s) in prefer:
                 return s
     return syms[0] if syms else None
+
+
+def symbol_name(sym):
+    """FamilySymbol name (ElementType.Name has no getter in IronPython)."""
+    p = sym.get_Parameter(DB.BuiltInParameter.SYMBOL_NAME_PARAM)
+    return p.AsString() if p is not None else u''
 
 
 def request_placement(uidoc, symbol):

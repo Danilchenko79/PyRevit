@@ -138,6 +138,8 @@ def connect(cfg=None):
         backend.key = None
         msg = u'Your library key is not valid any more. Paste a new one or request access.'
         return backend if login(backend, msg) else None
+    except LibraryError as ex:       # service hiccup (5xx / 429): work from the saved copy
+        log.write(u'auth check: {0}'.format(ex))
     return backend
 
 

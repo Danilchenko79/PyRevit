@@ -207,12 +207,21 @@ class LibraryWindow(forms.WPFWindow):
             return
         for it in todo:
             it.preview_done = True
-            try:
-                path = self.cache.get(it.card, '.png')
-            except Exception:
-                path = None
+            path = self._preview_path(it.card)
             if path:
                 it.image.Source = U.bitmap(path, 150)
+
+    def _preview_path(self, card):
+        """Preview from the cache; downloaded only when online (offline the UI
+        thread must not wait for network timeouts)."""
+        if not card.get('png_sha1'):
+            return None
+        try:
+            if not self.online:
+                return self.cache.local_path(card, '.png') if self.cache.has(card, '.png') else None
+            return self.cache.get(card, '.png')
+        except Exception:
+            return None
 
     # ---- groups & search -----------------------------------------------
     def _fill_groups(self):
@@ -402,10 +411,7 @@ class LibraryWindow(forms.WPFWindow):
             self.status_text.Text = self.status_text.Text or strings.NOTHING_SELECTED
             return
         c = it.card
-        try:
-            png = self.cache.get(c, '.png')
-        except Exception:
-            png = None
+        png = self._preview_path(c)
         self.d_image.Source = U.bitmap(png, 400) if png else None
         self.d_noimage.Visibility = Visibility.Collapsed if png else Visibility.Visible
         self.d_name.Text = c.get('name') or c['id']
@@ -559,10 +565,16 @@ class LibraryWindow(forms.WPFWindow):
         self.status_text.Text = msg
         self._show_details(it)
         if place:
-            sym = loader.first_symbol(self.doc, fam, prefer=types)
+            try:
+                sym = loader.first_symbol(self.doc, fam, prefer=types)
+            except Exception:
+                log.write(u'first symbol {0}'.format(card['id']), exc=True)
+                sym = None
             if sym is not None:
                 self.place_symbol = sym
                 self.Close()
+            else:
+                self.status_text.Text = strings.NO_PLACE.format(card['id'])
 
     def on_update_all(self, sender, args):
         """Update every family that is older in the project than in the library.

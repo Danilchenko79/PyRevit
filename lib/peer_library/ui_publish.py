@@ -52,16 +52,27 @@ class PublishWindow(forms.WPFWindow):
         p = self.prefill
         if p.get('file'):
             self.file_box.Text = p['file']
-        if p.get('family_id') and p.get('family_id') in self.cards:
+        fid = self._find_id(p.get('family_id'))
+        if fid:
             self.mode_update.IsChecked = True
-            self.existing_box.Text = p['family_id']
-            self._fill_from_card(self.cards[p['family_id']])
+            self.existing_box.Text = fid
+            self._fill_from_card(self.cards[fid])
         if p.get('name'):
             self.name_box.Text = p['name']
         if p.get('group') in groups.GROUP_IDS:
             self.group_box.SelectedIndex = groups.GROUP_IDS.index(p['group'])
         if p.get('reason'):
             self.note_box.Text = p['reason']
+
+    def _find_id(self, family_id):
+        """Library ID matching family_id regardless of case, or None."""
+        if not family_id:
+            return None
+        low = family_id.strip().lower()
+        for k in self.cards:
+            if k.lower() == low:
+                return k
+        return None
 
     def _group(self):
         i = self.group_box.SelectedIndex
@@ -86,18 +97,17 @@ class PublishWindow(forms.WPFWindow):
             self.on_file_changed(None, None)
 
     def on_existing(self, sender, args):
-        fid = self.existing_box.SelectedItem or self.existing_box.Text
-        if fid in self.cards:
+        fid = self._find_id(self.existing_box.SelectedItem or self.existing_box.Text)
+        if fid:
             self._fill_from_card(self.cards[fid])
 
     def on_file_changed(self, sender, args):
-        if self.mode_update.IsChecked:
-            return
+        if self.mode_update.IsChecked or self.proposal_id:
+            return                    # from Inbox the file is "family.rfa" - never an ID
         path = (self.file_box.Text or u'').strip().strip('"')
         if path.lower().endswith('.rfa'):
             base = os.path.splitext(os.path.basename(path))[0]
-            if not self.proposal_id or not self.id_box.Text:
-                self.id_box.Text = base
+            self.id_box.Text = base
             if not self.name_box.Text:
                 self.name_box.Text = base
 
@@ -156,6 +166,8 @@ class PublishWindow(forms.WPFWindow):
                         strings.PUBLISH_ONLY_2024.format(checks_file.LIBRARY_REVIT)))
         upd = bool(self.mode_update.IsChecked)
         exists = draft['id'] in self.cards
+        if draft['id'].lower() in (u'family', u''):
+            res.append(('error', 'id', u'Set the family ID (it becomes the family name in Revit)'))
         if upd and not exists:
             res.append(('error', 'mode', u'Pick an existing family to update'))
         if not upd and any(k.lower() == draft['id'].lower() for k in self.cards):

@@ -108,11 +108,14 @@ class InboxWindow(forms.WPFWindow):
         self.d_work.Text = u'Work folder: {0}'.format(work) if os.path.isdir(work) else u''
         shot = None
         if p.get('has_screenshot'):
-            try:
-                self.backend.download_proposal(p['id'], work)
-                shot = os.path.join(work, 'screenshot.png')
-            except Exception:
-                shot = None
+            # separate folder: never overwrite the admin's edited family.rfa in the work folder
+            preview = work + u'.preview'
+            shot = os.path.join(preview, 'screenshot.png')
+            if not os.path.isfile(shot):
+                try:
+                    self.backend.download_proposal(p['id'], preview)
+                except Exception:
+                    log.write(u'inbox preview {0}'.format(p['id']), exc=True)
         self.d_shot.Source = U.bitmap(shot, 600) if shot and os.path.isfile(shot) else None
 
     def _work_file(self, p):
@@ -149,8 +152,11 @@ class InboxWindow(forms.WPFWindow):
         if p.get('kind') != 'fix':
             prefill['family_id'] = None
         win = PublishWindow(self.publish_xaml, self.app, self.backend, prefill)
-        if p.get('kind') != 'fix' and p.get('family_id'):
-            win.id_box.Text = p['family_id']
+        if p.get('kind') != 'fix':
+            # new family: ID proposed by the author (file name), never the work file "family"
+            proposed = p.get('family_id') or u''
+            if proposed and proposed.lower() != u'family':
+                win.id_box.Text = proposed
         win.ShowDialog()
         if win.published:
             self._fill()
