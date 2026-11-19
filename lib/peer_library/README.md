@@ -1,36 +1,51 @@
-# PEER Library — библиотека семейств
+# PEER Library — библиотека семейств (для разработчика)
 
 План и ТЗ: документ «Библиотека семейств PEER — план разработки» (claude.ai artifact KMy4TRiUTRSWCxoKmN3dAu).
+Инструкция для пользователей и админов: `docs/LIBRARY.md`. Сервис: `service/README.md`.
 
-## Кнопки (PEER.tab → Library)
-| Кнопка | Кто | Что |
+## Кнопки (PEER.tab → Library, все — smartbutton)
+| Кнопка | Кто | Видна |
 |---|---|---|
-| Library | все | группы, поиск, превью, статус относительно проекта, загрузка / обновление / размещение, каталоги типов, «Что нового», «Мои предложения». Shift+Click — папка библиотеки, кэш, лог |
-| Propose family | все | отправить семейство (файл / выделенный элемент / открытое в редакторе) во «Входящие» |
-| Publish | админ | единственный путь в библиотеку: проверки, `PEER_Version`, превью, compact-сохранение, индекс; «Publish a sorted folder» — массовый импорт `<group>/<ID>.rfa` |
-| Inbox | админ | предложения: открыть в редакторе, опубликовать, отклонить с комментарием |
+| Library | все | где настроена библиотека (`config.panel_visible`) |
+| Propose family | все | там же |
+| Publish, Inbox | админ | роль `admin` |
+| Keys | админ | роль `admin` и сервис (`backend: http`) |
 
-Publish и Inbox — smartbutton: у роли `user` скрыты (`__selfinit__`).
+Без настройки `startup.py` прячет и саму панель — ветку можно вливать до раздачи адреса.
 
-## Хранилище
-`config.py`: `%APPDATA%\PEER\library.json` поверх `lib/peer_library/settings.json` (офисный общий путь, если положить).
+## Модули
+| Без Revit (тесты на CPython) | В Revit (IronPython) |
+|---|---|
+| `config` настройки, `jsonio`, `log`, `strings` (все тексты UI) | `revit_family` открыть копию, проверки, `PEER_Version` формулой, превью, compact |
+| `index` карточка, индекс, changelog | `publish` одно семейство / папка (имена+теги из `importmeta`) |
+| `checks_file` маска, размер, версия Revit (2024) | `loader` статусы, LoadFamily / LoadFamilySymbol, размещение, список семейств проекта |
+| `rfa_info` версия без Revit, sha1 | `session` вход: ключ / заявка на доступ |
+| `cache` локальная копия `<group>/<ID>.rfa`, офлайн 14 дней | `ui_library` окно (группы, избранное, недавние, популярное, коллекции, фильтры, сортировка, каталоги, «Этот проект», админ-действия) |
+| `backend_base` интерфейс; `backend_local` папка; `backend_http` сервис | `ui_publish` (+ Excel), `ui_inbox`, `ui_propose`, `ui_dialogs` |
+| `catalog` каталог типов; `cards_csv` карточки ↔ Excel; `importmeta` имена/теги | `notify` уведомление при старте; `project_check` + `hooks/doc-opened.py` |
+| `keystore` ключ и заявка (DPAPI); `userprefs` избранное/недавние | `ui_common` цвета/чипы (без синего, статус всегда с подписью) |
+
+## Настройки
+`%APPDATA%\PEER\library.json` поверх `lib/peer_library/settings.json` (для офиса положить сюда адрес сервиса):
 ```json
-{"backend": "local", "root": "\\\\server\\share\\PEER", "role": "admin"}
+{"backend": "http", "url": "https://peer-library.<имя>.workers.dev"}
 ```
-`root` — папка, в которой лежат `PEER-Library` и `PEER-Inbox`. Кэш — `%LOCALAPPDATA%\PEER\Library`, лог — `%APPDATA%\PEER\library.log`.
-В локальном варианте роль берётся из настроек (для пробы в офисе); настоящую защиту даёт сервис:
-`backend: "http"` + `url` → `backend_http.py`, личный ключ (DPAPI, `keystore.py`), вход — `session.py`,
-кнопка Keys (админ). Развёртывание сервиса — `service/README.md`.
+Ключ — `%APPDATA%\PEER\library_key.bin` (DPAPI), избранное — `library_user.json`, кэш — `%LOCALAPPDATA%\PEER\Library`,
+лог — `%APPDATA%\PEER\library.log`. Вариант «папка» (`backend: local`, `root`) — для пробы без сервиса, роль из настроек.
 
 ## Формат
-Формат библиотеки — **Revit 2024** (`checks_file.LIBRARY_REVIT`). Публиковать только из Revit 2024.
-ID = имя файла = имя семейства в Revit, не меняется. Карточка `<ID>.json` (поля — `index.CARD_DEFAULTS`), `index.json` пересобирается из карточек при каждой публикации, `changelog.json` — лента.
+Revit **2024**, публиковать только из 2024. ID = имя файла = имя семейства в Revit, не меняется.
+Карточка — `index.CARD_DEFAULTS` (+ `types` для поиска по типам, `files` — адреса версий в сервисе).
+`PEER_Version` — параметр типа формулой `"N"` (одно значение на все типы).
 
-## Тесты (без Revit)
+## Проверки
 ```
-py -3 -m unittest discover -s lib/peer_library/tests
+py -3 -m unittest discover -s lib/peer_library/tests     # 29 тестов, в т.ч. клиент ↔ сервис (node)
+node --test service/test                                  # 15 тестов сервиса
 ```
-Модули без Revit API: groups, jsonio, config, rfa_info, checks_file, index, cache, catalog, backend_*.
+Синтаксис IronPython и XAML — `ipy`-компиляция и `XamlReader` (см. историю сессии 20.11.2026).
 
-## Сортировка исходной папки
-`tools/sort_source.py <сырые семейства> <папка>` — копирует в `<group>/<ID>.rfa` (+ каталог .txt), пропуская бэкапы, OLD, дубли, файлы новее Revit 2024; журнал `_sort_log.csv`. Результат публикуется кнопкой Publish → «Publish a sorted folder».
+## Инструменты (`tools/`)
+- `sort_source.py <сырые> <папка>` — раскладка по группам, журнал `_sort_log.csv`.
+- `backfill_plan.py` + `apply_plan.ps1` — имена/теги/типы для уже опубликованных карточек (без новых версий).
+- `backup.ps1 -Folder D:\Backup\PEER` — резервная копия библиотеки (.NET, проверка SHA-1).

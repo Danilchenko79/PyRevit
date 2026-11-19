@@ -40,6 +40,7 @@ const MAX_FILE = 25 * 1024 * 1024;
 const LOCK_SECONDS = 120;
 const CHANGELOG_KEEP = 1000;
 const LAST_USED_EVERY_MS = 60 * 60 * 1000;
+const AUDIT_KEEP_DAYS = 400;
 const GROUPS = ['01_Framing', '02_Foundations', '03_Rebar_2D', '04_Rebar_3D_Embeds', '05_Details',
                 '06_Tags', '07_Sheets', '08_Steel', '09_Openings'];
 const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9 _\-.()+,&]*$/;
@@ -204,8 +205,10 @@ async function publish(request, env, who) {
     }
     const next = { ...(cur || {}) };
     for (const k of CARD_FIELDS) if (card[k] !== undefined) next[k] = card[k];
-    next.name = next.name || next.id;
-    next.tags = next.tags || [];
+    next.name = String(next.name || next.id).slice(0, 120);
+    next.tags = (Array.isArray(next.tags) ? next.tags : []).slice(0, 50).map(t => String(t).slice(0, 60));
+    next.types = (Array.isArray(next.types) ? next.types : []).slice(0, 2000).map(String);
+    next.description = String(next.description || '').slice(0, 4000);
     next.version = expected;
     next.status = 'active';
     next.updated = today();
@@ -287,7 +290,10 @@ async function updateCardInfo(request, env, who) {
       if (changes[k] === undefined) continue;
       if (k === 'group' && !GROUPS.includes(changes[k])) throw new HttpError(400, 'unknown group');
       if ((k === 'tags' || k === 'types') && !Array.isArray(changes[k])) throw new HttpError(400, k + ' must be a list');
-      fam[k] = k === 'types' ? changes[k].slice(0, 2000).map(String) : changes[k];
+      if (k === 'types') fam[k] = changes[k].slice(0, 2000).map(String);
+      else if (k === 'tags') fam[k] = changes[k].slice(0, 50).map(t => String(t).slice(0, 60));
+      else if (k === 'name' && !String(changes[k]).trim()) throw new HttpError(400, 'name is empty');
+      else fam[k] = String(changes[k]).slice(0, k === 'description' ? 4000 : 500);
     }
     fam.info_updated = nowIso();
     await putJson(env, LIB + `${fam.group}/${fam.id}/card.json`, fam);
@@ -330,6 +336,8 @@ function familyOfPath(p) {
 async function stats(env, url) {
   const days = Math.max(1, Math.min(365, parseInt(url.searchParams.get('days') || '90', 10) || 90));
   const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 19);
+  const keepFrom = new Date(Date.now() - AUDIT_KEEP_DAYS * 86400000).toISOString().slice(0, 19);
+  await env.DB.prepare('DELETE FROM audit WHERE time < ?').bind(keepFrom).run();   // keep the log small
   const r = await env.DB.prepare(
     "SELECT target, COUNT(*) AS n, COUNT(DISTINCT key_id) AS u FROM audit WHERE action = 'download' AND time >= ? GROUP BY target")
     .bind(since).all();
