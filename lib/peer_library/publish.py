@@ -44,6 +44,8 @@ def publish_one(app, backend, source, draft, note=u'', accept_warnings=False,
         card['revit'] = checks_file.LIBRARY_REVIT
         card['revit_category'] = prep['category'] or draft.get('revit_category', u'')
         card['types'] = all_type_names(prep)
+        card['checks'] = [{'code': r[1], 'text': r[2]} for r in results
+                          if r[0] == 'warning' and r[1] != 'prefix'][:20]
         stored = backend.publish(card, prep['rfa'], prep['png'], prep['catalog'], note,
                                  proposal_id=proposal_id)
         return stored, results

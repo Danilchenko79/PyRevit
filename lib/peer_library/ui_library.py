@@ -20,7 +20,8 @@ from peer_library import ui_common as U  # noqa: E402
 from peer_library.cache import Cache  # noqa: E402
 
 PREVIEWS_PER_TICK = 12
-SPECIAL_GROUPS = ('all', 'favorites', 'recent', 'new', 'project', 'outdated', 'popular')
+SPECIAL_GROUPS = ('all', 'favorites', 'recent', 'new', 'project', 'outdated', 'popular',
+                  'attention')
 
 
 class Item(object):
@@ -239,6 +240,9 @@ class LibraryWindow(forms.WPFWindow):
                 ('outdated', strings.GROUP_OUTDATED,
                  sum(1 for i in self.items if i.code == loader.OUTDATED)),
                 ('popular', strings.GROUP_POPULAR, sum(1 for i in self.items if i.downloads))]
+        if self.is_admin:
+            rows.append(('attention', strings.GROUP_ATTENTION,
+                         sum(1 for i in self.items if index.attention(i.card))))
         n_special = len(rows)
         for g in groups.GROUPS:
             rows.append((g[0], g[1], counts.get(g[0], 0)))
@@ -274,6 +278,8 @@ class LibraryWindow(forms.WPFWindow):
         if k == 'recent' and it.card['id'] not in self.prefs['recent']:
             return False
         if k == 'popular' and not it.downloads:
+            return False
+        if k == 'attention' and not index.attention(it.card):
             return False
         if k.startswith('coll:'):
             coll = self._collection(k[5:])
@@ -445,6 +451,10 @@ class LibraryWindow(forms.WPFWindow):
         self.fav_btn.Content = strings.FAV_ON if fav else strings.FAV_OFF
         self.d_stats.Text = strings.STATS_LINE.format(it.downloads, it.users) if it.downloads \
             else u''
+        if self.is_admin:
+            need = index.attention(c)
+            self.admin_header.Text = strings.ADMIN_HEADER + (
+                u' · ' + strings.NEEDS.format(u', '.join(need)) if need else u'')
 
     def on_fav(self, sender, args):
         it = self.current

@@ -305,6 +305,14 @@ class TestChecks(unittest.TestCase):
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
+    def test_attention(self):
+        c = index.new_card(id='PEER_A', group='01_Framing', version=1, png_sha1='x',
+                           description=u'd', tags=[u't'])
+        self.assertEqual(index.attention(c), [])
+        c['checks'] = [{'code': 'version', 'text': u'...'}]
+        c['tags'] = []
+        self.assertEqual(index.attention(c), [u'no tags', u'PEER_Version not written'])
+
     def test_card_validation(self):
         self.assertEqual(index.validate(index.new_card(id='PEER_A', group='01_Framing',
                                                        version=1)), [])

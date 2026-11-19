@@ -45,7 +45,7 @@ const GROUPS = ['01_Framing', '02_Foundations', '03_Rebar_2D', '04_Rebar_3D_Embe
                 '06_Tags', '07_Sheets', '08_Steel', '09_Openings'];
 const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9 _\-.()+,&]*$/;
 const CARD_FIELDS = ['id', 'name', 'group', 'revit_category', 'tags', 'revit', 'description',
-                     'help_url', 'types'];
+                     'help_url', 'types', 'checks'];
 
 export class HttpError extends Error {
   constructor(status, message) { super(message); this.status = status; }
@@ -209,6 +209,8 @@ async function publish(request, env, who) {
     next.tags = (Array.isArray(next.tags) ? next.tags : []).slice(0, 50).map(t => String(t).slice(0, 60));
     next.types = (Array.isArray(next.types) ? next.types : []).slice(0, 2000).map(String);
     next.description = String(next.description || '').slice(0, 4000);
+    next.checks = (Array.isArray(card.checks) ? card.checks : []).slice(0, 20)
+      .map(c => ({ code: String((c && c.code) || '').slice(0, 30), text: String((c && c.text) || '').slice(0, 300) }));
     next.version = expected;
     next.status = 'active';
     next.updated = today();

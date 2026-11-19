@@ -37,7 +37,25 @@ CARD_DEFAULTS = {
     'status': u'active',
     'history': [],
     'types': [],          # type names (family + catalog) - search finds "HE200A"
+    'checks': [],         # publish warnings [{code, text}] - admin "Needs attention"
 }
+
+
+def attention(card):
+    """Why an admin should look at this card ([] = fine)."""
+    out = []
+    if not card.get('png_sha1'):
+        out.append(u'no preview')
+    if not (card.get('description') or u'').strip():
+        out.append(u'no description')
+    if not card.get('tags'):
+        out.append(u'no tags')
+    for c in card.get('checks') or []:
+        if c.get('code') == 'version':
+            out.append(u'PEER_Version not written')
+        elif c.get('code') in ('cad', 'revit_old', 'size'):
+            out.append(c.get('text') or c.get('code'))
+    return out
 STATUSES = ('active', 'deprecated')
 
 
