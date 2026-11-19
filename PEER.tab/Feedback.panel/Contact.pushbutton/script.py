@@ -151,13 +151,12 @@ def _settings():
     else:
         url = forms.ask_for_string(
             default=cfg['url'], title=u'PEER - receiver address',
-            prompt=u'Web app address of the receiver (Apps Script -> Deploy -> '
-                   u'Web app URL, ends with /exec). Stored on this computer only.')
+            prompt=u'Receiver URL (ends with /exec):')
         if url is None:
             return
         key = forms.ask_for_string(
             default=cfg['key'], title=u'PEER - receiver key',
-            prompt=u'Key = Script Property PEER_KEY of the receiver.')
+            prompt=u'Receiver key (PEER_KEY):')
         if key is None:
             return
         cfg = config.save_local(url=url.strip(), key=key.strip())
