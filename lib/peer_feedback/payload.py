@@ -58,7 +58,8 @@ def utc_now():
 def validate(fields):
     """-> list of error keys of texts.STRINGS (empty = ok)."""
     errors = []
-    if not u(fields.get('text')).strip():
+    # a bug with the error text attached may go without words
+    if not u(fields.get('text')).strip() and not u(fields.get('error_text')).strip():
         errors.append('err_text')
     if fields.get('topic') in texts.TOPICS_WITH_BUTTON and not u(fields.get('button')).strip():
         errors.append('err_button')
@@ -67,6 +68,8 @@ def validate(fields):
 
 def make_request(fields, context, request_id=None, created_at=None):
     """fields: what the person typed; context: what the script collected.
+
+    An empty text with an attached error becomes u'(error report)'.
 
     Unknown topic / frequency / duration codes raise ValueError: they come
     from the window's lists, so a bad one is a bug in the caller.
@@ -85,7 +88,8 @@ def make_request(fields, context, request_id=None, created_at=None):
         'id': request_id or new_id(),
         'created_at': created_at or utc_now(),
         'topic': text_type(topic),
-        'text': clip(fields.get('text'), MAX_TEXT),
+        'text': clip(fields.get('text'), MAX_TEXT) or (
+            u'(error report)' if u(context.get('error_text')).strip() else u''),
         'frequency': text_type(freq),
         'duration': text_type(dur),
         'button': clip(fields.get('button'), MAX_FIELD),
@@ -105,6 +109,26 @@ def _clean(name):
     return _ORDER.sub(u'', _SUFFIX.sub(u'', u(name)))
 
 
+def button_name(rel_path):
+    """'Walls.panel/WallRebar2D.pushbutton' -> u'Walls / WallRebar2D'.
+
+    rel_path is relative to PEER.tab, any slashes. A .stack only groups
+    buttons on the ribbon - not a level people see - so it is dropped.
+    """
+    raw = [p for p in u(rel_path).replace(u'\\', u'/').split(u'/') if p]
+    return u' / '.join(_clean(p) for p in raw if not p.endswith(u'.stack'))
+
+
+def button_from_script(scriptpath):
+    """Full path of a PEER script -> 'Panel / Button', or u'' if not a PEER.tab button."""
+    parts = [p for p in u(scriptpath).replace(u'\\', u'/').split(u'/') if p]
+    tab = [i for i, p in enumerate(parts) if p.endswith(u'.tab')]
+    btn = [i for i, p in enumerate(parts) if _SUFFIX.search(p) and not p.endswith((u'.tab', u'.panel', u'.stack', u'.pulldown'))]
+    if not tab or not btn or btn[-1] <= tab[-1]:
+        return u''
+    return button_name(u'/'.join(parts[tab[-1] + 1:btn[-1] + 1]))
+
+
 def list_buttons(tab_dir):
     """Buttons of the PEER tab as 'Panel / Button' (folder names), sorted.
 
@@ -120,10 +144,5 @@ def list_buttons(tab_dir):
             continue
         if not any(f.endswith(('.py', '.yaml')) for f in files):
             continue
-        rel = os.path.relpath(root, tab_dir)
-        parts = [_clean(p) for p in rel.replace('\\', '/').split('/')]
-        # a .stack only groups buttons on the ribbon - not a level people see
-        parts = [p for p, raw in zip(parts, rel.replace('\\', '/').split('/'))
-                 if not raw.endswith('.stack')]
-        out.append(u' / '.join(parts))
+        out.append(button_name(os.path.relpath(root, tab_dir)))
     return sorted(set(out), key=lambda x: x.lower())

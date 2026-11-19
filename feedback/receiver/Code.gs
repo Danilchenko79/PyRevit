@@ -6,9 +6,11 @@
  *
  * It can ONLY:
  *   - answer a ping,
- *   - append a request row (duplicates by id are ignored).
- * It never returns the table's contents, so a leaked address + key lets
- * someone add rows, nothing more. Change the key in Script Properties
+ *   - append a request row (duplicates by id are ignored),
+ *   - return status / comment of the request ids it is asked about
+ *     (ids are random 128-bit values known only to their author's PEER).
+ * It never returns other rows or the request texts, so a leaked address +
+ * key lets someone add rows, nothing more. Change the key in Script Properties
  * (PEER_KEY) and in PEER settings to cut them off.
  *
  * Setup: feedback/SETUP.md. Run setup() once from the editor.
@@ -65,6 +67,8 @@ function doPost(e) {
         return json_({ ok: true, pong: true, time: new Date().toISOString() });
       case 'request':
         return json_(saveRequest_(body.data || {}));
+      case 'status':
+        return json_(statuses_(body.data || {}));
       default:
         return json_({ ok: false, error: 'bad_request', detail: 'unknown action' });
     }
@@ -114,6 +118,39 @@ function saveRequest_(d) {
   } finally {
     lock.releaseLock();
   }
+}
+
+// ----------------------------------------------------------------- status --
+
+var MAX_STATUS_IDS = 100;
+
+/** {ids: [...]} -> {ok, statuses: {id: {status, comment, changed}}} for those ids only. */
+function statuses_(d) {
+  var ids = Array.isArray(d.ids) ? d.ids.slice(0, MAX_STATUS_IDS) : [];
+  var wanted = {};
+  ids.forEach(function (id) {
+    if (/^[0-9a-f]{32}$/.test(String(id))) wanted[id] = true;
+  });
+  var out = {};
+  var sheet = book_().getSheetByName(SHEET_REQUESTS);
+  if (!sheet || sheet.getLastRow() < 2 || !Object.keys(wanted).length) {
+    return { ok: true, statuses: out };
+  }
+  var n = sheet.getLastRow() - 1;
+  var cId = columnOf_('id'), cSt = columnOf_('status'),
+      cCm = columnOf_('comment'), cCh = columnOf_('status_changed_at');
+  var rows = sheet.getRange(2, 1, n, REQUEST_COLUMNS.length).getValues();
+  rows.forEach(function (r) {
+    var id = String(r[cId - 1]);
+    if (!wanted[id]) return;
+    var ch = r[cCh - 1];
+    out[id] = {
+      status: String(r[cSt - 1] || ''),
+      comment: String(r[cCm - 1] || ''),
+      changed: Object.prototype.toString.call(ch) === '[object Date]' ? ch.toISOString() : String(ch || '')
+    };
+  });
+  return { ok: true, statuses: out };
 }
 
 // ---------------------------------------------------------------- helpers --

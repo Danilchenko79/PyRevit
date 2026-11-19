@@ -14,3 +14,11 @@ try:
     _peer_feedback.flush_async()
 except Exception:
     pass
+
+# Файловая телеметрия pyRevit (%APPDATA%\PEER\telemetry): из неё Contact берёт текст
+# последних ошибок кнопок PEER для отчёта о баге. Логика - lib/peer_feedback/runs.py.
+try:
+    from peer_feedback import runs as _peer_runs
+    _peer_runs.ensure_telemetry()
+except Exception:
+    pass

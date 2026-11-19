@@ -73,12 +73,33 @@ On **one remote computer** (home, no network drive):
 Then repeat step 2 on one computer with Revit 2023–2024 and one with
 Revit 2025+.
 
+## Update for "My requests" (once, after stage 2)
+
+The receiver deployed in stage 1 does not report statuses yet. Paste the
+new [`receiver/Code.gs`](receiver/Code.gs) over the old code, save, then
+**Deploy → Manage deployments → Edit (pencil) → Version: New version →
+Deploy**. The URL and the key stay the same. Until then **My Requests**
+shows "The receiver does not report statuses yet".
+
+## Bug reports with the error text
+
+pyRevit catches script errors itself, so PEER reads them from pyRevit's
+file telemetry: on every Revit start PEER switches it on and points it to
+`%APPDATA%\PEER\telemetry` (a folder already set in pyRevit settings is
+kept). pyRevit writes one record per button run there; files older than
+90 days are deleted.
+
+Nothing from these files is sent by itself. When a PEER button fails,
+**Contact** opens on **Bug** with that error picked (within 15 minutes;
+older errors of the last 7 days are in the list) — the full error text
+goes with the report only when the person clicks **Send**.
+
 ## Working with the table
 
 - **Status** — pick from the dropdown: New, Accepted, In progress, Done,
   Rejected. **Status changed** fills in by itself.
-- **Comment for the author** — a short note; the author will see it in
-  PEER together with the status (stage 2).
+- **Comment for the author** — a short note; the author sees it in
+  **My Requests** together with the status.
 - Do not reorder or rename the columns: the receiver writes by position.
   Add your own columns to the right of **Status changed**.
 
@@ -100,4 +121,6 @@ deployment (instead of a new version) gets a new URL.
 | --- | --- |
 | Address, key | `%APPDATA%\PEER\feedback.json` |
 | Unsent requests | `%APPDATA%\PEER\outbox\*.json` |
+| Sent requests and last known status | `%APPDATA%\PEER\sent.json` |
+| Button runs (pyRevit telemetry) | `%APPDATA%\PEER\telemetry\*.json` |
 | Send log | `%TEMP%\peer_revit_logs\peer_feedback.log` |

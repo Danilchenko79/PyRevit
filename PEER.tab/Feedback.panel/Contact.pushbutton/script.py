@@ -8,6 +8,9 @@ The request lands as a row in the group's table; its status
 
 HOW TO USE
 1. Pick a topic. For "Improve a button" and "Bug" pick the button too.
+   Bug: pick the error from the list - the button and the full error
+   text are filled in (a PEER error of the last 15 minutes is picked
+   already). Text is then optional: Contact -> Send.
 2. Describe what you need in a few sentences.
 3. Optional: how often it happens and how long it takes each time -
    this is how requests are prioritised.
@@ -23,15 +26,19 @@ Shift+Click: check the connection, send queued requests, set the
 receiver address and key.
 """
 
+import datetime
 import os
 
 from pyrevit import forms, script
 
 from System.Windows import Visibility
 
-from peer_feedback import config, texts, payload, client, context, outbox
+from peer_feedback import config, texts, payload, client, context, outbox, runs, sent
 
 ACTION = 'request'
+TITLE = u'PEER - Contact'
+# a PEER error this fresh opens Contact on "Bug" with it picked
+FRESH_ERROR_MIN = 15
 
 
 def _tab_dir():
@@ -41,9 +48,10 @@ def _tab_dir():
 
 
 class ContactWindow(forms.WPFWindow):
-    def __init__(self, xaml_path, ctx, buttons, topic=None, button=None):
+    def __init__(self, xaml_path, ctx, buttons, fails, topic=None, button=None, error=0):
         forms.WPFWindow.__init__(self, xaml_path)
         self.ctx = ctx
+        self.fails = list(fails)
         self.result = None
         t = texts.s
 
@@ -56,9 +64,10 @@ class ContactWindow(forms.WPFWindow):
         self.lbl_frequency.Text = t('frequency')
         self.lbl_duration.Text = t('duration')
         self.lbl_context.Text = t('context')
+        self.lbl_error.Text = t('error')
+        self.lbl_error_hint.Text = t('error_hint')
         self.btn_ok.Content = t('send')
         self.btn_cancel.Content = t('cancel')
-        self.tb_context.Text = context.describe(ctx)
 
         self.topics = texts.TOPICS
         for _, label, _h in self.topics:
@@ -81,14 +90,51 @@ class ContactWindow(forms.WPFWindow):
             self.cb_duration.Items.Add(label)
         self.cb_duration.SelectedIndex = 0
 
+        self.cb_error.Items.Add(t('no_error'))
+        for f in self.fails:
+            self.cb_error.Items.Add(runs.label(f))
+        self.cb_error.SelectedIndex = error if 0 <= error <= len(self.fails) else 0
+
         codes = [c for c, _l, _h in self.topics]
         self.cb_topic.SelectedIndex = codes.index(topic) if topic in codes else 0
         self._update_topic()
+        self._update_error()
         self.tb_text.Focus()
 
     # --- events ---
     def on_topic_changed(self, sender, args):
         self._update_topic()
+
+    def on_error_changed(self, sender, args):
+        self._update_error(pick_button=True)
+
+    def _error(self):
+        """The picked failure (only under Bug) or None."""
+        i = self.cb_error.SelectedIndex
+        if self._topic() != 'bug' or i < 1 or i > len(self.fails):
+            return None
+        return self.fails[i - 1]
+
+    def _topic(self):
+        return self.topics[max(0, self.cb_topic.SelectedIndex)][0]
+
+    def _context(self):
+        ctx = dict(self.ctx)
+        f = self._error()
+        ctx['error_script'] = f['script'] if f else u''
+        ctx['error_text'] = f['error'] if f else u''
+        return ctx
+
+    def _update_error(self, pick_button=False):
+        f = self._error()
+        if f and pick_button and f['button'] in self.buttons:
+            self.cb_button.SelectedIndex = self.buttons.index(f['button'])
+        ctx = self._context()
+        text = context.describe(ctx)
+        if f:
+            text += u'\nError: {0}'.format(runs.summary(f['error']) or f['script'])
+        self.tb_context.Text = text
+        self.lbl_text.Text = texts.s('text_bug' if f else 'text')
 
     def _update_topic(self):
         i = self.cb_topic.SelectedIndex
@@ -98,6 +144,9 @@ class ContactWindow(forms.WPFWindow):
         self.lbl_hint.Text = hint
         show = code in texts.TOPICS_WITH_BUTTON
         self.pnl_button.Visibility = Visibility.Visible if show else Visibility.Collapsed
+        bug = code == 'bug' and bool(self.fails)
+        self.pnl_error.Visibility = Visibility.Visible if bug else Visibility.Collapsed
+        self._update_error()
 
     def _fields(self):
         code = self.topics[max(0, self.cb_topic.SelectedIndex)][0]
@@ -107,6 +156,7 @@ class ContactWindow(forms.WPFWindow):
         return {
             'topic': code,
             'text': self.tb_text.Text or u'',
+            'error_text': self._context()['error_text'],
             'button': button,
             'frequency': self.freq[max(0, self.cb_frequency.SelectedIndex)][0],
             'duration': self.dur[max(0, self.cb_duration.SelectedIndex)][0],
@@ -116,10 +166,10 @@ class ContactWindow(forms.WPFWindow):
         fields = self._fields()
         errors = payload.validate(fields)
         if errors:
-            forms.alert(u'\n'.join(texts.s(e) for e in errors),
-                        title=u'PEER - Contact')
+            forms.alert(u'\n'.join(texts.s(e) for e in errors), title=TITLE)
             return
         self.result = fields
+        self.result_context = self._context()
         self.DialogResult = True
         self.Close()
 
@@ -143,11 +193,12 @@ def _settings():
         return
     if pick.startswith(u'Check'):
         ok, text = client.ping(cfg)
-        forms.alert(text, title=u'PEER - connection ' + (u'OK' if ok else u'FAILED'))
+        forms.alert(text, title=u'PEER - connection ' + (u'OK' if ok else u'FAILED'),
+                    warn_icon=not ok)
     elif pick.startswith(u'Send'):
-        sent, left = client.flush(cfg)
-        forms.alert(u'Sent: {0}. Still queued: {1}.'.format(sent, left),
-                    title=u'PEER - Contact')
+        n_sent, left = client.flush(cfg)
+        forms.alert(u'Sent: {0}. Still queued: {1}.'.format(n_sent, left),
+                    title=TITLE, warn_icon=bool(left))
     else:
         url = forms.ask_for_string(
             default=cfg['url'], title=u'PEER - receiver address',
@@ -162,12 +213,20 @@ def _settings():
         cfg = config.save_local(url=url.strip(), key=key.strip())
         ok, text = client.ping(cfg)
         if ok:
-            sent, left = client.flush(cfg)
-            text += u'\nQueued requests sent: {0}, left: {1}.'.format(sent, left)
-        forms.alert(text, title=u'PEER - connection ' + (u'OK' if ok else u'FAILED'))
+            n_sent, left = client.flush(cfg)
+            text += u'\nQueued requests sent: {0}, left: {1}.'.format(n_sent, left)
+        forms.alert(text, title=u'PEER - connection ' + (u'OK' if ok else u'FAILED'),
+                    warn_icon=not ok)
 
 
 # ------------------------------------------------------------------- main --
+def _recent_failures():
+    try:
+        return runs.recent_failures()
+    except Exception:
+        return []
+
+
 def main():
     try:
         shift = __shiftclick__  # noqa: F821
@@ -180,19 +239,32 @@ def main():
     cfg = config.load()
     ctx = context.collect(__revit__)  # noqa: F821
     buttons = payload.list_buttons(_tab_dir())
-    win = ContactWindow(script.get_bundle_file('ContactForm.xaml'), ctx, buttons)
+    fails = _recent_failures()
+    topic, error = None, 0
+    if fails:
+        age = datetime.datetime.utcnow() - fails[0]['time']
+        if age < datetime.timedelta(minutes=FRESH_ERROR_MIN):
+            topic, error = 'bug', 1
+    win = ContactWindow(script.get_bundle_file('ContactForm.xaml'), ctx, buttons, fails,
+                        topic=topic, error=error)
+    if error:
+        win._update_error(pick_button=True)
     win.ShowDialog()
     if not win.DialogResult or not win.result:
         return
 
-    req = payload.make_request(win.result, ctx)
+    req = payload.make_request(win.result, win.result_context)
     status = client.submit(ACTION, req, cfg)
+    try:
+        sent.add(req)
+    except Exception:
+        pass
     if status == client.SENT:
-        forms.alert(texts.s('sent'), title=u'PEER - Contact')
+        forms.alert(texts.s('sent'), title=TITLE, warn_icon=False)
     elif status == client.NOT_CONFIGURED:
-        forms.alert(texts.s('not_configured'), title=u'PEER - Contact')
+        forms.alert(texts.s('not_configured'), title=TITLE)
     else:
-        forms.alert(texts.s('queued'), title=u'PEER - Contact')
+        forms.alert(texts.s('queued'), title=TITLE)
 
 
 main()

@@ -176,6 +176,8 @@ class FakeReceiver(object):
         self.rows = {}
         self.calls = 0
         self.down = False
+        self.status = {}          # id -> {'status', 'comment', 'changed'}
+        self.knows_status = True  # False = receiver deployed before stage 2
         rec = self
 
         class H(BaseHTTPRequestHandler):
@@ -203,6 +205,9 @@ class FakeReceiver(object):
                         dup = d['id'] in rec.rows
                         rec.rows[d['id']] = d
                         ans = {'ok': True, 'id': d['id'], 'duplicate': dup}
+                elif body['action'] == 'status' and rec.knows_status:
+                    ans = {'ok': True, 'statuses': dict(
+                        (i, rec.status[i]) for i in body['data']['ids'] if i in rec.status)}
                 else:
                     ans = {'ok': False, 'error': 'bad_request'}
                 out = json.dumps(ans).encode('utf-8')

@@ -27,6 +27,13 @@
                 <TextBlock x:Name="lbl_hint" Margin="2,4,0,0" FontSize="12"
                            Foreground="#5A6A78" TextWrapping="Wrap"/>
 
+                <StackPanel x:Name="pnl_error">
+                    <TextBlock x:Name="lbl_error" Margin="0,12,0,4"/>
+                    <ComboBox x:Name="cb_error" SelectionChanged="on_error_changed"/>
+                    <TextBlock x:Name="lbl_error_hint" Margin="2,4,0,0" FontSize="12"
+                               Foreground="#5A6A78" TextWrapping="Wrap"/>
+                </StackPanel>
+
                 <StackPanel x:Name="pnl_button">
                     <TextBlock x:Name="lbl_button" Margin="0,12,0,4"/>
                     <ComboBox x:Name="cb_button" IsEditable="False"/>

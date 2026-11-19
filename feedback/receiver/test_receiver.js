@@ -17,6 +17,7 @@ function fakeSheet(name) {
     setFrozenRows: () => {},
     setColumnWidth: () => {},
     getRange: (row, col, nRows, nCols) => ({
+      getValues: () => rows.slice(row - 1, row - 1 + nRows).map((r) => r.slice(col - 1, col - 1 + nCols)),
       setFontWeight: () => {},
       setDataValidation: () => {},
       setNote: () => {},
@@ -125,5 +126,18 @@ assert.strictEqual(r3[col('Error text')].length, 5000);
 // manual status change stamps the time
 ctx.onEdit({ range: sh.getRange(2, col('Status') + 1) });
 assert.ok(isDate(sh.rows[1][col('Status changed')]));
+
+// status: only the ids asked, never other rows; junk ids ignored
+sh.rows[1][col('Status')] = 'Accepted';
+sh.rows[1][col('Comment for the author')] = 'Next week';
+let st = post({ key, action: 'status', data: { ids: ['a'.repeat(32), 'f'.repeat(32), '../x'] } });
+assert.strictEqual(st.ok, true);
+assert.deepStrictEqual(Object.keys(st.statuses), ['a'.repeat(32)]);
+assert.strictEqual(st.statuses['a'.repeat(32)].status, 'Accepted');
+assert.strictEqual(st.statuses['a'.repeat(32)].comment, 'Next week');
+assert.ok(/^\d{4}-\d\d-\d\dT/.test(st.statuses['a'.repeat(32)].changed));
+assert.strictEqual(JSON.stringify(st).indexOf('Хочу'), -1, 'no request text leaks');
+assert.deepStrictEqual(post({ key, action: 'status', data: {} }).statuses, {});
+assert.strictEqual(post({ key: 'wrong', action: 'status', data: { ids: ['a'.repeat(32)] } }).error, 'bad_key');
 
 console.log('receiver: all checks passed');

@@ -130,6 +130,25 @@ def flush_async():
     return t
 
 
+def statuses(ids, cfg=None, batch=100):
+    """{id: {'status', 'comment', 'changed'}} for these request ids.
+
+    Raises SendError (no connection / receiver not configured / refused).
+    The receiver answers only for the ids asked - never other rows.
+    """
+    cfg = cfg or config.load()
+    out = {}
+    ids = [i for i in ids if i]
+    for k in range(0, len(ids), batch):
+        ans = send('status', {'ids': ids[k:k + batch]}, cfg)
+        if not ans.get('ok'):
+            raise SendError(u'receiver refused: {0}'.format(ans.get('error')))
+        for rid, st in (ans.get('statuses') or {}).items():
+            if isinstance(st, dict):
+                out[rid] = st
+    return out
+
+
 def ping(cfg=None):
     """-> (ok, text) for the Shift+Click connection check."""
     cfg = cfg or config.load()
