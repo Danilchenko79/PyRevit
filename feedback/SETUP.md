@@ -97,6 +97,19 @@ the key.
 Sent: date, Revit user, computer name, button, counts, error name,
 Revit and PEER versions. No project names, no texts, no paths.
 
+## Pictures in requests
+
+People can paste a screenshot into **Contact** (Ctrl+V), drop image files
+on the window or add them with a button — up to 5, each shrunk to 1600 px
+and saved as JPEG. The receiver puts them in the Drive folder **PEER
+Feedback pictures** (made by `setup`, its id is in Script Property
+`ATTACH_FOLDER_ID`) and writes their links in the **Pictures** column.
+The folder is yours and not shared: only you open the links.
+
+After pasting the new `Code.gs`: run **setup** once (Google asks for the
+Drive permission), then deploy a new version. Until then the request still
+arrives, with "(pictures not saved: …)" in **Pictures**.
+
 ## Weekly summary (stage 4)
 
 Every Monday at 07:00 the receiver writes the **Summary** sheet and

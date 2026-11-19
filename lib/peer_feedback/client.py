@@ -42,7 +42,11 @@ def send(action, data, cfg=None):
     if not config.is_configured(cfg):
         raise SendError(u'receiver not configured')
     body = {'v': PROTOCOL, 'key': cfg['key'], 'action': action, 'data': data}
-    return post_json(cfg['url'], body, cfg['timeout_s'])
+    timeout = cfg['timeout_s']
+    if data.get('attachments'):
+        # pictures: upload + saving them to Drive takes longer
+        timeout = max(timeout, 90)
+    return post_json(cfg['url'], body, timeout)
 
 
 def _deliver(item, cfg):

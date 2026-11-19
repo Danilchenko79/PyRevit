@@ -1,46 +1,194 @@
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="PEER - My requests"
-        Height="520" Width="900" MinWidth="600" MinHeight="320"
+        Height="560" Width="980" MinWidth="640" MinHeight="340"
         WindowStartupLocation="CenterScreen"
         ResizeMode="CanResizeWithGrip"
         ShowInTaskbar="False"
-        FontFamily="Segoe UI" FontSize="13">
-    <Grid Margin="14">
+        Background="#F4F6F9"
+        FontFamily="Segoe UI" FontSize="13" Foreground="#1F2937">
+    <!-- Same look as Contact (ContactForm.xaml). Rows: a DataTable built in script.py,
+         columns Date / Topic / Button / Request / Status / Comment (sent.COLUMNS). -->
+    <Window.Resources>
+        <SolidColorBrush x:Key="Accent" Color="#2563EB"/>
+        <SolidColorBrush x:Key="AccentDark" Color="#1D4ED8"/>
+        <SolidColorBrush x:Key="Line" Color="#D8DEE6"/>
+        <SolidColorBrush x:Key="Muted" Color="#6B7280"/>
+
+        <Style x:Key="Primary" TargetType="Button">
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd" CornerRadius="6" Background="{StaticResource Accent}" Padding="18,0">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="{StaticResource AccentDark}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="Secondary" TargetType="Button">
+            <Setter Property="Foreground" Value="#374151"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd" CornerRadius="6" Background="White" Padding="14,0"
+                                BorderBrush="{StaticResource Line}" BorderThickness="1">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#F3F4F6"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="DataGridColumnHeader">
+            <Setter Property="Background" Value="#F9FAFB"/>
+            <Setter Property="Foreground" Value="#6B7280"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Padding" Value="10,8"/>
+            <Setter Property="BorderBrush" Value="{StaticResource Line}"/>
+            <Setter Property="BorderThickness" Value="0,0,0,1"/>
+        </Style>
+
+        <Style TargetType="DataGridCell">
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="10,6"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="DataGridCell">
+                        <Border Padding="{TemplateBinding Padding}" Background="Transparent">
+                            <ContentPresenter VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Foreground" Value="#1F2937"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style TargetType="DataGridRow">
+            <Setter Property="Background" Value="White"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#F5F8FF"/>
+                </Trigger>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="#E8F0FE"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="Wrap" TargetType="TextBlock">
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+
+        <!-- status chip: colour by value -->
+        <Style x:Key="Chip" TargetType="Border">
+            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="Padding" Value="9,2"/>
+            <Setter Property="HorizontalAlignment" Value="Left"/>
+            <Setter Property="Background" Value="#F3F4F6"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding Status}" Value="Accepted">
+                    <Setter Property="Background" Value="#E0ECFF"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Status}" Value="In progress">
+                    <Setter Property="Background" Value="#FEF3C7"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Status}" Value="Done">
+                    <Setter Property="Background" Value="#DCFCE7"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Status}" Value="Rejected">
+                    <Setter Property="Background" Value="#FEE2E2"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Status}" Value="Waiting to send">
+                    <Setter Property="Background" Value="#EDE9FE"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <TextBlock Grid.Row="0" Text="My requests" FontWeight="Bold" FontSize="15" Margin="0,0,0,6"/>
-
-        <Border Grid.Row="1" Background="#F2F6FA" BorderBrush="#C6D4E1"
-                BorderThickness="1" CornerRadius="3" Padding="8" Margin="0,0,0,10">
+        <Border Grid.Row="0" Background="White" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1"
+                Padding="24,18,24,16">
             <StackPanel>
-                <TextBlock TextWrapping="Wrap" Foreground="#33475B">
-                    <Run FontWeight="Bold" Text="How to use:"/><LineBreak/>
-                    <Run Text="Requests sent from this computer with Contact, newest first. Status and comment are set by the head of the group: New, Accepted, In progress, Done, Rejected."/>
-                </TextBlock>
-                <TextBlock x:Name="lbl_note" TextWrapping="Wrap" Foreground="#33475B"
-                           FontStyle="Italic" Margin="0,4,0,0"/>
+                <TextBlock Text="My requests" FontSize="20" FontWeight="SemiBold" Foreground="#111827"/>
+                <TextBlock FontSize="13" Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,4,0,0"
+                           Text="Requests sent from this computer with Contact, newest first. The head of the group sets the status and may leave a comment."/>
             </StackPanel>
         </Border>
 
-        <DataGrid Grid.Row="2" x:Name="grid"
-                  AutoGenerateColumns="True" IsReadOnly="True"
-                  CanUserAddRows="False" CanUserDeleteRows="False"
-                  HeadersVisibility="Column" GridLinesVisibility="Horizontal"
-                  HorizontalGridLinesBrush="#E3E8EE" Background="White"
-                  BorderBrush="#BBBBBB" RowHeaderWidth="0"
-                  SelectionMode="Single" SelectionUnit="FullRow"/>
+        <Border Grid.Row="1" Margin="24,16,24,0" Background="White" CornerRadius="8"
+                BorderBrush="{StaticResource Line}" BorderThickness="1">
+            <Grid>
+                <DataGrid x:Name="grid" AutoGenerateColumns="False" IsReadOnly="True"
+                          CanUserAddRows="False" CanUserDeleteRows="False" CanUserResizeRows="False"
+                          HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                          HorizontalGridLinesBrush="#EEF1F5" Background="White" BorderThickness="0"
+                          RowHeaderWidth="0" SelectionMode="Single" SelectionUnit="FullRow"
+                          Margin="1">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Date" Binding="{Binding Date}" Width="120"/>
+                        <DataGridTextColumn Header="Topic" Binding="{Binding Topic}" Width="130"/>
+                        <DataGridTextColumn Header="Button" Binding="{Binding Button}" Width="170"
+                                            ElementStyle="{StaticResource Wrap}"/>
+                        <DataGridTextColumn Header="Request" Binding="{Binding Request}" Width="2*"
+                                            ElementStyle="{StaticResource Wrap}"/>
+                        <DataGridTemplateColumn Header="Status" Width="125">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Border Style="{StaticResource Chip}">
+                                        <TextBlock Text="{Binding Status}" FontSize="12"/>
+                                    </Border>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                        <DataGridTextColumn Header="Comment" Binding="{Binding Comment}" Width="*"
+                                            ElementStyle="{StaticResource Wrap}"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+                <TextBlock x:Name="lbl_empty" Text="No requests yet - send one with Contact."
+                           Foreground="{StaticResource Muted}" HorizontalAlignment="Center"
+                           VerticalAlignment="Center" Visibility="Collapsed"/>
+            </Grid>
+        </Border>
 
-        <StackPanel Grid.Row="3" Orientation="Horizontal"
-                    HorizontalAlignment="Right" Margin="0,12,0,0">
-            <Button Content="Refresh" Width="90" Height="28" Click="on_refresh" Margin="0,0,8,0"/>
-            <Button Content="Close" Width="90" Height="28" Click="on_close"
-                    IsDefault="True" IsCancel="True"/>
-        </StackPanel>
+        <Border Grid.Row="2" Background="White" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0"
+                Padding="24,12" Margin="0,16,0,0">
+            <DockPanel LastChildFill="True">
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <Button Content="Refresh" Style="{StaticResource Secondary}" Height="34" MinWidth="90"
+                            Margin="0,0,8,0" Click="on_refresh"/>
+                    <Button Content="Close" Style="{StaticResource Primary}" Height="34" MinWidth="90"
+                            Click="on_close" IsDefault="True" IsCancel="True"/>
+                </StackPanel>
+                <TextBlock x:Name="lbl_note" FontSize="12" Foreground="{StaticResource Muted}"
+                           TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,12,0"/>
+            </DockPanel>
+        </Border>
     </Grid>
 </Window>

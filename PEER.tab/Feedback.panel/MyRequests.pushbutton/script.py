@@ -71,9 +71,12 @@ class MyRequestsWindow(forms.WPFWindow):
         self.load()
 
     def load(self):
+        from System.Windows import Visibility
         note = refresh()
         self.lbl_note.Text = note
-        self.grid.ItemsSource = build_table().DefaultView
+        table = build_table()
+        self.grid.ItemsSource = table.DefaultView
+        self.lbl_empty.Visibility = Visibility.Collapsed if table.Rows.Count else Visibility.Visible
 
     def on_refresh(self, sender, args):
         self.load()

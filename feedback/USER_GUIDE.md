@@ -20,7 +20,9 @@ Two buttons on the **PEER** tab, panel **Feedback**.
 
 3. Write what you need in a few sentences. **How often** and **Time per
    occurrence** are optional, but they decide what gets automated first.
-4. **Send**.
+4. A picture says more: take a screenshot (Win+Shift+S) and press
+   **Ctrl+V** in the window, or drop image files on it. Up to 5.
+5. **Send** (or Ctrl+Enter).
 
 **Bug in one click:** when a PEER button fails, click **Contact** right
 after — the topic, the button and the error are already filled in. Add a
@@ -41,6 +43,7 @@ gets a status within a week.
   the selected elements, Revit / pyRevit / PEER versions.
 - Every day: how many times each PEER button was run and how many runs
   failed. Only PEER buttons — not what you do in Revit.
-- Never: files, geometry, parameter values.
+- Pictures only when you add them yourself.
+- Never: model files, geometry, parameter values.
 
 Results are looked at for the group as a whole, not per person.

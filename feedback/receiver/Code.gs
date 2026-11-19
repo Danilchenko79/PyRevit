@@ -21,7 +21,9 @@
 var SHEET_REQUESTS = 'Requests';
 
 // Column order on the sheet. Keys = fields of lib/peer_feedback/payload.py.
-// The last three are the head's columns: filled by hand in the table.
+// Status / Comment / Status changed are the head's columns, filled by hand.
+// New columns are only ever added at the END (an existing sheet gets the
+// header cell added by sheet_()), so old rows stay aligned.
 var REQUEST_COLUMNS = [
   ['id', 'ID'],
   ['received_at', 'Received'],
@@ -43,7 +45,8 @@ var REQUEST_COLUMNS = [
   ['error_text', 'Error text'],
   ['status', 'Status'],
   ['comment', 'Comment for the author'],
-  ['status_changed_at', 'Status changed']
+  ['status_changed_at', 'Status changed'],
+  ['attachments', 'Pictures']
 ];
 
 var SHEET_USAGE = 'Usage';
@@ -126,6 +129,18 @@ function saveRequest_(d) {
     return { ok: false, error: 'bad_request', detail: 'unknown topic' };
   }
 
+  var att = d.attachments || [];
+  if (!Array.isArray(att) || att.length > MAX_ATTACHMENTS) {
+    return { ok: false, error: 'bad_request', detail: 'bad attachments' };
+  }
+
+  // a retry of a request that is already in: no second copy of its pictures
+  if (findRow_(sheet_(SHEET_REQUESTS, REQUEST_COLUMNS), id) > 0) {
+    return { ok: true, id: id, duplicate: true };
+  }
+  // pictures go to Drive before the lock: it can take a few seconds
+  var links = saveAttachments_(id, att);
+
   var lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
@@ -140,6 +155,7 @@ function saveRequest_(d) {
       if (k === 'status') return STATUSES[0];
       if (k === 'status_changed_at') return now;
       if (k === 'comment') return '';
+      if (k === 'attachments') return links.join('\n');
       return cell_(d[k]);
     });
     sheet.appendRow(row);
@@ -147,6 +163,54 @@ function saveRequest_(d) {
   } finally {
     lock.releaseLock();
   }
+}
+
+// ------------------------------------------------------------ pictures --
+
+var MAX_ATTACHMENTS = 5;
+var MAX_ATTACHMENT_B64 = 2000000;
+var ATTACH_TYPES = { 'image/jpeg': 'jpg', 'image/png': 'png' };
+
+/** Drive folder for pictures: Script Property ATTACH_FOLDER_ID, else a new one. */
+function attachFolder_() {
+  var props = PropertiesService.getScriptProperties();
+  var id = props.getProperty('ATTACH_FOLDER_ID');
+  if (id) {
+    try { return DriveApp.getFolderById(id); } catch (err) { /* deleted: make a new one */ }
+  }
+  var folder = DriveApp.createFolder('PEER Feedback pictures');
+  props.setProperty('ATTACH_FOLDER_ID', folder.getId());
+  return folder;
+}
+
+/**
+ * [{name, type, data (base64)}] -> list of Drive links. A picture that
+ * cannot be saved gives a line "(picture N not saved: ...)" instead: the
+ * request itself is never lost because of a picture.
+ */
+function saveAttachments_(id, att) {
+  if (!att.length) return [];
+  var out = [];
+  var folder;
+  try {
+    folder = attachFolder_();
+  } catch (err) {
+    return ['(pictures not saved: ' + String(err).slice(0, 200) + ')'];
+  }
+  var stamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  att.forEach(function (a, i) {
+    try {
+      var ext = ATTACH_TYPES[a && a.type];
+      var data = String((a && a.data) || '');
+      if (!ext || !data || data.length > MAX_ATTACHMENT_B64) throw new Error('bad picture');
+      var name = stamp + ' ' + id.slice(0, 8) + ' ' + (i + 1) + '.' + ext;
+      var blob = Utilities.newBlob(Utilities.base64Decode(data), a.type, name);
+      out.push(folder.createFile(blob).getUrl());
+    } catch (err) {
+      out.push('(picture ' + (i + 1) + ' not saved: ' + String(err).slice(0, 200) + ')');
+    }
+  });
+  return out;
 }
 
 // ----------------------------------------------------------------- status --
@@ -290,6 +354,11 @@ function sheet_(name, columns) {
     sheet.appendRow(columns.map(function (c) { return c[1]; }));
     sheet.setFrozenRows(1);
     sheet.getRange(1, 1, 1, columns.length).setFontWeight('bold');
+  } else if (sheet.getLastColumn() < columns.length) {
+    // a column added in a newer version: give it its header
+    for (var i = sheet.getLastColumn(); i < columns.length; i++) {
+      sheet.getRange(1, i + 1).setValue(columns[i][1]).setFontWeight('bold');
+    }
   }
   return sheet;
 }
@@ -327,6 +396,7 @@ function setup() {
   sheet.setColumnWidth(columnOf_('error_text'), 300);
 
   sheet_(SHEET_USAGE, USAGE_COLUMNS);
+  attachFolder_();   // asks for the Drive permission now, not on the first picture
   var buttons = sheet_(SHEET_BUTTONS, BUTTON_COLUMNS);
   buttons.setColumnWidth(1, 280);
   buttons.getRange(1, 2).setNote('How many minutes one run of this button saves compared with doing it by hand. Used for "time saved" in the weekly summary.');

@@ -12,6 +12,7 @@ function fakeSheet(name) {
     name, rows,
     getName: () => name,
     getLastRow: () => rows.length,
+    getLastColumn: () => (rows[0] ? rows[0].length : 0),
     getMaxRows: () => 1000,
     appendRow: (r) => { rows.push(r.slice()); },
     clear: () => { rows.length = 0; },
@@ -21,13 +22,13 @@ function fakeSheet(name) {
       getValues: () => rows.slice(row - 1, row - 1 + nRows).map((r) => r.slice(col - 1, col - 1 + nCols)),
       setValues: (vals) => { vals.forEach((v, i) => { rows[row - 1 + i] = v.slice(); }); },
       setFontWeight: () => range,
+      setValue: (v) => { rows[row - 1] = rows[row - 1] || []; rows[row - 1][col - 1] = v; return range; },
       setFontSize: () => range,
       setDataValidation: () => {},
       setNote: () => {},
       getRow: () => row,
       getColumn: () => col,
       getSheet: () => sheet,
-      setValue: (v) => { rows[row - 1][col - 1] = v; },
       createTextFinder: (text) => ({
         matchEntireCell: () => ({
           findNext: () => {
@@ -44,6 +45,11 @@ function fakeSheet(name) {
 }
 
 const sheets = {};
+const drive = { created: 0, files: [], folder: null };
+drive.folder = {
+  getId: () => 'F1',
+  createFile: (blob) => { drive.files.push(blob); return { getUrl: () => 'https://drive/' + blob.name }; },
+};
 const props = {};
 const ctx = {
   PropertiesService: { getScriptProperties: () => ({
@@ -68,6 +74,12 @@ const ctx = {
   Utilities: {
     getUuid: () => '11111111-2222-3333-4444-555555555555',
     formatDate: (d, tz, f) => d.toISOString().slice(0, 10),
+    base64Decode: (b64) => Array.from(Buffer.from(b64, 'base64')),
+    newBlob: (bytes, type, name) => ({ bytes, type, name }),
+  },
+  DriveApp: {
+    getFolderById: (id) => { if (id !== 'F1') throw new Error('no folder'); return drive.folder; },
+    createFolder: (name) => { drive.created += 1; return drive.folder; },
   },
   Session: { getScriptTimeZone: () => 'Asia/Jerusalem', getEffectiveUser: () => ({ getEmail: () => 'me@x' }) },
   Logger: { log: () => {} },
@@ -232,5 +244,32 @@ const html = ctx.renderHtml_(sum);
 assert.ok(html.includes('<h3') && !html.includes('<script'));
 ctx.writeSummarySheet_(sum);
 assert.ok(sheets.Summary.rows[0][0].startsWith('PEER weekly summary'));
+
+// pictures: saved to the Drive folder, links on the row, folder made once
+assert.strictEqual(props.ATTACH_FOLDER_ID, 'F1', 'setup made the folder');
+assert.strictEqual(drive.created, 1);
+const jpg = Buffer.from([0xff, 0xd8, 0xff, 0xd9]).toString('base64');
+const withPics = req({ id: '9'.repeat(32), attachments: [
+  { name: 'image-1.jpg', type: 'image/jpeg', data: jpg },
+  { name: 'x.exe', type: 'application/x-msdownload', data: jpg },
+] });
+assert.strictEqual(post({ key, action: 'request', data: withPics }).ok, true);
+const picRow = sheets.Requests.rows[sheets.Requests.rows.length - 1];
+const pics = picRow[col('Pictures')].split('\n');
+assert.strictEqual(pics.length, 2);
+assert.ok(/^https:\/\/drive\/\d{4}-\d\d-\d\d 99999999 1\.jpg$/.test(pics[0]));
+assert.ok(pics[1].startsWith('(picture 2 not saved'));
+assert.deepStrictEqual(Array.from(drive.files[0].bytes), [0xff, 0xd8, 0xff, 0xd9]);
+// a retry of the same request: no second copy of the pictures
+post({ key, action: 'request', data: withPics });
+assert.strictEqual(drive.files.length, 1);
+assert.strictEqual(drive.created, 1);
+assert.strictEqual(post({ key, action: 'request', data: req({ id: '8'.repeat(32),
+  attachments: new Array(6).fill({ type: 'image/jpeg', data: jpg }) }) }).error, 'bad_request');
+
+// a sheet made by an older version gets the new column header, old rows untouched
+sheets.Requests.rows[0].pop();
+post({ key, action: 'request', data: req({ id: '7'.repeat(32) }) });
+assert.strictEqual(sheets.Requests.rows[0][sheets.Requests.rows[0].length - 1], 'Pictures');
 
 console.log('receiver: all checks passed');

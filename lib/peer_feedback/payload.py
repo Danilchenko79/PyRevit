@@ -21,6 +21,11 @@ except NameError:
 MAX_TEXT = 5000
 MAX_FIELD = 500
 
+# pictures: at most this many, each this many base64 chars (~1.5 MB of JPEG)
+MAX_IMAGES = 5
+MAX_IMAGE_B64 = 2000000
+_B64 = re.compile(r'^[A-Za-z0-9+/]+={0,2}$')
+
 # what the person fills in
 USER_FIELDS = ('topic', 'text', 'frequency', 'duration', 'button')
 # what the script adds
@@ -66,7 +71,20 @@ def validate(fields):
     return errors
 
 
-def make_request(fields, context, request_id=None, created_at=None):
+def attachments(images):
+    """[base64 JPEG text] -> request attachments. Raises ValueError on junk."""
+    out = []
+    for i, data in enumerate(images or []):
+        data = u(data)
+        if not data or len(data) > MAX_IMAGE_B64 or not _B64.match(data):
+            raise ValueError('bad image %d' % (i + 1))
+        out.append({'name': u'image-%d.jpg' % (i + 1), 'type': u'image/jpeg', 'data': data})
+    if len(out) > MAX_IMAGES:
+        raise ValueError('too many images: %d' % len(out))
+    return out
+
+
+def make_request(fields, context, request_id=None, created_at=None, images=None):
     """fields: what the person typed; context: what the script collected.
 
     An empty text with an attached error becomes u'(error report)'.
@@ -97,6 +115,8 @@ def make_request(fields, context, request_id=None, created_at=None):
     for k in CONTEXT_FIELDS:
         limit = MAX_TEXT if k == 'error_text' else MAX_FIELD
         req[k] = clip(context.get(k), limit)
+    if images:
+        req['attachments'] = attachments(images)
     return req
 
 

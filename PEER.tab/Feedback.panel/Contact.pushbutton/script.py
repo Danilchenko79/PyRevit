@@ -33,7 +33,7 @@ from pyrevit import forms, script
 
 from System.Windows import Visibility
 
-from peer_feedback import config, texts, payload, client, context, outbox, runs, sent
+from peer_feedback import config, texts, payload, client, context, outbox, runs, sent, images
 
 ACTION = 'request'
 TITLE = u'PEER - Contact'
@@ -53,25 +53,39 @@ class ContactWindow(forms.WPFWindow):
         self.ctx = ctx
         self.fails = list(fails)
         self.result = None
+        self.result_context = None
+        self.result_images = []
+        self.images = []          # [(BitmapSource, base64 JPEG)]
         t = texts.s
 
-        self.Title = u'PEER - ' + t('title')
+        self.Title = TITLE
         self.lbl_title.Text = t('title')
         self.lbl_howto.Text = t('how_to')
         self.lbl_topic.Text = t('topic')
         self.lbl_button.Text = t('button')
-        self.lbl_text.Text = t('text')
+        self.lbl_placeholder.Text = t('placeholder')
+        self.lbl_images.Text = t('images')
+        self.lbl_images_hint.Text = t('images_hint')
+        self.btn_add_image.Content = t('add_image')
         self.lbl_frequency.Text = t('frequency')
         self.lbl_duration.Text = t('duration')
-        self.lbl_context.Text = t('context')
+        self.exp_context.Header = t('context')
         self.lbl_error.Text = t('error')
         self.lbl_error_hint.Text = t('error_hint')
         self.btn_ok.Content = t('send')
         self.btn_cancel.Content = t('cancel')
+        self.lbl_status.Text = t('shortcut')
 
-        self.topics = texts.TOPICS
-        for _, label, _h in self.topics:
-            self.cb_topic.Items.Add(label)
+        # topic / frequency / time as pills
+        self.topic_pills = self._pills(self.pnl_topics, 'topic',
+                                       [(c, l, h) for c, l, h in texts.TOPICS],
+                                       self.on_topic_checked)
+        self.freq_pills = self._pills(self.pnl_frequency, 'freq',
+                                      [(c, l, None) for c, l in texts.FREQUENCY if c],
+                                      None)
+        self.dur_pills = self._pills(self.pnl_duration, 'dur',
+                                     [(c, l, None) for c, l in texts.DURATION if c],
+                                     None)
 
         self.buttons = [u''] + list(buttons)
         self.cb_button.Items.Add(t('no_button'))
@@ -81,32 +95,146 @@ class ContactWindow(forms.WPFWindow):
         if button and button in self.buttons:
             self.cb_button.SelectedIndex = self.buttons.index(button)
 
-        self.freq = texts.FREQUENCY
-        for _, label in self.freq:
-            self.cb_frequency.Items.Add(label)
-        self.cb_frequency.SelectedIndex = 0
-        self.dur = texts.DURATION
-        for _, label in self.dur:
-            self.cb_duration.Items.Add(label)
-        self.cb_duration.SelectedIndex = 0
-
         self.cb_error.Items.Add(t('no_error'))
         for f in self.fails:
             self.cb_error.Items.Add(runs.label(f))
         self.cb_error.SelectedIndex = error if 0 <= error <= len(self.fails) else 0
 
-        codes = [c for c, _l, _h in self.topics]
-        self.cb_topic.SelectedIndex = codes.index(topic) if topic in codes else 0
+        self._check(self.topic_pills, topic if topic in texts.TOPIC_CODES else texts.TOPIC_CODES[0])
         self._update_topic()
         self._update_error()
         self.tb_text.Focus()
 
+    # --- pills ---
+    def _pills(self, panel, group, items, on_checked):
+        from System.Windows.Controls import RadioButton
+        style = self.FindResource('Pill')
+        out = []
+        for code, label, hint in items:
+            rb = RadioButton()
+            rb.Content = label
+            rb.GroupName = group
+            rb.Style = style
+            rb.Tag = code
+            if hint:
+                rb.ToolTip = hint
+            if on_checked is not None:
+                rb.Checked += on_checked
+            panel.Children.Add(rb)
+            out.append(rb)
+        return out
+
+    @staticmethod
+    def _checked(pills, default=u''):
+        for rb in pills:
+            if rb.IsChecked:
+                return rb.Tag
+        return default
+
+    @staticmethod
+    def _check(pills, code):
+        for rb in pills:
+            if rb.Tag == code:
+                rb.IsChecked = True
+
     # --- events ---
-    def on_topic_changed(self, sender, args):
+    def on_topic_checked(self, sender, args):
         self._update_topic()
 
     def on_error_changed(self, sender, args):
         self._update_error(pick_button=True)
+
+    def on_text_changed(self, sender, args):
+        empty = not (self.tb_text.Text or u'')
+        self.lbl_placeholder.Visibility = Visibility.Visible if empty else Visibility.Collapsed
+
+    def on_key(self, sender, args):
+        from System.Windows.Input import Key, Keyboard, ModifierKeys
+        ctrl = (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control
+        if not ctrl:
+            return
+        if args.Key == Key.Return:
+            args.Handled = True
+            self.on_ok(sender, args)
+        elif args.Key == Key.V and images.clipboard_has_image():
+            # a picture on the clipboard: attach it; plain text pastes as usual
+            args.Handled = True
+            self._add(images.from_clipboard())
+
+    def on_drag_over(self, sender, args):
+        from System.Windows import DataFormats, DragDropEffects
+        ok = args.Data.GetDataPresent(DataFormats.FileDrop)
+        # .None is a Python keyword: getattr
+        args.Effects = DragDropEffects.Copy if ok else getattr(DragDropEffects, 'None')
+        args.Handled = True
+
+    def on_drop(self, sender, args):
+        from System.Windows import DataFormats
+        if args.Data.GetDataPresent(DataFormats.FileDrop):
+            self._add(images.from_files(list(args.Data.GetData(DataFormats.FileDrop))))
+
+    def on_add_image(self, sender, args):
+        from Microsoft.Win32 import OpenFileDialog
+        dlg = OpenFileDialog()
+        dlg.Filter = u'Images|*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tif;*.tiff'
+        dlg.Multiselect = True
+        if dlg.ShowDialog(self):
+            self._add(images.from_files(list(dlg.FileNames)))
+
+    # --- pictures ---
+    def _add(self, bitmaps):
+        for bmp in bitmaps:
+            if len(self.images) >= payload.MAX_IMAGES:
+                forms.alert(texts.s('image_max'), title=TITLE)
+                break
+            try:
+                b64 = images.encode_fitting(bmp)
+            except Exception:
+                b64 = None
+            if not b64:
+                forms.alert(texts.s('image_too_big'), title=TITLE)
+                continue
+            self.images.append((bmp, b64))
+        self._show_images()
+
+    def _show_images(self):
+        from System.Windows import Thickness, CornerRadius, HorizontalAlignment, VerticalAlignment
+        from System.Windows.Controls import Border, Button, Grid, Image
+        from System.Windows.Media import Brushes, Stretch
+        self.pnl_images.Children.Clear()
+        for i, (bmp, b64) in enumerate(self.images):
+            img = Image()
+            img.Source = bmp
+            img.Stretch = Stretch.UniformToFill
+            img.Width, img.Height = 112, 76
+            frame = Border()
+            frame.CornerRadius = CornerRadius(4)
+            frame.BorderBrush = Brushes.LightGray
+            frame.BorderThickness = Thickness(1)
+            frame.Child = img
+            frame.ToolTip = u'{0} KB'.format(images.b64_size_kb(b64))
+            rm = Button()
+            rm.Style = self.FindResource('Remove')
+            rm.Tag = i
+            rm.HorizontalAlignment = HorizontalAlignment.Right
+            rm.VerticalAlignment = VerticalAlignment.Top
+            rm.Margin = Thickness(0, 4, 4, 0)
+            rm.Click += self.on_remove_image
+            cell = Grid()
+            cell.Margin = Thickness(0, 0, 8, 8)
+            cell.Children.Add(frame)
+            cell.Children.Add(rm)
+            self.pnl_images.Children.Add(cell)
+
+    def on_remove_image(self, sender, args):
+        i = sender.Tag
+        if 0 <= i < len(self.images):
+            del self.images[i]
+        self._show_images()
+
+    # --- state ---
+    def _topic(self):
+        return self._checked(self.topic_pills, texts.TOPIC_CODES[0])
 
     def _error(self):
         """The picked failure (only under Bug) or None."""
@@ -114,9 +242,6 @@ class ContactWindow(forms.WPFWindow):
         if self._topic() != 'bug' or i < 1 or i > len(self.fails):
             return None
         return self.fails[i - 1]
-
-    def _topic(self):
-        return self.topics[max(0, self.cb_topic.SelectedIndex)][0]
 
     def _context(self):
         ctx = dict(self.ctx)
@@ -129,18 +254,15 @@ class ContactWindow(forms.WPFWindow):
         f = self._error()
         if f and pick_button and f['button'] in self.buttons:
             self.cb_button.SelectedIndex = self.buttons.index(f['button'])
-        ctx = self._context()
-        text = context.describe(ctx)
+        text = context.describe(self._context())
         if f:
             text += u'\nError: {0}'.format(runs.summary(f['error']) or f['script'])
         self.tb_context.Text = text
         self.lbl_text.Text = texts.s('text_bug' if f else 'text')
 
     def _update_topic(self):
-        i = self.cb_topic.SelectedIndex
-        if i < 0:
-            return
-        code, _label, hint = self.topics[i]
+        code = self._topic()
+        hint = dict((c, h) for c, _l, h in texts.TOPICS).get(code, u'')
         self.lbl_hint.Text = hint
         show = code in texts.TOPICS_WITH_BUTTON
         self.pnl_button.Visibility = Visibility.Visible if show else Visibility.Collapsed
@@ -149,7 +271,7 @@ class ContactWindow(forms.WPFWindow):
         self._update_error()
 
     def _fields(self):
-        code = self.topics[max(0, self.cb_topic.SelectedIndex)][0]
+        code = self._topic()
         button = u''
         if code in texts.TOPICS_WITH_BUTTON:
             button = self.buttons[max(0, self.cb_button.SelectedIndex)]
@@ -158,8 +280,8 @@ class ContactWindow(forms.WPFWindow):
             'text': self.tb_text.Text or u'',
             'error_text': self._context()['error_text'],
             'button': button,
-            'frequency': self.freq[max(0, self.cb_frequency.SelectedIndex)][0],
-            'duration': self.dur[max(0, self.cb_duration.SelectedIndex)][0],
+            'frequency': self._checked(self.freq_pills),
+            'duration': self._checked(self.dur_pills),
         }
 
     def on_ok(self, sender, args):
@@ -170,6 +292,7 @@ class ContactWindow(forms.WPFWindow):
             return
         self.result = fields
         self.result_context = self._context()
+        self.result_images = [b64 for _bmp, b64 in self.images]
         self.DialogResult = True
         self.Close()
 
@@ -253,7 +376,7 @@ def main():
     if not win.DialogResult or not win.result:
         return
 
-    req = payload.make_request(win.result, win.result_context)
+    req = payload.make_request(win.result, win.result_context, images=win.result_images)
     status = client.submit(ACTION, req, cfg)
     try:
         sent.add(req)
