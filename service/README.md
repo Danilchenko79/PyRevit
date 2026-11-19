@@ -48,12 +48,16 @@ Workers 100 000 запросов в день. Workers Paid — 5 $ в месяц
    {"backend": "http", "url": "https://peer-library.<имя>.workers.dev"}
    ```
    и выпустить в `main` (автообновление PEER). Адрес не секрет — без ключа сервис ничего не отдаёт.
-2. Каждому — ключ кнопкой **Keys** («Create key», роль `user`), отправить лично.
+2. Доступ: человек жмёт **Library** → «Request access» (имя + заметка). У админа в **Keys**
+   появляется заявка → «Approve as user» — при следующем нажатии Library человек входит сам,
+   ключ никто не пересылает. Можно и вручную: Keys → «Create key», отправить лично.
    Ушёл человек — «Revoke selected key», ключ перестаёт работать сразу.
+3. Пока адреса сервиса в настройках нет, панель Library у коллег скрыта.
 
 ## Резервная копия
-- Файлы библиотеки: `py -3 lib/peer_library/tools/backup.py <адрес> D:\Backup\PEER`
-  (ключ админа берётся из PEER этого пользователя Windows).
+- Файлы библиотеки:
+  `powershell -ExecutionPolicy Bypass -File lib\peer_library\tools\backup.ps1 -Folder D:\Backup\PEER`
+  (ключ админа берётся из PEER этого пользователя Windows; проверяет SHA-1 каждого файла).
 - Ключи, предложения, журнал: `npx wrangler d1 export peer-library --remote --output=D:\Backup\PEER\d1.sql`
 
 ## Проверка без Cloudflare
