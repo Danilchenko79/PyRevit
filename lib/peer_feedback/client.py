@@ -46,7 +46,7 @@ def send(action, data, cfg=None):
 
 
 def _deliver(item, cfg):
-    """-> 'ok' / 'drop' / 'retry' (+ reason)."""
+    """-> 'ok' / 'drop' / 'retry' (no answer) / 'refused' (answered no) (+ reason)."""
     try:
         ans = send(item['action'], item['data'], cfg)
     except SendError as ex:
@@ -54,9 +54,12 @@ def _deliver(item, cfg):
     if ans.get('ok'):
         return 'ok', u''
     err = payload.u(ans.get('error'))
-    if err == 'bad_request':
-        return 'drop', err + u' ' + payload.u(ans.get('detail'))
-    return 'retry', err
+    detail = payload.u(ans.get('detail'))
+    # a receiver older than this PEER does not know the action yet: keep the
+    # item until the head of the group updates the receiver
+    if err == 'bad_request' and detail != u'unknown action':
+        return 'drop', err + u' ' + detail
+    return 'refused', (err + u' ' + detail).strip()
 
 
 def submit(action, data, cfg=None, base=None):
@@ -85,6 +88,7 @@ def flush(cfg=None, base=None):
     """Send everything in the outbox, oldest first. -> (sent, left).
 
     Stops at the first network failure: the rest would fail the same way.
+    An item the receiver refused stays queued, the rest still go out.
     """
     cfg = cfg or config.load()
     if not config.is_configured(cfg):
@@ -103,6 +107,8 @@ def flush(cfg=None, base=None):
             elif res == 'drop':
                 _log(u'dropped {0}: {1}'.format(os.path.basename(path), why))
                 outbox.remove(path)
+            elif res == 'refused':
+                _log(u'kept {0}: {1}'.format(os.path.basename(path), why))
             else:
                 _log(u'flush stopped: {0}'.format(why))
                 break

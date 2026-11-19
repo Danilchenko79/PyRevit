@@ -18,6 +18,7 @@ function fakeSheet(name) {
     setColumnWidth: () => {},
     getRange: (row, col, nRows, nCols) => ({
       getValues: () => rows.slice(row - 1, row - 1 + nRows).map((r) => r.slice(col - 1, col - 1 + nCols)),
+      setValues: (vals) => { vals.forEach((v, i) => { rows[row - 1 + i] = v.slice(); }); },
       setFontWeight: () => {},
       setDataValidation: () => {},
       setNote: () => {},
@@ -139,5 +140,32 @@ assert.ok(/^\d{4}-\d\d-\d\dT/.test(st.statuses['a'.repeat(32)].changed));
 assert.strictEqual(JSON.stringify(st).indexOf('Хочу'), -1, 'no request text leaks');
 assert.deepStrictEqual(post({ key, action: 'status', data: {} }).statuses, {});
 assert.strictEqual(post({ key: 'wrong', action: 'status', data: { ids: ['a'.repeat(32)] } }).error, 'bad_key');
+
+// usage: rows appended once by id, junk rows skipped, counts are numbers
+assert.ok(sheets.Usage && sheets.Buttons, 'setup creates Usage and Buttons');
+const u1 = { id: '1'.repeat(32), date: '2026-11-18', user: 'dima', machine: 'PC-01',
+             button: 'Walls / WallRebar2D', runs: '3', failures: 2, last_error: '=boom' };
+let ru = post({ key, action: 'usage', data: { id: 'x', rows: [u1, { id: 'bad', date: 'x', button: 'y' }] } });
+assert.deepStrictEqual([ru.ok, ru.added, ru.skipped], [true, 1, 1]);
+ru = post({ key, action: 'usage', data: { id: 'x', rows: [u1] } });
+assert.deepStrictEqual([ru.added, ru.skipped], [0, 1]);
+const uh = sheets.Usage.rows[0];
+const urow = sheets.Usage.rows[1];
+assert.strictEqual(sheets.Usage.rows.length, 2);
+assert.strictEqual(urow[uh.indexOf('Runs')], 3);
+assert.strictEqual(urow[uh.indexOf('Last error')], "'=boom");
+assert.strictEqual(post({ key, action: 'usage', data: { rows: 'x' } }).error, 'bad_request');
+
+// buttons: only missing names are added, minutes stay for the head
+let rb = post({ key, action: 'buttons', data: { id: 'y', names: ['Walls / WallRebar2D', 'Feedback / Contact'] } });
+assert.strictEqual(rb.added, 2);
+sheets.Buttons.rows[1][1] = 5;
+rb = post({ key, action: 'buttons', data: { id: 'y', names: ['Walls / WallRebar2D', 'Piles / PilesCoordinate'] } });
+assert.strictEqual(rb.added, 1);
+assert.strictEqual(sheets.Buttons.rows[1][1], 5);
+assert.strictEqual(sheets.Buttons.rows.length, 4);
+
+// unknown action keeps its own detail, so an old PEER/receiver pair retries instead of dropping
+assert.strictEqual(post({ key, action: 'later_feature' }).detail, 'unknown action');
 
 console.log('receiver: all checks passed');

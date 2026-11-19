@@ -172,7 +172,7 @@ def _is_peer(rec):
 def load_runs(folder, since=None, max_files=200):
     """PEER run records newer than `since` (naive UTC), newest first.
 
-    Each: {'time' (UTC), 'button', 'script', 'doc', 'code', 'error'}.
+    Each: {'time' (UTC), 'button', 'script', 'doc', 'user', 'revit', 'code', 'error'}.
     A file pyRevit is rewriting right now may be half written: skipped.
     """
     since_ts = None
@@ -205,6 +205,8 @@ def load_runs(folder, since=None, max_files=200):
                 'button': payload.button_from_script(script) or payload.u(rec.get('commandname')),
                 'script': _short_script(script),
                 'doc': payload.u(rec.get('docname')),
+                'user': payload.u(rec.get('username')),
+                'revit': payload.u(rec.get('revit')),
                 'code': code,
                 'error': payload.u(trace.get('message') if isinstance(trace, dict) else u''),
             })

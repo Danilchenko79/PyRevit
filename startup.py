@@ -7,18 +7,18 @@ try:
 except Exception:
     pass
 
-# Запросы «Contact», не ушедшие раньше (не было интернета) - отправка в фоне,
-# старт Revit не ждёт. Логика - lib/peer_feedback/client.py.
-try:
-    from peer_feedback import client as _peer_feedback
-    _peer_feedback.flush_async()
-except Exception:
-    pass
-
 # Файловая телеметрия pyRevit (%APPDATA%\PEER\telemetry): из неё Contact берёт текст
-# последних ошибок кнопок PEER для отчёта о баге. Логика - lib/peer_feedback/runs.py.
+# последних ошибок кнопок PEER, а лист Usage - запуски кнопок. Логика - lib/peer_feedback/runs.py.
 try:
     from peer_feedback import runs as _peer_runs
     _peer_runs.ensure_telemetry()
+except Exception:
+    pass
+
+# В фоне, старт Revit не ждёт: итоги запусков за прошедшие дни в очередь, затем отправка
+# очереди (и запросов Contact, не ушедших раньше). Логика - lib/peer_feedback/usage.py.
+try:
+    from peer_feedback import usage as _peer_usage
+    _peer_usage.upload_async()
 except Exception:
     pass

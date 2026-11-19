@@ -8,7 +8,9 @@
  *   - answer a ping,
  *   - append a request row (duplicates by id are ignored),
  *   - return status / comment of the request ids it is asked about
- *     (ids are random 128-bit values known only to their author's PEER).
+ *     (ids are random 128-bit values known only to their author's PEER),
+ *   - append daily button usage rows ("Usage") and new button names
+ *     ("Buttons"; minutes saved per run are filled in by hand).
  * It never returns other rows or the request texts, so a leaked address +
  * key lets someone add rows, nothing more. Change the key in Script Properties
  * (PEER_KEY) and in PEER settings to cut them off.
@@ -44,6 +46,29 @@ var REQUEST_COLUMNS = [
   ['status_changed_at', 'Status changed']
 ];
 
+var SHEET_USAGE = 'Usage';
+var USAGE_COLUMNS = [
+  ['id', 'ID'],
+  ['received_at', 'Received'],
+  ['date', 'Date'],
+  ['user', 'User'],
+  ['machine', 'Computer'],
+  ['button', 'Button'],
+  ['runs', 'Runs'],
+  ['failures', 'Failures'],
+  ['last_error', 'Last error'],
+  ['revit_version', 'Revit'],
+  ['peer_version', 'PEER']
+];
+
+var SHEET_BUTTONS = 'Buttons';
+var BUTTON_COLUMNS = [
+  ['button', 'Button'],
+  ['minutes', 'Minutes saved per run'],
+  ['notes', 'Notes'],
+  ['added_at', 'Added']
+];
+
 var STATUSES = ['New', 'Accepted', 'In progress', 'Done', 'Rejected'];
 var TOPICS = ['automation', 'improve', 'bug', 'idea', 'routine', 'template', 'howto', 'standard'];
 var MAX_CELL = 5000;
@@ -69,6 +94,10 @@ function doPost(e) {
         return json_(saveRequest_(body.data || {}));
       case 'status':
         return json_(statuses_(body.data || {}));
+      case 'usage':
+        return json_(saveUsage_(body.data || {}));
+      case 'buttons':
+        return json_(saveButtons_(body.data || {}));
       default:
         return json_({ ok: false, error: 'bad_request', detail: 'unknown action' });
     }
@@ -153,6 +182,84 @@ function statuses_(d) {
   return { ok: true, statuses: out };
 }
 
+// ------------------------------------------------------------------ usage --
+
+var MAX_USAGE_ROWS = 500;
+var MAX_BUTTONS = 500;
+
+/** {rows: [...]} -> appends rows whose id is not on "Usage" yet. */
+function saveUsage_(d) {
+  if (!Array.isArray(d.rows) || d.rows.length > MAX_USAGE_ROWS) {
+    return { ok: false, error: 'bad_request', detail: 'bad rows' };
+  }
+  var good = d.rows.filter(function (r) {
+    return r && /^[0-9a-f]{32}$/.test(String(r.id)) &&
+      /^\d{4}-\d\d-\d\d$/.test(String(r.date)) && String(r.button || '').trim();
+  });
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var sheet = sheet_(SHEET_USAGE, USAGE_COLUMNS);
+    var have = columnSet_(sheet, 1);
+    var now = new Date();
+    var add = [];
+    good.forEach(function (r) {
+      if (have[r.id]) return;
+      have[r.id] = true;
+      add.push(USAGE_COLUMNS.map(function (c) {
+        var k = c[0];
+        if (k === 'received_at') return now;
+        if (k === 'runs' || k === 'failures') return Math.max(0, parseInt(r[k], 10) || 0);
+        return cell_(r[k]);
+      }));
+    });
+    if (add.length) {
+      sheet.getRange(sheet.getLastRow() + 1, 1, add.length, USAGE_COLUMNS.length).setValues(add);
+    }
+    return { ok: true, added: add.length, skipped: d.rows.length - add.length };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** {names: [...]} -> adds button names missing on "Buttons" (minutes stay empty). */
+function saveButtons_(d) {
+  if (!Array.isArray(d.names) || d.names.length > MAX_BUTTONS) {
+    return { ok: false, error: 'bad_request', detail: 'bad names' };
+  }
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var sheet = sheet_(SHEET_BUTTONS, BUTTON_COLUMNS);
+    var have = columnSet_(sheet, 1);
+    var now = new Date();
+    var add = [];
+    d.names.forEach(function (n) {
+      var name = cell_(n).trim();
+      if (!name || have[name]) return;
+      have[name] = true;
+      add.push([name, '', '', now]);
+    });
+    if (add.length) {
+      sheet.getRange(sheet.getLastRow() + 1, 1, add.length, BUTTON_COLUMNS.length).setValues(add);
+    }
+    return { ok: true, added: add.length };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** {value: true} for the values of one column below the header. */
+function columnSet_(sheet, col) {
+  var out = {};
+  var last = sheet.getLastRow();
+  if (last < 2) return out;
+  sheet.getRange(2, col, last - 1, 1).getValues().forEach(function (r) {
+    out[String(r[0])] = true;
+  });
+  return out;
+}
+
 // ---------------------------------------------------------------- helpers --
 
 function json_(obj) {
@@ -218,6 +325,11 @@ function setup() {
   sheet.getRange(1, columnOf_('text')).setNote('Request text as the person wrote it.');
   sheet.setColumnWidth(columnOf_('text'), 420);
   sheet.setColumnWidth(columnOf_('error_text'), 300);
+
+  sheet_(SHEET_USAGE, USAGE_COLUMNS);
+  var buttons = sheet_(SHEET_BUTTONS, BUTTON_COLUMNS);
+  buttons.setColumnWidth(1, 280);
+  buttons.getRange(1, 2).setNote('How many minutes one run of this button saves compared with doing it by hand. Used for "time saved" in the weekly summary.');
 
   var props = PropertiesService.getScriptProperties();
   if (!props.getProperty('PEER_KEY')) {

@@ -81,6 +81,22 @@ new [`receiver/Code.gs`](receiver/Code.gs) over the old code, save, then
 Deploy**. The URL and the key stay the same. Until then **My Requests**
 shows "The receiver does not report statuses yet".
 
+## Button usage — sheets "Usage" and "Buttons" (stage 3)
+
+Also needs the new receiver version (same steps as above). After pasting
+the new code run **setup** once more: it adds the two sheets and keeps
+the key.
+
+- **Usage** — one row per day, person, computer and button: how many runs,
+  how many failed, the name of the last error. Sent on the next Revit
+  start after the day is over (never the current day), once.
+- **Buttons** — every PEER button, added automatically. Fill in
+  **Minutes saved per run** by hand: how long the same work takes without
+  the button. The weekly summary multiplies it by the runs.
+
+Sent: date, Revit user, computer name, button, counts, error name,
+Revit and PEER versions. No project names, no texts, no paths.
+
 ## Bug reports with the error text
 
 pyRevit catches script errors itself, so PEER reads them from pyRevit's
