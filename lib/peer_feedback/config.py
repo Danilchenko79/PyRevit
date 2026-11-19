@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Receiver address, key and options.
+"""Receiver address, key and timeout.
 
 Two files, the second wins key by key:
     1. lib/peer_feedback/settings.json  - in the repo, reaches everyone with
@@ -20,7 +20,6 @@ import os
 DEFAULTS = {
     'url': u'',          # https://script.google.com/macros/s/<id>/exec
     'key': u'',          # same value as Script Property PEER_KEY
-    'lang': u'en',       # window language: en / ru
     'timeout_s': 10,     # one HTTP request, seconds
 }
 

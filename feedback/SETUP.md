@@ -98,6 +98,6 @@ deployment (instead of a new version) gets a new URL.
 
 | What | Where |
 | --- | --- |
-| Address, key, language | `%APPDATA%\PEER\feedback.json` |
+| Address, key | `%APPDATA%\PEER\feedback.json` |
 | Unsent requests | `%APPDATA%\PEER\outbox\*.json` |
 | Send log | `%TEMP%\peer_revit_logs\peer_feedback.log` |

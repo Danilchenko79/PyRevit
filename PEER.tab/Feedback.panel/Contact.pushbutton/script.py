@@ -20,7 +20,7 @@ internet the request is saved on this computer and sent automatically
 on the next Revit start.
 
 Shift+Click: check the connection, send queued requests, set the
-receiver address and key, window language.
+receiver address and key.
 """
 
 import os
@@ -41,12 +41,11 @@ def _tab_dir():
 
 
 class ContactWindow(forms.WPFWindow):
-    def __init__(self, xaml_path, lang, ctx, buttons, topic=None, button=None):
+    def __init__(self, xaml_path, ctx, buttons, topic=None, button=None):
         forms.WPFWindow.__init__(self, xaml_path)
-        self.lang = lang
         self.ctx = ctx
         self.result = None
-        t = lambda k: texts.s(k, lang)
+        t = texts.s
 
         self.Title = u'PEER - ' + t('title')
         self.lbl_title.Text = t('title')
@@ -61,7 +60,7 @@ class ContactWindow(forms.WPFWindow):
         self.btn_cancel.Content = t('cancel')
         self.tb_context.Text = context.describe(ctx)
 
-        self.topics = texts.topic_labels(lang)
+        self.topics = texts.TOPICS
         for _, label, _h in self.topics:
             self.cb_topic.Items.Add(label)
 
@@ -73,11 +72,11 @@ class ContactWindow(forms.WPFWindow):
         if button and button in self.buttons:
             self.cb_button.SelectedIndex = self.buttons.index(button)
 
-        self.freq = texts.choice_labels(texts.FREQUENCY, lang)
+        self.freq = texts.FREQUENCY
         for _, label in self.freq:
             self.cb_frequency.Items.Add(label)
         self.cb_frequency.SelectedIndex = 0
-        self.dur = texts.choice_labels(texts.DURATION, lang)
+        self.dur = texts.DURATION
         for _, label in self.dur:
             self.cb_duration.Items.Add(label)
         self.cb_duration.SelectedIndex = 0
@@ -117,7 +116,7 @@ class ContactWindow(forms.WPFWindow):
         fields = self._fields()
         errors = payload.validate(fields)
         if errors:
-            forms.alert(u'\n'.join(texts.s(e, self.lang) for e in errors),
+            forms.alert(u'\n'.join(texts.s(e) for e in errors),
                         title=u'PEER - Contact')
             return
         self.result = fields
@@ -135,8 +134,7 @@ def _settings():
     queued = outbox.count()
     opts = [u'Check connection',
             u'Send queued requests now ({0})'.format(queued),
-            u'Receiver address and key',
-            u'Window language ({0})'.format(cfg['lang'])]
+            u'Receiver address and key']
     state = u'set' if config.is_configured(cfg) else u'NOT SET'
     pick = forms.CommandSwitchWindow.show(
         opts, message=u'Receiver: {0}.  Queued on this computer: {1}.'.format(state, queued),
@@ -150,7 +148,7 @@ def _settings():
         sent, left = client.flush(cfg)
         forms.alert(u'Sent: {0}. Still queued: {1}.'.format(sent, left),
                     title=u'PEER - Contact')
-    elif pick.startswith(u'Receiver'):
+    else:
         url = forms.ask_for_string(
             default=cfg['url'], title=u'PEER - receiver address',
             prompt=u'Web app address of the receiver (Apps Script -> Deploy -> '
@@ -168,10 +166,6 @@ def _settings():
             sent, left = client.flush(cfg)
             text += u'\nQueued requests sent: {0}, left: {1}.'.format(sent, left)
         forms.alert(text, title=u'PEER - connection ' + (u'OK' if ok else u'FAILED'))
-    else:
-        lang = forms.CommandSwitchWindow.show([u'en', u'ru'], title=u'PEER - window language')
-        if lang:
-            config.save_local(lang=lang)
 
 
 # ------------------------------------------------------------------- main --
@@ -185,10 +179,9 @@ def main():
         return
 
     cfg = config.load()
-    lang = texts.norm_lang(cfg['lang'])
     ctx = context.collect(__revit__)  # noqa: F821
     buttons = payload.list_buttons(_tab_dir())
-    win = ContactWindow(script.get_bundle_file('ContactForm.xaml'), lang, ctx, buttons)
+    win = ContactWindow(script.get_bundle_file('ContactForm.xaml'), ctx, buttons)
     win.ShowDialog()
     if not win.DialogResult or not win.result:
         return
@@ -196,11 +189,11 @@ def main():
     req = payload.make_request(win.result, ctx)
     status = client.submit(ACTION, req, cfg)
     if status == client.SENT:
-        forms.alert(texts.s('sent', lang), title=u'PEER - Contact')
+        forms.alert(texts.s('sent'), title=u'PEER - Contact')
     elif status == client.NOT_CONFIGURED:
-        forms.alert(texts.s('not_configured', lang), title=u'PEER - Contact')
+        forms.alert(texts.s('not_configured'), title=u'PEER - Contact')
     else:
-        forms.alert(texts.s('queued', lang), title=u'PEER - Contact')
+        forms.alert(texts.s('queued'), title=u'PEER - Contact')
 
 
 main()

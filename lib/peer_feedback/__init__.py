@@ -12,7 +12,7 @@ The receiver drops duplicates by request id, so a retry never doubles a row.
 
 Modules:
     config    - receiver address and key (repo file + local override)
-    texts     - window strings (en / ru) and the topic list
+    texts     - window strings and the topic list
     payload   - builds the request dict (pure python, tested)
     outbox    - local queue of unsent items (pure python, tested)
     transport - HTTP POST: .NET in Revit, urllib outside

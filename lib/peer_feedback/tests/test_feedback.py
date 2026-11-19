@@ -69,15 +69,14 @@ def test_validate():
     assert payload.validate({'topic': 'bug', 'text': u'crash', 'button': u''}) == ['err_button']
     assert payload.validate({'topic': 'bug', 'text': u'crash', 'button': u'Walls / WallRebar2D'}) == []
     for e in ('err_text', 'err_button'):
-        assert texts.s(e, 'ru') and texts.s(e, 'en')
+        assert texts.s(e)
 
 
-def test_texts_complete_for_both_languages():
-    for key, d in texts.STRINGS.items():
-        assert d.get('en') and d.get('ru'), key
-    for code, t in texts.TOPICS:
-        assert t['en'][0] and t['ru'][0], code
-    assert texts.norm_lang('he') == 'en'
+def test_texts_english_only_and_topics_match_receiver():
+    for key, v in texts.STRINGS.items():
+        assert v and all(ord(c) < 128 for c in v), key
+    for code, label, hint in texts.TOPICS:
+        assert label and hint and all(ord(c) < 128 for c in label + hint), code
     # receiver checks topics against its own list - keep them identical
     gs = io.open(os.path.join(os.path.dirname(LIB), 'feedback', 'receiver', 'Code.gs'),
                  encoding='utf-8').read()
@@ -134,9 +133,9 @@ def test_outbox_cap(tmp_path, monkeypatch):
 
 def test_config_local_overrides_repo(home):
     with io.open(config.REPO_FILE, 'w', encoding='utf-8') as f:
-        f.write(u'{"url": "https://repo/exec", "key": "repokey", "lang": "ru"}')
+        f.write(u'{"url": "https://repo/exec", "key": "repokey"}')
     cfg = config.load()
-    assert (cfg['url'], cfg['key'], cfg['lang']) == ('https://repo/exec', 'repokey', 'ru')
+    assert (cfg['url'], cfg['key']) == ('https://repo/exec', 'repokey')
     assert config.is_configured(cfg)
     cfg = config.save_local(key=u'localkey', bogus=1)
     assert (cfg['url'], cfg['key']) == ('https://repo/exec', 'localkey')
@@ -221,7 +220,7 @@ class FakeReceiver(object):
 
     def cfg(self, key=None):
         # is_configured() insists on https; tests talk plain http to localhost
-        return {'url': self.url, 'key': key or self.key, 'lang': 'en', 'timeout_s': 5}
+        return {'url': self.url, 'key': key or self.key, 'timeout_s': 5}
 
     def close(self):
         self.server.shutdown()

@@ -6,7 +6,7 @@
         ResizeMode="CanResizeWithGrip"
         ShowInTaskbar="False"
         FontFamily="Segoe UI" FontSize="13">
-    <!-- All visible strings are set from script.py (texts.py, en / ru). -->
+    <!-- All visible strings are set from script.py (lib/peer_feedback/texts.py). -->
     <Grid Margin="14">
         <Grid.RowDefinitions>
             <RowDefinition Height="*"/>
