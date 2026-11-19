@@ -14,12 +14,14 @@ function fakeSheet(name) {
     getLastRow: () => rows.length,
     getMaxRows: () => 1000,
     appendRow: (r) => { rows.push(r.slice()); },
+    clear: () => { rows.length = 0; },
     setFrozenRows: () => {},
     setColumnWidth: () => {},
-    getRange: (row, col, nRows, nCols) => ({
+    getRange: (row, col, nRows, nCols) => { const range = {
       getValues: () => rows.slice(row - 1, row - 1 + nRows).map((r) => r.slice(col - 1, col - 1 + nCols)),
       setValues: (vals) => { vals.forEach((v, i) => { rows[row - 1 + i] = v.slice(); }); },
-      setFontWeight: () => {},
+      setFontWeight: () => range,
+      setFontSize: () => range,
       setDataValidation: () => {},
       setNote: () => {},
       getRow: () => row,
@@ -36,7 +38,7 @@ function fakeSheet(name) {
           },
         }),
       }),
-    }),
+    }; return range; },
   };
   return sheet;
 }
@@ -63,7 +65,11 @@ const ctx = {
     MimeType: { JSON: 'json' },
     createTextOutput: (t) => ({ text: t, setMimeType() { return this; } }),
   },
-  Utilities: { getUuid: () => '11111111-2222-3333-4444-555555555555' },
+  Utilities: {
+    getUuid: () => '11111111-2222-3333-4444-555555555555',
+    formatDate: (d, tz, f) => d.toISOString().slice(0, 10),
+  },
+  Session: { getScriptTimeZone: () => 'Asia/Jerusalem', getEffectiveUser: () => ({ getEmail: () => 'me@x' }) },
   Logger: { log: () => {} },
 };
 vm.createContext(ctx);
@@ -167,5 +173,64 @@ assert.strictEqual(sheets.Buttons.rows.length, 4);
 
 // unknown action keeps its own detail, so an old PEER/receiver pair retries instead of dropping
 assert.strictEqual(post({ key, action: 'later_feature' }).detail, 'unknown action');
+
+// weekly summary on synthetic data
+const NOW = new Date('2026-11-23T07:00:00Z');
+const daysAgo = (n) => new Date(NOW.getTime() - n * 86400000);
+const R = (o) => Object.assign({ id: Math.random().toString(16).slice(2), status: 'New', frequency: '',
+                                 duration: '', button: '', text: '', error_text: '' }, o,
+                               { received_at: daysAgo(o.ago), status_changed_at: daysAgo(o.ago) });
+const sum = ctx.buildSummary_({
+  requests: [
+    R({ ago: 1, topic: 'automation', user: 'a', text: 'Sections at beams', frequency: 'daily', duration: 'gt30' }),
+    R({ ago: 2, topic: 'improve', user: 'a', button: 'Documentation / WinTag', text: 'units', frequency: 'weekly', duration: 'lt5' }),
+    R({ ago: 3, topic: 'improve', user: 'b', button: 'Documentation / WinTag', text: 'faster', frequency: 'daily', duration: '5to30' }),
+    R({ ago: 2, topic: 'bug', user: 'a', button: 'Walls / WallRebar2D',
+        error_text: 'Traceback (most recent call last):\n  File x\nException: no wall selected' }),
+    R({ ago: 2, topic: 'bug', user: 'b', button: 'Walls / WallRebar2D' }),
+    R({ ago: 1, topic: 'idea', user: 'c', text: 'Something like WinTag for doors' }),
+    R({ ago: 1, topic: 'howto', user: 'c', text: 'How to tag piles?' }),
+    R({ ago: 20, topic: 'routine', user: 'd', text: 'old routine', frequency: 'rare' }),
+    R({ ago: 30, topic: 'automation', user: 'd', text: 'done one', status: 'Done', frequency: 'daily', duration: 'gt30' }),
+  ],
+  usage: [
+    { date: daysAgo(2), button: 'Walls / WallRebar2D', user: 'a', runs: 10, failures: 2, last_error: 'Exception: x' },
+    { date: daysAgo(2), button: 'Documentation / WinTag', user: 'a', runs: 6, failures: 1, last_error: 'Exception: y' },
+    { date: daysAgo(3), button: 'Documentation / WinTag', user: 'b', runs: 4, failures: 0, last_error: '' },
+    { date: daysAgo(40), button: 'Piles / PilesCoordinate', user: 'a', runs: 9, failures: 0, last_error: '' },
+  ],
+  buttons: [
+    { button: 'Walls / WallRebar2D', minutes: 10 }, { button: 'Documentation / WinTag', minutes: '' },
+    { button: 'Piles / PilesCoordinate', minutes: 5 },
+  ],
+}, NOW);
+// arrays from the vm realm fail deepStrictEqual on prototypes: compare plain copies
+const plain = JSON.parse(JSON.stringify(sum));
+const B = (n) => plain.blocks[n - 1];
+assert.strictEqual(sum.blocks.length, 8);
+assert.ok(B(1).note.startsWith('7 requests from 3 people'));
+assert.deepStrictEqual(B(1).rows[0], ['Improve a button', 2]);
+assert.strictEqual(B(2).rows.length, 3);
+assert.ok(B(2).rows[0][0].includes('Sections at beams'));                      // 5*45/60 = 3.75 h
+assert.deepStrictEqual(B(2).rows[0].slice(1), [1, '3.8']);
+assert.ok(B(2).rows[1][0].startsWith('Improve Documentation / WinTag'));      // 2 people grouped
+assert.deepStrictEqual(B(2).rows[1].slice(1), [2, '1.3']);                     // 1*3/60 + 5*15/60
+assert.ok(B(2).rows[2][0].includes('old routine'));
+assert.ok(!B(2).rows.some((r) => r[0].includes('done one')));                  // closed ones out
+assert.deepStrictEqual(B(3).rows[0].slice(0, 4), ['Walls / WallRebar2D', 2, 2, 'yes']);
+assert.strictEqual(B(3).rows[0][4], 'Exception: no wall selected');
+assert.deepStrictEqual(B(4).rows[0], ['Walls / WallRebar2D', 10, 1]);
+assert.ok(B(4).note.includes('Piles / PilesCoordinate'));                      // unused in 30 days
+assert.deepStrictEqual(B(5).rows.map((r) => r[0]), ['Documentation / WinTag']); // WallRebar2D was reported
+assert.ok(B(6).rows.some((r) => r[0] === 'Asks for what may exist' && r[1] === 'WinTag'));
+assert.ok(B(6).rows.some((r) => r[0] === 'How-to question'));
+assert.ok(B(7).note.startsWith('1.3 hours'));                                  // (10-2)*10 min
+assert.ok(B(7).note.includes('No minutes set for: Documentation / WinTag'));
+assert.ok(B(8).note.includes('No answer for more than 7 days: 1'));
+assert.strictEqual(B(8).rows[0][2], 'old routine');
+const html = ctx.renderHtml_(sum);
+assert.ok(html.includes('<h3') && !html.includes('<script'));
+ctx.writeSummarySheet_(sum);
+assert.ok(sheets.Summary.rows[0][0].startsWith('PEER weekly summary'));
 
 console.log('receiver: all checks passed');

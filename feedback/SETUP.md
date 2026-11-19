@@ -97,6 +97,36 @@ the key.
 Sent: date, Revit user, computer name, button, counts, error name,
 Revit and PEER versions. No project names, no texts, no paths.
 
+## Weekly summary (stage 4)
+
+Every Monday at 07:00 the receiver writes the **Summary** sheet and
+e-mails it to you. Turn it on once:
+
+1. Paste the new `Code.gs`, save, deploy a new version (as above).
+2. In the editor pick **setupWeeklySummary** and click **Run**. Google
+   asks for two more permissions: triggers and sending e-mail as you.
+   A first summary is sent right away.
+3. Optional: another address or several — Script Property
+   `SUMMARY_EMAIL`, comma separated.
+4. Check **Project Settings → Time zone** (Asia/Jerusalem): "07:00" is in it.
+
+What is in it (numbers for the group, no ranking of people):
+
+| Block | How it is counted |
+| --- | --- |
+| 1. Requests this week | count, people, by topic |
+| 2. Top 3 to automate | open Automation / Routine / Improve requests; hours lost a week = how often (day 5, week 1, rarely 0.25 a week) × time (3 / 15 / 45 min); "Improve" requests on the same button are one line |
+| 3. Bugs this week | by button; urgent = 2+ people or 3+ reports |
+| 4. Usage, 30 days | top 10 buttons by runs; buttons with no runs |
+| 5. Errors without a bug report | buttons that failed this week, no bug sent |
+| 6. Signals | requests naming an existing button, how-to questions, template and standard gaps |
+| 7. Time saved | successful runs × "Minutes saved per run" |
+| 8. Status | counts by status; New for more than 7 days |
+
+Similar requests worded differently are not merged: that needs reading
+the texts. For that, download **Requests** as CSV (**File → Download →
+CSV**) and give it to Claude with the summary.
+
 ## Bug reports with the error text
 
 pyRevit catches script errors itself, so PEER reads them from pyRevit's
