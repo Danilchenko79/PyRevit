@@ -10,5 +10,5 @@ bucket_name = "peer-library"
 [[d1_databases]]
 binding = "DB"
 database_name = "peer-library"
-# Paste the id printed by:  npx wrangler d1 create peer-library
-database_id = "PASTE-DATABASE-ID-HERE"
+# id printed by:  npx wrangler d1 create peer-library
+database_id = "4360aba6-8791-487b-bb47-4bb0a4eed768"
