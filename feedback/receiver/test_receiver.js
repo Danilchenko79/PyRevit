@@ -6,45 +6,66 @@ const path = require('path');
 const vm = require('vm');
 const assert = require('assert');
 
+// Any method a test does not care about (formatting, widths, colours...) is a
+// no-op that returns its object, so chains like range.setX().setY() work.
+function loose(obj) {
+  const p = new Proxy(obj, { get: (t, k) => (k in t ? t[k] : (typeof k === 'string' ? () => p : undefined)) });
+  return p;
+}
+
 function fakeSheet(name) {
   const rows = [];
-  const sheet = {
-    name, rows,
+  const rich = {};   // "r,c" -> {text, links}
+  const sheet = loose({
+    name, rows, rich,
     getName: () => name,
     getLastRow: () => rows.length,
     getLastColumn: () => (rows[0] ? rows[0].length : 0),
     getMaxRows: () => 1000,
+    getFilter: () => null,
     appendRow: (r) => { rows.push(r.slice()); },
+    insertRowAfter: (n) => { rows.splice(n, 0, []); },
     clear: () => { rows.length = 0; },
-    setFrozenRows: () => {},
-    setColumnWidth: () => {},
-    getRange: (row, col, nRows, nCols) => { const range = {
-      getValues: () => rows.slice(row - 1, row - 1 + nRows).map((r) => r.slice(col - 1, col - 1 + nCols)),
-      setValues: (vals) => { vals.forEach((v, i) => { rows[row - 1 + i] = v.slice(); }); },
-      setFontWeight: () => range,
-      setValue: (v) => { rows[row - 1] = rows[row - 1] || []; rows[row - 1][col - 1] = v; return range; },
-      setFontSize: () => range,
-      setDataValidation: () => {},
-      setNote: () => {},
-      getRow: () => row,
-      getColumn: () => col,
-      getSheet: () => sheet,
-      createTextFinder: (text) => ({
-        matchEntireCell: () => ({
-          findNext: () => {
-            for (let i = row - 1; i < row - 1 + nRows; i++) {
-              if (String(rows[i][col - 1]) === text) return { getRow: () => i + 1 };
-            }
-            return null;
-          },
+    getRange: (row, col, nRows, nCols) => {
+      nRows = nRows || 1; nCols = nCols || 1;
+      const range = loose({
+        getValues: () => rows.slice(row - 1, row - 1 + nRows)
+          .map((r) => { const out = []; for (let c = 0; c < nCols; c++) out.push(r[col - 1 + c] === undefined ? '' : r[col - 1 + c]); return out; }),
+        setValues: (vals) => {
+          vals.forEach((v, i) => {
+            const r = rows[row - 1 + i] = rows[row - 1 + i] || [];
+            v.forEach((x, j) => { r[col - 1 + j] = x; });
+          });
+          return range;
+        },
+        setValue: (v) => { rows[row - 1] = rows[row - 1] || []; rows[row - 1][col - 1] = v; return range; },
+        setRichTextValue: (v) => { rich[row + ',' + col] = v; rows[row - 1][col - 1] = v.text; return range; },
+        getRow: () => row,
+        getLastRow: () => row + nRows - 1,
+        getColumn: () => col,
+        getLastColumn: () => col + nCols - 1,
+        getSheet: () => sheet,
+        createTextFinder: (text) => ({
+          matchEntireCell: () => ({
+            findNext: () => {
+              for (let i = row - 1; i < row - 1 + nRows; i++) {
+                if (rows[i] && String(rows[i][col - 1]) === text) return { getRow: () => i + 1 };
+              }
+              return null;
+            },
+          }),
         }),
-      }),
-    }; return range; },
-  };
+      });
+      return range;
+    },
+  });
   return sheet;
 }
 
+const sheetOrder = [];
 const sheets = {};
+const book = { active: null };
+const triggers = [];
 const drive = { created: 0, files: [], folder: null };
 drive.folder = {
   getId: () => 'F1',
@@ -58,10 +79,20 @@ const ctx = {
   }) },
   LockService: { getScriptLock: () => ({ waitLock: () => {}, releaseLock: () => {} }) },
   SpreadsheetApp: {
-    getActiveSpreadsheet: () => ({
+    getActiveSpreadsheet: () => loose({
       getSheetByName: (n) => sheets[n] || null,
       insertSheet: (n) => (sheets[n] = fakeSheet(n)),
+      setActiveSheet: (sh) => { book.active = sh.name; return sh; },
+      moveActiveSheet: (i) => { sheetOrder[i - 1] = book.active; },
     }),
+    newRichTextValue: () => {
+      const v = { text: '', links: [] };
+      const b = { setText: (t) => { v.text = t; return b; },
+                  setLinkUrl: (a, z, url) => { v.links.push([v.text.slice(a, z), url]); return b; },
+                  build: () => v };
+      return b;
+    },
+    newConditionalFormatRule: () => loose({}),
     newDataValidation: () => {
       const b = { requireValueInList: () => b, setAllowInvalid: () => b, build: () => ({}) };
       return b;
@@ -83,6 +114,15 @@ const ctx = {
   },
   Session: { getScriptTimeZone: () => 'Asia/Jerusalem', getEffectiveUser: () => ({ getEmail: () => 'me@x' }) },
   Logger: { log: () => {} },
+  ScriptApp: loose({
+    getProjectTriggers: () => triggers.slice(),
+    deleteTrigger: (t) => { triggers.splice(triggers.indexOf(t), 1); },
+    newTrigger: (fn) => {
+      const b = loose({ create: () => { const t = { getHandlerFunction: () => fn }; triggers.push(t); return t; } });
+      return b;
+    },
+    WeekDay: { MONDAY: 1 },
+  }),
 };
 vm.createContext(ctx);
 vm.runInContext(fs.readFileSync(path.join(__dirname, 'Code.gs'), 'utf8'), ctx);
@@ -143,8 +183,34 @@ assert.strictEqual(r3[col('Text')], "'=IMPORTXML(\"x\")");
 assert.strictEqual(r3[col('Error text')].length, 5000);
 
 // manual status change stamps the time
-ctx.onEdit({ range: sh.getRange(2, col('Status') + 1) });
+ctx.onSheetEdit({ range: sh.getRange(2, col('Status') + 1) });
 assert.ok(isDate(sh.rows[1][col('Status changed')]));
+
+// Inbox: readable page, newest on top, labels, error as one line
+const ib = sheets.Inbox;
+const ih = ib.rows[0];
+const icol = (t) => ih.indexOf(t);
+assert.strictEqual(ih.slice(0, 4).join('|'), 'ID|Received|From|Topic');
+assert.strictEqual(sheetOrder[0], 'Inbox', 'Inbox is the first tab');
+assert.ok(triggers.some((t) => t.getHandlerFunction() === 'onSheetEdit'), 'edit trigger installed');
+// requests so far: a (automation), c (formula text, long error): c is newest -> row 2
+assert.strictEqual(ib.rows.length, 3);
+assert.strictEqual(ib.rows[1][0], 'c'.repeat(32));
+assert.strictEqual(ib.rows[2][0], 'a'.repeat(32));
+assert.strictEqual(ib.rows[2][icol('Topic')], 'Automation');
+assert.strictEqual(ib.rows[2][icol('Request')], 'Хочу кнопку');
+assert.strictEqual(ib.rows[2][icol('Status')], 'New');
+assert.strictEqual(ib.rows[1][icol('Request')], "'=IMPORTXML(\"x\")");
+
+// status + comment edited on Inbox -> copied to Requests
+ib.rows[2][icol('Status')] = 'Accepted';
+ib.rows[2][icol('Comment for the author')] = 'Next week';
+ctx.onSheetEdit({ range: ib.getRange(3, icol('Status') + 1, 1, 2) });
+assert.strictEqual(sh.rows[1][col('Status')], 'Accepted');
+assert.strictEqual(sh.rows[1][col('Comment for the author')], 'Next week');
+// an edit elsewhere on Inbox changes nothing
+ctx.onSheetEdit({ range: ib.getRange(3, icol('Request') + 1) });
+assert.strictEqual(sh.rows[1][col('Status')], 'Accepted');
 
 // status: only the ids asked, never other rows; junk ids ignored
 sh.rows[1][col('Status')] = 'Accepted';
@@ -260,6 +326,9 @@ assert.strictEqual(pics.length, 2);
 assert.ok(/^https:\/\/drive\/\d{4}-\d\d-\d\d 99999999 1\.jpg$/.test(pics[0]));
 assert.ok(pics[1].startsWith('(picture 2 not saved'));
 assert.deepStrictEqual(Array.from(drive.files[0].bytes), [0xff, 0xd8, 0xff, 0xd9]);
+const ipic = sheets.Inbox.rich['2,' + (icol('Pictures') + 1)];
+assert.strictEqual(ipic.text, '1');                       // only the saved picture is a link
+assert.ok(ipic.links[0][1].startsWith('https://drive/'));
 // a retry of the same request: no second copy of the pictures
 post({ key, action: 'request', data: withPics });
 assert.strictEqual(drive.files.length, 1);
@@ -271,5 +340,16 @@ assert.strictEqual(post({ key, action: 'request', data: req({ id: '8'.repeat(32)
 sheets.Requests.rows[0].pop();
 post({ key, action: 'request', data: req({ id: '7'.repeat(32) }) });
 assert.strictEqual(sheets.Requests.rows[0][sheets.Requests.rows[0].length - 1], 'Pictures');
+
+// a bug: Error column shows the one line that names the error, not the traceback
+post({ key, action: 'request', data: req({ id: '6'.repeat(32), topic: 'bug', button: 'Walls / WallRebar2D',
+  text: '(error report)', user: 'dima (DIMA-PC)',
+  error_text: 'Traceback (most recent call last):\n  File "x", line 3\nException: no wall selected\n\nSystem.Exception: ...' }) });
+const top = sheets.Inbox.rows[1];
+assert.strictEqual(top[0], '6'.repeat(32));
+assert.strictEqual(top[icol('Error')], 'Exception: no wall selected');
+assert.strictEqual(top[icol('Topic')], 'Bug');
+assert.strictEqual(top[icol('Request')], '');            // "(error report)" placeholder hidden
+assert.strictEqual(top[icol('From')], 'dima');            // "(DIMA-PC)" dropped
 
 console.log('receiver: all checks passed');

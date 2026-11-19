@@ -15,7 +15,16 @@
  * key lets someone add rows, nothing more. Change the key in Script Properties
  * (PEER_KEY) and in PEER settings to cut them off.
  *
- * Setup: feedback/SETUP.md. Run setup() once from the editor.
+ * Sheets:
+ *   Inbox     - the page for people: newest first, readable columns, Status and
+ *               Comment are edited HERE (copied to Requests by onSheetEdit)
+ *   Summary   - weekly summary (weeklySummary)
+ *   Buttons   - PEER buttons + minutes saved per run (filled by hand)
+ *   Usage     - daily button runs (raw)
+ *   Requests  - every request with all fields (raw, for analysis / Claude)
+ *
+ * Setup: feedback/SETUP.md. Run setup() once from the editor (and again after
+ * pasting a new version: it is safe to re-run).
  */
 
 var SHEET_REQUESTS = 'Requests';
@@ -159,6 +168,12 @@ function saveRequest_(d) {
       return cell_(d[k]);
     });
     sheet.appendRow(row);
+    try {
+      addInboxRow_(rowObject_(REQUEST_COLUMNS, row));
+    } catch (err) {
+      // the raw row is in; the readable page can be rebuilt by setup()
+      Logger.log('Inbox row failed: ' + err);
+    }
     return { ok: true, id: id };
   } finally {
     lock.releaseLock();
@@ -353,7 +368,7 @@ function sheet_(name, columns) {
   if (sheet.getLastRow() === 0) {
     sheet.appendRow(columns.map(function (c) { return c[1]; }));
     sheet.setFrozenRows(1);
-    sheet.getRange(1, 1, 1, columns.length).setFontWeight('bold');
+    sheet.getRange(1, 1, 1, columns.length).setFontWeight('bold').setBackground('#F3F4F6');
   } else if (sheet.getLastColumn() < columns.length) {
     // a column added in a newer version: give it its header
     for (var i = sheet.getLastColumn(); i < columns.length; i++) {
@@ -387,6 +402,9 @@ function columnOf_(key) {
  */
 function setup() {
   var sheet = sheet_(SHEET_REQUESTS, REQUEST_COLUMNS);
+  sheet.setTabColor('#9CA3AF');
+  sheet.getRange(1, 1).setNote('Raw data: every field of every request, for analysis. ' +
+    'Read and answer requests on the Inbox sheet - Status and Comment are copied here.');
   var statusCol = columnOf_('status');
   var rule = SpreadsheetApp.newDataValidation()
     .requireValueInList(STATUSES, true).setAllowInvalid(false).build();
@@ -400,6 +418,18 @@ function setup() {
   var buttons = sheet_(SHEET_BUTTONS, BUTTON_COLUMNS);
   buttons.setColumnWidth(1, 280);
   buttons.getRange(1, 2).setNote('How many minutes one run of this button saves compared with doing it by hand. Used for "time saved" in the weekly summary.');
+
+  var inbox = inbox_();
+  formatInbox_(inbox);
+  if (inbox.getLastRow() < 2) rebuildInbox_();
+  orderSheets_();
+
+  // installable "on edit" trigger: a simple onEdit does not run in a
+  // standalone script (SPREADSHEET_ID) - this one does, in both cases
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'onSheetEdit') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('onSheetEdit').forSpreadsheet(book_()).onEdit().create();
 
   var props = PropertiesService.getScriptProperties();
   if (!props.getProperty('PEER_KEY')) {
@@ -415,12 +445,193 @@ function rotateKey() {
   Logger.log('new PEER_KEY = ' + key);
 }
 
-/** Simple trigger: stamps the time when the head changes Status by hand. */
-function onEdit(e) {
+/**
+ * Installed by setup(). Status / Comment edited on Inbox -> copied to the
+ * request's row on Requests with the time of the change. (Status edited on
+ * Requests directly still gets its time stamp.)
+ */
+function onSheetEdit(e) {
   var range = e && e.range;
-  if (!range || range.getSheet().getName() !== SHEET_REQUESTS || range.getRow() < 2) return;
-  if (range.getColumn() !== columnOf_('status')) return;
-  range.getSheet().getRange(range.getRow(), columnOf_('status_changed_at')).setValue(new Date());
+  if (!range || range.getRow() < 2) return;
+  var sheet = range.getSheet();
+  var name = sheet.getName();
+  var first = range.getRow(), last = range.getLastRow ? range.getLastRow() : first;
+  var c1 = range.getColumn(), c2 = range.getLastColumn ? range.getLastColumn() : c1;
+  if (name === SHEET_INBOX) {
+    var cSt = inboxCol_('status'), cCm = inboxCol_('comment');
+    if (c2 < Math.min(cSt, cCm) || c1 > Math.max(cSt, cCm)) return;
+    var raw = book_().getSheetByName(SHEET_REQUESTS);
+    if (!raw) return;
+    for (var r = first; r <= last; r++) {
+      var vals = sheet.getRange(r, 1, 1, INBOX_COLUMNS.length).getValues()[0];
+      var id = String(vals[0]);
+      var rr = findRow_(raw, id);
+      if (!rr) continue;
+      raw.getRange(rr, columnOf_('status')).setValue(vals[cSt - 1] || STATUSES[0]);
+      raw.getRange(rr, columnOf_('comment')).setValue(vals[cCm - 1] || '');
+      raw.getRange(rr, columnOf_('status_changed_at')).setValue(new Date());
+    }
+  } else if (name === SHEET_REQUESTS) {
+    var col = columnOf_('status');
+    if (col < c1 || col > c2) return;
+    for (var q = first; q <= last; q++) {
+      sheet.getRange(q, columnOf_('status_changed_at')).setValue(new Date());
+    }
+  }
+}
+
+// ================================================================= Inbox --
+//
+// The readable page. One row per request, NEWEST ON TOP, labels instead of
+// codes, the error as one line, pictures as links. Column A (ID) is hidden:
+// it ties the row to Requests.
+
+var SHEET_INBOX = 'Inbox';
+var INBOX_COLUMNS = [
+  ['id', 'ID', 60],
+  ['received_at', 'Received', 115],
+  ['user', 'From', 140],
+  ['topic', 'Topic', 130],
+  ['button', 'Button', 170],
+  ['text', 'Request', 380],
+  ['pictures', 'Pictures', 95],
+  ['error', 'Error', 220],
+  ['frequency', 'How often', 95],
+  ['duration', 'Time each time', 110],
+  ['project', 'Project', 150],
+  ['status', 'Status', 110],
+  ['comment', 'Comment for the author', 240]
+];
+var FREQ_LABELS = { daily: 'Every day', weekly: 'Every week', rare: 'Rarely' };
+var DUR_LABELS = { lt5: 'Up to 5 min', '5to30': '5-30 min', gt30: 'More than 30 min' };
+var STATUS_COLORS = {
+  'New': '#F3F4F6', 'Accepted': '#DBEAFE', 'In progress': '#FEF3C7',
+  'Done': '#DCFCE7', 'Rejected': '#FEE2E2'
+};
+
+function inboxCol_(key) {
+  for (var i = 0; i < INBOX_COLUMNS.length; i++) {
+    if (INBOX_COLUMNS[i][0] === key) return i + 1;
+  }
+  return 0;
+}
+
+function inbox_() {
+  return sheet_(SHEET_INBOX, INBOX_COLUMNS);
+}
+
+function rowObject_(columns, row) {
+  var o = {};
+  columns.forEach(function (c, i) { o[c[0]] = row[i]; });
+  return o;
+}
+
+/** The line that names the error: 'Exception: no wall selected'. */
+function errorLine_(text) {
+  var lines = String(text || '').split('\n');
+  for (var i = 0; i < lines.length; i++) {
+    var l = lines[i];
+    if (l.trim() && !/^\s/.test(l) && !/^Traceback/.test(l)) return l.trim().slice(0, 200);
+  }
+  return '';
+}
+
+/** Raw request (column keys of REQUEST_COLUMNS) -> Inbox cell values. */
+function inboxValues_(r) {
+  var links = String(r.attachments || '').split('\n').filter(function (x) { return x; });
+  var text = String(r.text || '');
+  if (text === '(error report)') text = '';
+  return INBOX_COLUMNS.map(function (c) {
+    switch (c[0]) {
+      case 'id': return String(r.id);
+      case 'received_at': return r.received_at;
+      case 'user': return String(r.user || '').replace(/\s*\(.*\)$/, '');
+      case 'topic': return TOPIC_LABELS[r.topic] || String(r.topic || '');
+      case 'pictures': return links.length ? links.length + (links.length === 1 ? ' picture' : ' pictures') : '';
+      case 'error': return errorLine_(r.error_text);
+      case 'frequency': return FREQ_LABELS[r.frequency] || '';
+      case 'duration': return DUR_LABELS[r.duration] || '';
+      case 'status': return r.status || STATUSES[0];
+      case 'text': return text;
+      default: return r[c[0]] === undefined ? '' : r[c[0]];
+    }
+  });
+}
+
+/** Insert one request under the header (newest on top) and style the row. */
+function addInboxRow_(raw) {
+  var sh = inbox_();
+  sh.insertRowAfter(1);
+  var n = INBOX_COLUMNS.length;
+  var range = sh.getRange(2, 1, 1, n);
+  // the new row copies the header's look: reset it
+  range.setFontWeight('normal').setFontColor('#1F2937').setBackground(null)
+    .setFontSize(10).setVerticalAlignment('top').setWrap(true);
+  range.setValues([inboxValues_(raw)]);
+  sh.getRange(2, inboxCol_('received_at')).setNumberFormat('dd.mm.yyyy hh:mm');
+  sh.getRange(2, inboxCol_('status')).setDataValidation(statusRule_())
+    .setHorizontalAlignment('center');
+  var links = String(raw.attachments || '').split('\n').filter(function (x) { return /^https?:/.test(x); });
+  if (links.length) {
+    // "1  2  3": each number opens its picture
+    var label = links.map(function (x, i) { return String(i + 1); }).join('  ');
+    var b = SpreadsheetApp.newRichTextValue().setText(label);
+    var pos = 0;
+    links.forEach(function (url, i) {
+      var t = String(i + 1);
+      b = b.setLinkUrl(pos, pos + t.length, url);
+      pos += t.length + 2;
+    });
+    sh.getRange(2, inboxCol_('pictures')).setRichTextValue(b.build());
+  }
+  if (raw.topic === 'bug') {
+    sh.getRange(2, inboxCol_('topic')).setFontColor('#B91C1C').setFontWeight('bold');
+  }
+}
+
+function statusRule_() {
+  return SpreadsheetApp.newDataValidation()
+    .requireValueInList(STATUSES, true).setAllowInvalid(false).build();
+}
+
+/** Header, widths, hidden ID, frozen header, filter, status colours. Safe to re-run. */
+function formatInbox_(sh) {
+  var n = INBOX_COLUMNS.length;
+  var header = sh.getRange(1, 1, 1, n);
+  header.setValues([INBOX_COLUMNS.map(function (c) { return c[1]; })]);
+  header.setBackground('#1F2937').setFontColor('#FFFFFF').setFontWeight('bold')
+    .setFontSize(10).setVerticalAlignment('middle').setWrap(true);
+  sh.setRowHeight(1, 34);
+  sh.setFrozenRows(1);
+  INBOX_COLUMNS.forEach(function (c, i) { sh.setColumnWidth(i + 1, c[2]); });
+  sh.hideColumns(1);
+  sh.setTabColor('#2563EB');
+  var rows = Math.max(sh.getMaxRows() - 1, 1);
+  sh.getRange(2, inboxCol_('status'), rows, 1).setDataValidation(statusRule_());
+  var statusRange = sh.getRange(2, inboxCol_('status'), rows, 1);
+  sh.setConditionalFormatRules(Object.keys(STATUS_COLORS).map(function (st) {
+    return SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo(st)
+      .setBackground(STATUS_COLORS[st]).setRanges([statusRange]).build();
+  }));
+  if (!sh.getFilter()) sh.getRange(1, 1, sh.getMaxRows(), n).createFilter();
+}
+
+/** Fill Inbox from Requests (first setup on a table that already has requests). */
+function rebuildInbox_() {
+  var raw = readSheet_(SHEET_REQUESTS, REQUEST_COLUMNS);
+  raw.forEach(function (r) { addInboxRow_(r); });   // oldest first -> newest ends on top
+}
+
+function orderSheets_() {
+  var book = book_();
+  [SHEET_INBOX, SHEET_SUMMARY, SHEET_BUTTONS, SHEET_USAGE, SHEET_REQUESTS].forEach(function (name, i) {
+    var sh = book.getSheetByName(name);
+    if (!sh) return;
+    book.setActiveSheet(sh);
+    book.moveActiveSheet(i + 1);
+  });
+  var inbox = book.getSheetByName(SHEET_INBOX);
+  if (inbox) book.setActiveSheet(inbox);
 }
 
 // ======================================================== weekly summary --
@@ -721,12 +932,14 @@ function writeSummarySheet_(s) {
   var sheet = book.getSheetByName(SHEET_SUMMARY) || book.insertSheet(SHEET_SUMMARY);
   sheet.clear();
   var out = [[s.title]];
+  var titles = [], headers = [], notes = [];
   s.blocks.forEach(function (b) {
     out.push(['']);
-    out.push([b.title]);
-    if (b.note) out.push([b.note]);
+    out.push([b.title]); titles.push(out.length);
+    if (b.note) { out.push([b.note]); notes.push(out.length); }
     if (b.header.length) {
-      out.push(b.header);
+      out.push(b.header); headers.push([out.length, b.header.length]);
+      if (!b.rows.length) out.push(['Nothing this week.']);
       b.rows.forEach(function (r) { out.push(r); });
     }
   });
@@ -737,5 +950,16 @@ function writeSummarySheet_(s) {
     return row;
   });
   sheet.getRange(1, 1, out.length, width).setValues(out);
-  sheet.getRange(1, 1).setFontWeight('bold').setFontSize(13);
+  sheet.getRange(1, 1, out.length, width).setFontSize(10).setVerticalAlignment('top').setWrap(true);
+  sheet.getRange(1, 1).setFontWeight('bold').setFontSize(15);
+  titles.forEach(function (r) { sheet.getRange(r, 1).setFontWeight('bold').setFontSize(12).setFontColor('#1D4ED8'); });
+  notes.forEach(function (r) { sheet.getRange(r, 1).setFontColor('#6B7280').setFontStyle('italic'); });
+  headers.forEach(function (h) {
+    sheet.getRange(h[0], 1, 1, h[1]).setFontWeight('bold').setBackground('#F3F4F6');
+  });
+  sheet.setColumnWidth(1, 380);
+  for (var c = 2; c <= width; c++) sheet.setColumnWidth(c, 140);
+  sheet.setTabColor('#16A34A');
+  // notes and titles are long single cells: let them run over the empty cells
+  titles.concat(notes).concat([1]).forEach(function (r) { sheet.getRange(r, 1).setWrap(false); });
 }

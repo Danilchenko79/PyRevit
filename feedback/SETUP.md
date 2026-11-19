@@ -155,12 +155,24 @@ goes with the report only when the person clicks **Send**.
 
 ## Working with the table
 
-- **Status** — pick from the dropdown: New, Accepted, In progress, Done,
-  Rejected. **Status changed** fills in by itself.
-- **Comment for the author** — a short note; the author sees it in
-  **My Requests** together with the status.
-- Do not reorder or rename the columns: the receiver writes by position.
-  Add your own columns to the right of **Status changed**.
+| Tab | For | Edit? |
+| --- | --- | --- |
+| **Inbox** | reading and answering requests: newest on top, labels instead of codes, the error as one line, pictures as links "1 2 3" | **Status** and **Comment for the author** only |
+| **Summary** | the weekly summary | no, rewritten every Monday |
+| **Buttons** | PEER buttons | **Minutes saved per run** |
+| **Usage** | daily button runs, raw | no |
+| **Requests** | every request with every field, raw — for analysis and Claude | no |
+
+- **Status** — dropdown: New, Accepted, In progress, Done, Rejected (coloured).
+  The author sees it in **My Requests**.
+- **Comment for the author** — a short note shown next to the status.
+- Changes on **Inbox** are copied to **Requests** with the time of the change
+  (trigger installed by **setup**). Use the filter arrows in the header to
+  show only bugs, only New, one person's requests…
+- Do not reorder or rename the columns of **Requests** / **Usage**: the
+  receiver writes by position. Inbox columns may be resized or hidden freely.
+- Inbox got lost or messed up: delete the **Inbox** tab and run **setup** —
+  it is rebuilt from **Requests**.
 
 ## Changing the key
 
