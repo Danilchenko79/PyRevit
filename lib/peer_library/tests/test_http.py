@@ -114,8 +114,10 @@ class TestHttp(unittest.TestCase):
         self.assertEqual(card2['version'], 2)
         idx2, _ = c.index()
         p2 = c.get(idx2['families'][0])
-        self.assertTrue(p2.endswith('v2.rfa'))
-        self.assertFalse(os.path.exists(p1))                      # old version dropped from cache
+        # cached under the family name (Revit names the family after the file)
+        self.assertEqual(os.path.basename(p2), 'PEER_Beam.rfa')
+        self.assertEqual(p1, p2)
+        self.assertEqual(rfa_info.sha1(p2), card2['sha1'])
         stale = index.new_card(id='PEER_Beam', group='01_Framing', version=2)
         with self.assertRaises(ConflictError):
             admin.publish(stale, self.file('x.rfa', b'x'))

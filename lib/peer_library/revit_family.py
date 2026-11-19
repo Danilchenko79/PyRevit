@@ -23,6 +23,8 @@ PREVIEW_PX = 256
 class Guard(DB.IFailuresPreprocessor):
     """Warnings are dropped, errors roll the transaction back silently."""
 
+    last_errors = []
+
     def PreprocessFailures(self, fa):
         err = False
         for f in fa.GetFailureMessages():
@@ -30,6 +32,10 @@ class Guard(DB.IFailuresPreprocessor):
                 fa.DeleteWarning(f)
             else:
                 err = True
+                try:
+                    Guard.last_errors.append(f.GetDescriptionText())
+                except Exception:
+                    pass
         if err:
             return DB.FailureProcessingResult.ProceedWithRollBack
         return DB.FailureProcessingResult.Continue
@@ -84,8 +90,14 @@ def _version_param(fd):
 
 
 def stamp_version(fd, version, family_id):
-    """PEER_Version = version in every type. Returns problem text or None."""
+    """PEER_Version = version for every type, as a formula ("3").
+
+    A formula is one value for all types, so the types are not switched one
+    by one: some families have types that do not regenerate ("Constraints
+    are not satisfied") and switching to them rolls everything back.
+    Returns problem text or None."""
     fm = fd.FamilyManager
+    Guard.last_errors = []
     tx = _transaction(fd, 'PEER: library version')
     tx.Start()
     try:
@@ -96,22 +108,16 @@ def stamp_version(fd, version, family_id):
             fm.MakeType(p)
         if p.StorageType != DB.StorageType.Integer:
             raise Exception(u'{0} exists but is not an integer'.format(VERSION_PARAM))
-        for t in list(fm.Types):
-            fm.CurrentType = t
-            fm.Set(p, int(version))
+        fm.SetFormula(p, str(int(version)))
         tx.Commit()
     finally:
         if tx.HasStarted() and not tx.HasEnded():
             tx.RollBack()
     if tx.GetStatus() != DB.TransactionStatus.Committed:
-        return u'Revit rejected the change'
-    bad = []
-    for t in list(fm.Types):
-        v = t.AsInteger(fm.get_Parameter(VERSION_PARAM))
-        if v != int(version):
-            bad.append(t.Name or u'(no name)')
-    if bad:
-        return u'not written in types: ' + u', '.join(bad)
+        return u'Revit rejected the change: ' + u'; '.join(Guard.last_errors or [u'?'])
+    p = fm.get_Parameter(VERSION_PARAM)
+    if p is None or (p.Formula or u'').strip() != str(int(version)):
+        return u'the formula was not kept'
     return None
 
 
@@ -149,51 +155,142 @@ def pick_view(fd):
     return (views[0] if views else None), False
 
 
+# Hidden in the preview only: they stretch the view far beyond the family.
+PREVIEW_HIDE = ('OST_CLines', 'OST_ReferenceLines', 'OST_Dimensions', 'OST_SketchLines')
+
+
 def _setup_view(fd, family_id):
-    """Returns the view for the preview; may create a 3D view (in a transaction)."""
+    """(view, restore) for the preview. Changes the view (3D style, hidden
+    reference planes / dimensions) and returns a function that undoes them,
+    so the published family keeps its views as the author left them."""
     view, create = pick_view(fd)
     if view is None:
-        return None
+        return None, None
+    undo = {'created': None, 'hidden': [], 'style': None}
     tx = _transaction(fd, 'PEER: preview view')
     tx.Start()
     try:
         if create:
-            view = DB.View3D.CreateIsometric(fd, view.Id)
-        if isinstance(view, DB.View3D):
             try:
-                view.DisplayStyle = DB.DisplayStyle.ShadingWithEdges
-                view.DetailLevel = DB.ViewDetailLevel.Fine
-            except Exception:
-                pass
+                view = DB.View3D.CreateIsometric(fd, view.Id)
+                undo['created'] = view.Id
+            except Exception:            # detail / rebar shape families: no 3D
+                plans = [v for v in _printable_views(fd) if isinstance(v, DB.ViewPlan)]
+                others = _printable_views(fd)
+                view = plans[0] if plans else (others[0] if others else None)
+        if view is not None:
+            if isinstance(view, DB.View3D) and undo['created'] is None:
+                undo['style'] = (view.DisplayStyle, view.DetailLevel)
+            if isinstance(view, DB.View3D):
+                try:
+                    view.DisplayStyle = DB.DisplayStyle.ShadingWithEdges
+                    view.DetailLevel = DB.ViewDetailLevel.Fine
+                except Exception:
+                    pass
+            for name in PREVIEW_HIDE:
+                bic = getattr(DB.BuiltInCategory, name, None)
+                cat = DB.Category.GetCategory(fd, bic) if bic is not None else None
+                try:
+                    if cat is not None and view.CanCategoryBeHidden(cat.Id) \
+                            and not view.GetCategoryHidden(cat.Id):
+                        view.SetCategoryHidden(cat.Id, True)
+                        undo['hidden'].append(cat.Id)
+                except Exception:
+                    pass
         tx.Commit()
     finally:
         if tx.HasStarted() and not tx.HasEnded():
             tx.RollBack()
-    return view
+
+    def restore():
+        t2 = _transaction(fd, 'PEER: restore preview view')
+        t2.Start()
+        try:
+            if undo['created'] is not None:
+                fd.Delete(undo['created'])
+            else:
+                for cid in undo['hidden']:
+                    view.SetCategoryHidden(cid, False)
+                if undo['style']:
+                    view.DisplayStyle, view.DetailLevel = undo['style']
+            t2.Commit()
+        finally:
+            if t2.HasStarted() and not t2.HasEnded():
+                t2.RollBack()
+    return view, restore
+
+
+def _content_box(img):
+    """Bounding box of non-white pixels, found on a small copy (fast)."""
+    from System.Drawing import Bitmap
+    side = 160
+    k = float(side) / max(img.Width, img.Height)
+    sw, sh = max(1, int(img.Width * k)), max(1, int(img.Height * k))
+    small = Bitmap(img, sw, sh)
+    try:
+        xs, ys = [], []
+        for y in range(sh):
+            for x in range(sw):
+                c = small.GetPixel(x, y)
+                if c.A > 20 and (c.R < 235 or c.G < 235 or c.B < 235):
+                    xs.append(x)
+                    ys.append(y)
+    finally:
+        small.Dispose()
+    if not xs:
+        return None
+    pad = 2
+    x0, x1 = max(0, min(xs) - pad), min(sw, max(xs) + 1 + pad)
+    y0, y1 = max(0, min(ys) - pad), min(sh, max(ys) + 1 + pad)
+    return int(x0 / k), int(y0 / k), int((x1 - x0) / k), int((y1 - y0) / k)
 
 
 def _square_png(src, dst, size):
     clr.AddReference('System.Drawing')
-    from System.Drawing import Bitmap, Color, Graphics, Rectangle
+    from System.Drawing import Bitmap, Color, Graphics, GraphicsUnit, Rectangle
     from System.Drawing.Drawing2D import InterpolationMode
     from System.Drawing.Imaging import ImageFormat
     img = Bitmap(src)
     try:
+        box = _content_box(img) or (0, 0, img.Width, img.Height)
+        bw, bh = max(1, min(box[2], img.Width - box[0])), max(1, min(box[3], img.Height - box[1]))
         canvas = Bitmap(size, size)
         g = Graphics.FromImage(canvas)
         try:
             g.Clear(Color.White)
             g.InterpolationMode = InterpolationMode.HighQualityBicubic
-            pad = 8
-            k = min(float(size - 2 * pad) / img.Width, float(size - 2 * pad) / img.Height)
-            w, h = int(img.Width * k), int(img.Height * k)
-            g.DrawImage(img, Rectangle((size - w) // 2, (size - h) // 2, w, h))
+            pad = 10
+            k = min(float(size - 2 * pad) / bw, float(size - 2 * pad) / bh, 3.0)
+            w, h = max(1, int(bw * k)), max(1, int(bh * k))
+            g.DrawImage(img, Rectangle((size - w) // 2, (size - h) // 2, w, h),
+                        Rectangle(box[0], box[1], bw, bh), GraphicsUnit.Pixel)
         finally:
             g.Dispose()
         canvas.Save(dst, ImageFormat.Png)
         canvas.Dispose()
     finally:
         img.Dispose()
+
+
+def image_type_preview(fd, png_path):
+    """Rebar shape families have no geometry - use the shape sketch stored in
+    the family (ImageType). Returns the path or None."""
+    clr.AddReference('System.Drawing')
+    from System.Drawing.Imaging import ImageFormat
+    for it in DB.FilteredElementCollector(fd).OfClass(DB.ImageType):
+        try:
+            img = it.GetImage()
+        except Exception:
+            continue
+        if img is None:
+            continue
+        tmp = png_path + '.src.png'
+        img.Save(tmp, ImageFormat.Png)
+        img.Dispose()
+        _square_png(tmp, png_path, PREVIEW_PX)
+        os.remove(tmp)
+        return png_path
+    return None
 
 
 def export_preview(fd, view, png_path):
@@ -272,25 +369,35 @@ def prepare_family(app, source, family_id, version, workdir):
         if problem:
             res.append(('warning', 'version', u'{0} not written: {1} - the version in projects '
                                               u'will show as unknown'.format(VERSION_PARAM, problem)))
-        view = None
+        restore = None
+        png_path = os.path.join(out_dir, family_id + '.png')
+        if out['category'] == u'Rebar Shape':
+            try:
+                out['png'] = image_type_preview(fd, png_path)
+            except Exception:
+                log.write(u'rebar shape image {0}'.format(family_id), exc=True)
         try:
-            view = _setup_view(fd, family_id)
-            if view is not None:
-                out['png'] = export_preview(fd, view, os.path.join(out_dir, family_id + '.png'))
+            if out['png']:
+                view = None
             else:
+                view, restore = _setup_view(fd, family_id)
+            if view is not None:
+                out['png'] = export_preview(fd, view, png_path)
+            elif not out['png']:
                 res.append(('warning', 'preview', u'No view for a preview'))
         except Exception as ex:
             log.write(u'preview {0}'.format(family_id), exc=True)
             res.append(('warning', 'preview', u'Preview not made: {0}'.format(ex)))
+        finally:
+            if restore is not None:
+                try:
+                    restore()
+                except Exception:
+                    log.write(u'restore view {0}'.format(family_id), exc=True)
         so = DB.SaveAsOptions()
         so.OverwriteExistingFile = True
         so.Compact = True
         so.MaximumBackups = 1
-        if view is not None:
-            try:
-                so.PreviewViewId = view.Id
-            except Exception:
-                pass
         fd.SaveAs(target, so)
         out['rfa'] = target
     finally:

@@ -27,8 +27,12 @@ class Cache(object):
         self.backend = backend
         self.online = None
 
-    def local_path(self, rel):
-        return os.path.join(self.folder, *rel.split('/'))
+    def local_path(self, card, ext):
+        """Always <cache>/<group>/<ID><ext>: Revit names a family after its file,
+        and LoadFamilySymbol wants the catalog <ID>.txt next to <ID>.rfa.
+        (The service keeps versions as <group>/<ID>/v<N>.rfa - that is only
+        the download address.)"""
+        return os.path.join(self.folder, index.folder_of(card), card['id'] + ext)
 
     def index(self):
         """(index, online). Falls back to the last downloaded index."""
@@ -65,13 +69,13 @@ class Cache(object):
             return jsonio.read(copy, {'entries': []}) or {'entries': []}
 
     def has(self, card, ext='.rfa'):
-        path = self.local_path(index.rel_path(card, ext))
+        path = self.local_path(card, ext)
         want = card.get(HASH_FIELD[ext])
         return os.path.isfile(path) and (not want or rfa_info.sha1(path) == want)
 
     def get(self, card, ext='.rfa'):
         rel = index.rel_path(card, ext)
-        path = self.local_path(rel)
+        path = self.local_path(card, ext)
         want = card.get(HASH_FIELD[ext]) or u''
         if ext != '.rfa' and not want:
             return None                                     # no preview / no catalog
@@ -93,19 +97,4 @@ class Cache(object):
             raise CorruptError(u'"{0}": the downloaded file does not match the library '
                                u'(still syncing or changed by hand). Try again later.'
                                .format(card['id']))
-        self._drop_old_versions(path, ext)
         return path
-
-    @staticmethod
-    def _drop_old_versions(path, ext):
-        """Service layout <group>/<ID>/v<N>.<ext>: keep only the newest copy."""
-        folder, name = os.path.split(path)
-        if not (name.startswith('v') and name[1:-len(ext)].isdigit()):
-            return
-        for other in os.listdir(folder):
-            if other != name and other.startswith('v') and other.endswith(ext) \
-                    and other[1:-len(ext)].isdigit():
-                try:
-                    os.remove(os.path.join(folder, other))
-                except OSError:
-                    pass
