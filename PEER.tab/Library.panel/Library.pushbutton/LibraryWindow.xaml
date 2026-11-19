@@ -1,0 +1,190 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="PEER - Family library"
+        Height="780" Width="1240" MinWidth="900" MinHeight="560"
+        WindowStartupLocation="CenterScreen" ResizeMode="CanResizeWithGrip"
+        ShowInTaskbar="False" PreviewKeyDown="on_key"
+        Background="#F5F5F4" FontFamily="Segoe UI" FontSize="13" Foreground="#111827">
+    <!-- Strings and tiles are set from lib/peer_library/ui_library.py (strings.py). -->
+    <Window.Resources>
+        <SolidColorBrush x:Key="Ink" Color="#111827"/>
+        <SolidColorBrush x:Key="Line" Color="#D6D3D1"/>
+        <SolidColorBrush x:Key="Muted" Color="#57534E"/>
+        <Style x:Key="Primary" TargetType="Button">
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Background" Value="#111827"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Padding" Value="14,7"/>
+            <Setter Property="Margin" Value="0,0,8,0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd" CornerRadius="6" Background="{TemplateBinding Background}"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#374151"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="bd" Property="Background" Value="#A8A29E"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="Secondary" TargetType="Button" BasedOn="{StaticResource Primary}">
+            <Setter Property="Foreground" Value="#111827"/>
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd" CornerRadius="6" Background="White" BorderThickness="1.5"
+                                BorderBrush="#111827" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#E7E5E4"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="bd" Property="BorderBrush" Value="#A8A29E"/>
+                                <Setter Property="Foreground" Value="#A8A29E"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="H" TargetType="TextBlock">
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Margin" Value="0,14,0,4"/>
+        </Style>
+        <Style TargetType="ListBoxItem">
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Margin" Value="4"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="14">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- search -->
+        <Grid Grid.Row="0" Margin="0,0,0,10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <Border CornerRadius="6" Background="White" BorderBrush="#111827" BorderThickness="1.5">
+                <Grid>
+                    <TextBlock x:Name="search_hint" Margin="10,7" Foreground="#78716C"
+                               IsHitTestVisible="False"/>
+                    <TextBox x:Name="search_box" BorderThickness="0" Background="Transparent"
+                             Padding="8,7" FontSize="14" TextChanged="on_search"/>
+                </Grid>
+            </Border>
+            <TextBlock x:Name="user_text" Grid.Column="1" Margin="14,0,0,0"
+                       VerticalAlignment="Center" Foreground="#57534E"/>
+        </Grid>
+
+        <TabControl x:Name="tabs" Grid.Row="1" Background="Transparent" BorderThickness="0"
+                    SelectionChanged="on_tab">
+            <TabItem x:Name="tab_library" Header="Library">
+                <Grid Margin="0,8,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="230"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="360"/>
+                    </Grid.ColumnDefinitions>
+
+                    <ListBox x:Name="group_list" Grid.Column="0" BorderBrush="#D6D3D1"
+                             SelectionChanged="on_group" Background="White"/>
+
+                    <ListBox x:Name="tile_list" Grid.Column="1" Margin="10,0" BorderBrush="#D6D3D1"
+                             Background="White" SelectionChanged="on_tile"
+                             MouseDoubleClick="on_double"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <ListBox.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel/>
+                            </ItemsPanelTemplate>
+                        </ListBox.ItemsPanel>
+                    </ListBox>
+
+                    <Border Grid.Column="2" Background="White" BorderBrush="#D6D3D1" BorderThickness="1">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="*"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <StackPanel x:Name="details" Margin="14">
+                                    <Border Height="200" Background="#FAFAF9" BorderBrush="#E7E5E4"
+                                            BorderThickness="1">
+                                        <Grid>
+                                            <Image x:Name="d_image" Stretch="Uniform" Margin="6"/>
+                                            <TextBlock x:Name="d_noimage" HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center" Foreground="#78716C"/>
+                                        </Grid>
+                                    </Border>
+                                    <TextBlock x:Name="d_name" FontSize="17" FontWeight="SemiBold"
+                                               TextWrapping="Wrap" Margin="0,10,0,0"/>
+                                    <TextBlock x:Name="d_id" Foreground="#57534E" TextWrapping="Wrap"/>
+                                    <WrapPanel x:Name="d_chips" Margin="0,6,0,0"/>
+                                    <TextBlock x:Name="d_version" Margin="0,6,0,0" TextWrapping="Wrap"/>
+                                    <TextBlock x:Name="d_project" TextWrapping="Wrap"/>
+                                    <TextBlock x:Name="d_desc" Margin="0,8,0,0" TextWrapping="Wrap"/>
+                                    <TextBlock x:Name="d_tags" Margin="0,6,0,0" Foreground="#57534E"
+                                               TextWrapping="Wrap"/>
+                                    <TextBlock x:Name="d_help" Margin="0,6,0,0"/>
+
+                                    <StackPanel x:Name="types_panel">
+                                        <TextBlock x:Name="types_header" Style="{StaticResource H}"/>
+                                        <TextBlock x:Name="types_hint" Foreground="#57534E" FontSize="11.5"
+                                                   TextWrapping="Wrap"/>
+                                        <TextBox x:Name="types_search" Margin="0,4" Padding="4,3"
+                                                 TextChanged="on_types_search"/>
+                                        <ListBox x:Name="types_list" Height="170" BorderBrush="#D6D3D1"/>
+                                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                            <Button x:Name="types_all" Content="All" Style="{StaticResource Secondary}"
+                                                    Padding="8,2" Click="on_types_all"/>
+                                            <Button x:Name="types_none" Content="None" Style="{StaticResource Secondary}"
+                                                    Padding="8,2" Click="on_types_none"/>
+                                        </StackPanel>
+                                    </StackPanel>
+
+                                    <TextBlock x:Name="history_header" Style="{StaticResource H}"/>
+                                    <StackPanel x:Name="d_history"/>
+                                </StackPanel>
+                            </ScrollViewer>
+                            <StackPanel Grid.Row="1" Margin="14,8,14,14">
+                                <CheckBox x:Name="overwrite_box" Margin="0,0,0,10"/>
+                                <StackPanel Orientation="Horizontal">
+                                    <Button x:Name="load_btn" Style="{StaticResource Primary}" Click="on_load"/>
+                                    <Button x:Name="place_btn" Style="{StaticResource Secondary}" Click="on_place"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                </Grid>
+            </TabItem>
+            <TabItem x:Name="tab_news" Header="What's new">
+                <ListBox x:Name="news_list" Margin="0,8,0,0" BorderBrush="#D6D3D1" Background="White"/>
+            </TabItem>
+            <TabItem x:Name="tab_mine" Header="My proposals">
+                <ListBox x:Name="mine_list" Margin="0,8,0,0" BorderBrush="#D6D3D1" Background="White"/>
+            </TabItem>
+        </TabControl>
+
+        <TextBlock x:Name="status_text" Grid.Row="2" Margin="0,8,0,0" Foreground="#44403C"
+                   TextWrapping="Wrap"/>
+    </Grid>
+</Window>

@@ -218,6 +218,24 @@ class TestChecks(unittest.TestCase):
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
+    def test_type_catalog(self):
+        from peer_library import catalog
+        tmp = tempfile.mkdtemp()
+        try:
+            p = os.path.join(tmp, 'c.txt')
+            text = u',Width##LENGTH##MILLIMETERS\r\n"HEA 100",100\r\nHEA 120,120\r\n"A ""B""",1\r\n'
+            with open(p, 'wb') as f:
+                f.write(b'\xff\xfe' + text.encode('utf-16-le'))
+            self.assertEqual(catalog.type_names(p), [u'HEA 100', u'HEA 120', u'A "B"'])
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_is_new(self):
+        import datetime
+        d = datetime.date(2026, 11, 19)
+        self.assertTrue(index.is_new({'updated': '2026-11-10'}, d))
+        self.assertFalse(index.is_new({'updated': '2026-10-01'}, d))
+
     def test_card_validation(self):
         self.assertEqual(index.validate(index.new_card(id='PEER_A', group='01_Framing',
                                                        version=1)), [])
