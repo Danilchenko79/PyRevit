@@ -16,6 +16,7 @@ from peer_feedback import config, payload
 KEEP = 300          # newest requests kept in the file
 TEXT = 200          # chars of the request text kept
 WAITING = u'Waiting to send'
+REJECTED = u'Not delivered'
 
 
 def path(base=None):
@@ -92,16 +93,19 @@ def merge(statuses, base=None):
 COLUMNS = (u'Date', u'Topic', u'Button', u'Request', u'Status', u'Comment')
 
 
-def table_rows(entries, queued_ids, topic_labels, to_local_text):
+def table_rows(entries, queued_ids, topic_labels, to_local_text, rejected_ids=()):
     """Rows for "My requests" in COLUMNS order.
 
     queued_ids: ids still in the outbox -> status WAITING.
+    rejected_ids: ids the receiver refused -> status REJECTED.
     topic_labels: {code: label}. to_local_text: UTC ISO text -> shown date.
     """
     rows = []
     for x in entries:
         if x['id'] in queued_ids:
             status = WAITING
+        elif x['id'] in rejected_ids and not x.get('status'):
+            status = REJECTED
         else:
             status = x.get('status') or u'New'
         rows.append((

@@ -143,18 +143,25 @@ def queue_pending(folder=None, base=None, today=None, tab_dir=None):
     all_runs = runs.load_runs(folder or runs.telemetry_dir(), since)
     machine, peer = machine_name(), config.peer_version()
     n = 0
+    done = yesterday
     for day, rows in pending(all_runs, today, last_day, machine, peer, user_name()):
+        queued = True
         for k in range(0, len(rows), MAX_ROWS):
             chunk = rows[k:k + MAX_ROWS]
             item_id = _hash(u'usage', day.isoformat(), machine, k)
-            outbox.put({'action': 'usage', 'data': {'id': item_id, 'rows': chunk}}, base)
+            if outbox.put({'action': 'usage', 'data': {'id': item_id, 'rows': chunk}}, base) is None:
+                queued = False      # outbox full: this day goes next time
+                break
             n += len(chunk)
+        if not queued:
+            done = day - datetime.timedelta(days=1)
+            break
     tab_dir = tab_dir or os.path.join(config.ext_dir(), 'PEER.tab')
     names = payload.list_buttons(tab_dir)
     if names:
         item_id = _hash(u'buttons', today.isoformat(), machine)
         outbox.put({'action': 'buttons', 'data': {'id': item_id, 'names': names}}, base)
-    state['last_day'] = yesterday.isoformat()
+    state['last_day'] = done.isoformat()
     write_state(state, base)
     return n
 

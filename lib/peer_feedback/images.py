@@ -54,6 +54,16 @@ def clipboard_has_image():
     return False
 
 
+def clipboard_has_text():
+    """Text on the clipboard. Excel / Word copy text AND a picture of it."""
+    _wpf()
+    from System.Windows import Clipboard
+    try:
+        return bool(Clipboard.ContainsText())
+    except Exception:
+        return False
+
+
 def from_files(paths):
     _wpf()
     from System import Uri, UriKind

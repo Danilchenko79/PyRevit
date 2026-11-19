@@ -26,6 +26,7 @@ import re
 from peer_feedback import config, payload
 
 EXTENSION = u'PEER'
+TAB = u'PEER.tab'
 OK_CODES = (0, 1, 11)
 KEEP_DAYS = 90
 _TS = re.compile(r'^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(?:\.\d+)?(Z|[+-]\d\d:?\d\d)?$')
@@ -163,10 +164,17 @@ def _files(folder, since_ts=None):
 
 
 def _is_peer(rec):
+    """A run of a PEER button: script under PEER.tab, or extension named PEER.
+
+    The extension name depends on the install folder: PEER.extension at the
+    colleagues (install.bat), PyRevitV2.extension in the author's copy - so
+    the script path decides first.
+    """
+    parts = payload.u(rec.get('scriptpath')).replace(u'\\', u'/').lower().split(u'/')
+    if TAB.lower() in parts:
+        return True
     ext = payload.u(rec.get('commandextension')).strip().lower()
-    if ext:
-        return ext == EXTENSION.lower()
-    return bool(payload.button_from_script(rec.get('scriptpath')))
+    return ext == EXTENSION.lower()
 
 
 def load_runs(folder, since=None, max_files=200):
@@ -232,14 +240,43 @@ def recent_failures(folder=None, days=7, limit=10):
     return failures(load_runs(folder or telemetry_dir(), since))[:limit]
 
 
+# 'ImportError: ...', 'Exception: ...', 'Autodesk.Revit.Exceptions.X: ...'
+_ERR_LINE = re.compile(r'^[\w.]*(?:Error|Exception|Exit|Warning|Interrupt)(?::|$)')
+# section headers of pyRevit / IronPython traces, never the error itself
+_HEADER = re.compile(r'^(IronPython |CPython |Script Executor |\w+ )?Traceback\b|:\s*$')
+
+
 def summary(error):
-    """'Exception: boom' - the line that names the error, for a list."""
-    for line in payload.u(error).splitlines():
+    """'Exception: boom' - the line that names the error, for a list.
+
+    First the first unindented 'SomethingError: ...' line, else the first
+    unindented line that is not a 'Traceback' header.
+    """
+    lines = [l for l in payload.u(error).splitlines() if l.strip() and not l[:1].isspace()]
+    for line in lines:
         s = line.strip()
-        if not s or line[:1].isspace() or s.startswith(u'Traceback'):
-            continue
-        return s[:200]
+        if _ERR_LINE.match(s):
+            return s[:200]
+    for line in lines:
+        s = line.strip()
+        if not _HEADER.search(s):
+            return s[:200]
     return u''
+
+
+def report_text(error, limit=payload.MAX_TEXT):
+    """Error text for a bug report, at most `limit` chars.
+
+    A long trace is cut in the middle (head = IronPython frames, tail = the
+    innermost .NET frames) and starts with the summary line, so the error
+    itself is never cut off.
+    """
+    text = payload.u(error).strip()
+    if len(text) <= limit:
+        return text
+    head = summary(text)
+    body = payload.clip_middle(text, limit - len(head) - 2)
+    return head + u'\n\n' + body if head else body
 
 
 def label(fail):

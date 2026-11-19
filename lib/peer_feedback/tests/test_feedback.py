@@ -125,8 +125,12 @@ def test_outbox_cap(tmp_path, monkeypatch):
     monkeypatch.setattr(outbox, 'MAX_ITEMS', 2)
     base = str(tmp_path)
     for c in 'abc':
-        outbox.put({'action': 'request', 'data': {'id': c * 32}}, base)
+        outbox.put({'action': 'usage', 'data': {'id': c * 32}}, base)
     assert outbox.count(base) == 2
+    # the same id still overwrites; a person's request is never refused
+    assert outbox.put({'action': 'usage', 'data': {'id': 'a' * 32}}, base)
+    assert outbox.put({'action': 'request', 'data': {'id': 'd' * 32}}, base)
+    assert outbox.count(base) == 3
 
 
 # ----------------------------------------------------------------- config --
@@ -273,11 +277,12 @@ def test_bad_key_keeps_item(receiver):
     assert client.flush(receiver.cfg()) == (1, 0)
 
 
-def test_bad_request_is_dropped(receiver):
+def test_bad_request_is_rejected_not_lost(receiver):
     req = _req()
     req['text'] = u''
-    assert client.submit('request', req, receiver.cfg()) == client.QUEUED
+    assert client.submit('request', req, receiver.cfg()) == client.REJECTED
     assert outbox.count() == 0
+    assert outbox.rejected_ids() == set([req['id']])
 
 
 def test_receiver_html_error_keeps_item_and_stops_flush(receiver):

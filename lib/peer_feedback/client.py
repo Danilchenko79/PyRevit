@@ -3,7 +3,8 @@
 
 The receiver answers {"ok": true, ...} or {"ok": false, "error": <code>}:
     bad_key      - key or address is wrong here: keep the item, retry later
-    bad_request  - the item itself is broken: drop it (logged), never retry
+    bad_request  - the item itself is broken: move it to rejected/ (logged),
+                   never retry
     anything else / no answer - keep the item, retry later
 """
 
@@ -21,6 +22,8 @@ _flush_lock = threading.Lock()
 SENT = 'sent'
 QUEUED = 'queued'
 NOT_CONFIGURED = 'not_configured'
+# the receiver refused the item as broken: moved to %APPDATA%/PEER/rejected
+REJECTED = 'rejected'
 
 
 def _log(line):
@@ -79,11 +82,11 @@ def submit(action, data, cfg=None, base=None):
             outbox.remove(path)
         return SENT
     if res == 'drop':
-        _log(u'dropped {0} {1}: {2}'.format(action, data.get('id'), why))
+        _log(u'rejected {0} {1}: {2}'.format(action, data.get('id'), why))
         if path:
-            outbox.remove(path)
-        # a broken item is our bug; for the person it is "not delivered"
-        return QUEUED
+            outbox.reject(path, base)
+        # a broken item is our bug: say so, never "will be sent later"
+        return REJECTED
     _log(u'queued {0} {1}: {2}'.format(action, data.get('id'), why))
     return QUEUED
 
@@ -109,8 +112,8 @@ def flush(cfg=None, base=None):
                 outbox.remove(path)
                 sent += 1
             elif res == 'drop':
-                _log(u'dropped {0}: {1}'.format(os.path.basename(path), why))
-                outbox.remove(path)
+                _log(u'rejected {0}: {1}'.format(os.path.basename(path), why))
+                outbox.reject(path, base)
             elif res == 'refused':
                 _log(u'kept {0}: {1}'.format(os.path.basename(path), why))
             else:

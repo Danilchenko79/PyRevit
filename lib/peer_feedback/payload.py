@@ -52,6 +52,17 @@ def clip(x, limit):
     return x if len(x) <= limit else x[:limit - 1] + u'…'
 
 
+def clip_middle(x, limit):
+    """Keep the start and the end, cut the middle: for traces."""
+    x = u(x).strip()
+    if len(x) <= limit:
+        return x
+    mark = u'\n[...]\n'
+    keep = max(0, limit - len(mark))
+    head = keep * 2 // 5
+    return x[:head] + mark + x[len(x) - (keep - head):]
+
+
 def new_id():
     return text_type(uuid.uuid4().hex)
 
@@ -113,8 +124,11 @@ def make_request(fields, context, request_id=None, created_at=None, images=None)
         'button': clip(fields.get('button'), MAX_FIELD),
     }
     for k in CONTEXT_FIELDS:
-        limit = MAX_TEXT if k == 'error_text' else MAX_FIELD
-        req[k] = clip(context.get(k), limit)
+        if k == 'error_text':
+            # the error line of a trace may sit anywhere: never cut the end off
+            req[k] = clip_middle(context.get(k), MAX_TEXT)
+        else:
+            req[k] = clip(context.get(k), MAX_FIELD)
     if images:
         req['attachments'] = attachments(images)
     return req

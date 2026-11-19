@@ -181,7 +181,7 @@
                 Padding="24,12" Margin="0,16,0,0">
             <DockPanel LastChildFill="True">
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                    <Button Content="Refresh" Style="{StaticResource Secondary}" Height="34" MinWidth="90"
+                    <Button x:Name="btn_refresh" Content="Refresh" Style="{StaticResource Secondary}" Height="34" MinWidth="90"
                             Margin="0,0,8,0" Click="on_refresh"/>
                     <Button Content="Close" Style="{StaticResource Primary}" Height="34" MinWidth="90"
                             Click="on_close" IsDefault="True" IsCancel="True"/>

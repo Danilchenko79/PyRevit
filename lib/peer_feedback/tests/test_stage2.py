@@ -68,6 +68,9 @@ def test_parse_time_zones():
     assert runs.parse_time(None) is None
 
 
+OTHER = u'C:\\pyRevit\\pyRevitTools.extension\\pyRevit.tab\\Tools.panel\\Sync.pushbutton\\script.py'
+
+
 # ------------------------------------------------------------------- runs --
 
 def test_load_runs_and_failures(tmp_path):
@@ -76,7 +79,7 @@ def test_load_runs_and_failures(tmp_path):
     write(d, 'pyRevit_s1_telemetry.json', [
         rec(iso(now - datetime.timedelta(minutes=30))),                          # ok
         rec(iso(now - datetime.timedelta(minutes=20)), code=2, trace=TRACE),     # failure
-        rec(iso(now - datetime.timedelta(minutes=10)), code=2, ext=u'pyRevitTools'),
+        rec(iso(now - datetime.timedelta(minutes=10)), code=2, ext=u'pyRevitTools', path=OTHER),
         rec(iso(now - datetime.timedelta(minutes=5)), code=1),                   # sys.exit = ok
         rec(iso(now - datetime.timedelta(days=30)), code=2, trace=TRACE),        # too old
     ])

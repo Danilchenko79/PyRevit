@@ -13,12 +13,19 @@ import os
 
 from peer_feedback import config
 
-# a broken network for months must not fill the disk
+# a broken network for months must not fill the disk with usage rows;
+# a person's own request ('request') is always kept
 MAX_ITEMS = 1000
+ALWAYS_KEEP = ('request',)
 
 
 def folder(base=None):
     return os.path.join(base or config.local_dir(), 'outbox')
+
+
+def rejected_folder(base=None):
+    """Items the receiver refused as broken: kept for the head of the group."""
+    return os.path.join(base or config.local_dir(), 'rejected')
 
 
 def _safe(item_id):
@@ -33,9 +40,10 @@ def put(item, base=None):
     d = folder(base)
     if not os.path.isdir(d):
         os.makedirs(d)
-    if len(_names(d)) >= MAX_ITEMS:
-        return None
     path = os.path.join(d, item_id + '.json')
+    if (item.get('action') not in ALWAYS_KEEP and not os.path.exists(path)
+            and len(_names(d)) >= MAX_ITEMS):
+        return None
     tmp = path + '.tmp'
     text = json.dumps(item, ensure_ascii=False, sort_keys=True)
     if not isinstance(text, type(u'')):
@@ -79,5 +87,30 @@ def remove(path):
         return False
 
 
+def reject(path, base=None):
+    """Move a refused item out of the queue into rejected/. -> new path or None."""
+    d = rejected_folder(base)
+    try:
+        if not os.path.isdir(d):
+            os.makedirs(d)
+        dst = os.path.join(d, os.path.basename(path))
+        if os.path.exists(dst):
+            os.remove(dst)
+        os.rename(path, dst)
+        return dst
+    except OSError:
+        remove(path)
+        return None
+
+
 def count(base=None):
     return len(_names(folder(base)))
+
+
+def ids(base=None):
+    """data ids of the queued items (file name = id)."""
+    return set(n[:-5] for n in _names(folder(base)))
+
+
+def rejected_ids(base=None):
+    return set(n[:-5] for n in _names(rejected_folder(base)))

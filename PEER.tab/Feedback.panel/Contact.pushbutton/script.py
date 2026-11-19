@@ -39,6 +39,8 @@ ACTION = 'request'
 TITLE = u'PEER - Contact'
 # a PEER error this fresh opens Contact on "Bug" with it picked
 FRESH_ERROR_MIN = 15
+# window closed while the request was still being sent
+BACKGROUND = 'background'
 
 
 def _tab_dir():
@@ -48,14 +50,17 @@ def _tab_dir():
 
 
 class ContactWindow(forms.WPFWindow):
-    def __init__(self, xaml_path, ctx, buttons, fails, topic=None, button=None, error=0):
+    def __init__(self, xaml_path, cfg, ctx, buttons, fails, topic=None, button=None, error=0):
         forms.WPFWindow.__init__(self, xaml_path)
+        self.cfg = cfg
         self.ctx = ctx
         self.fails = list(fails)
-        self.result = None
-        self.result_context = None
-        self.result_images = []
+        self.request = None       # the request dict once Send was pressed
+        self.status = None        # client.SENT / QUEUED / ... / BACKGROUND
+        self.sending = False
+        self.closed = False
         self.images = []          # [(BitmapSource, base64 JPEG)]
+        self.Closed += self._on_closed
         t = texts.s
 
         self.Title = TITLE
@@ -157,7 +162,10 @@ class ContactWindow(forms.WPFWindow):
             args.Handled = True
             self.on_ok(sender, args)
         elif args.Key == Key.V and images.clipboard_has_image():
-            # a picture on the clipboard: attach it; plain text pastes as usual
+            # Excel / Word put text AND a picture on the clipboard: in the
+            # text box the text wins; a screenshot (picture only) is attached
+            if self.tb_text.IsKeyboardFocusWithin and images.clipboard_has_text():
+                return
             args.Handled = True
             self._add(images.from_clipboard())
 
@@ -247,7 +255,7 @@ class ContactWindow(forms.WPFWindow):
         ctx = dict(self.ctx)
         f = self._error()
         ctx['error_script'] = f['script'] if f else u''
-        ctx['error_text'] = f['error'] if f else u''
+        ctx['error_text'] = runs.report_text(f['error']) if f else u''
         return ctx
 
     def _update_error(self, pick_button=False):
@@ -285,20 +293,68 @@ class ContactWindow(forms.WPFWindow):
         }
 
     def on_ok(self, sender, args):
+        if self.sending:
+            return
         fields = self._fields()
         errors = payload.validate(fields)
         if errors:
             forms.alert(u'\n'.join(texts.s(e) for e in errors), title=TITLE)
             return
-        self.result = fields
-        self.result_context = self._context()
-        self.result_images = [b64 for _bmp, b64 in self.images]
-        self.DialogResult = True
-        self.Close()
+        try:
+            req = payload.make_request(fields, self._context(),
+                                       images=[b64 for _bmp, b64 in self.images])
+        except ValueError as ex:
+            forms.alert(u'Request not built: {0}'.format(ex), title=TITLE)
+            return
+        self.request = req
+        self._send(req)
+
+    # --- sending: in a background thread, the window (and Revit) stay alive --
+    def _send(self, req):
+        import threading
+        from System import TimeSpan
+        from System.Windows.Threading import DispatcherTimer
+        self.sending = True
+        self.btn_ok.IsEnabled = False
+        self.btn_ok.Content = texts.s('sending')
+        self.lbl_status.Text = texts.s('sending')
+        box = {}
+
+        def run():
+            try:
+                box['status'] = client.submit(ACTION, req, self.cfg)
+            except Exception as ex:
+                client._log(u'submit failed: {0}'.format(ex))
+                box['status'] = client.QUEUED
+
+        worker = threading.Thread(target=run, name='peer_contact_send')
+        worker.daemon = True
+        worker.start()
+        timer = DispatcherTimer()
+        timer.Interval = TimeSpan.FromMilliseconds(200)
+
+        def tick(s, e):
+            if worker.is_alive():
+                return
+            timer.Stop()
+            self.sending = False
+            if self.closed:          # closed while sending: main() already told the person
+                return
+            self.status = box.get('status', client.QUEUED)
+            self.Close()
+
+        timer.Tick += tick
+        timer.Start()
 
     def on_cancel(self, sender, args):
-        self.DialogResult = False
         self.Close()
+
+    def _on_closed(self, sender, args):
+        self.closed = True
+        if self.sending:
+            # Esc / X while sending: the request is in the outbox already,
+            # the thread finishes on its own (or flush sends it next start)
+            self.status = BACKGROUND
 
 
 # ------------------------------------------------------------ Shift+Click --
@@ -368,24 +424,27 @@ def main():
         age = datetime.datetime.utcnow() - fails[0]['time']
         if age < datetime.timedelta(minutes=FRESH_ERROR_MIN):
             topic, error = 'bug', 1
-    win = ContactWindow(script.get_bundle_file('ContactForm.xaml'), ctx, buttons, fails,
+    win = ContactWindow(script.get_bundle_file('ContactForm.xaml'), cfg, ctx, buttons, fails,
                         topic=topic, error=error)
     if error:
         win._update_error(pick_button=True)
     win.ShowDialog()
-    if not win.DialogResult or not win.result:
+    if not win.request or not win.status:
         return
 
-    req = payload.make_request(win.result, win.result_context, images=win.result_images)
-    status = client.submit(ACTION, req, cfg)
     try:
-        sent.add(req)
+        sent.add(win.request)
     except Exception:
         pass
+    status = win.status
     if status == client.SENT:
         forms.alert(texts.s('sent'), title=TITLE, warn_icon=False)
     elif status == client.NOT_CONFIGURED:
         forms.alert(texts.s('not_configured'), title=TITLE)
+    elif status == client.REJECTED:
+        forms.alert(texts.s('rejected'), title=TITLE)
+    elif status == BACKGROUND:
+        forms.alert(texts.s('background'), title=TITLE, warn_icon=False)
     else:
         forms.alert(texts.s('queued'), title=TITLE)
 

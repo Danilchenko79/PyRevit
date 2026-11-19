@@ -11,9 +11,13 @@ The status is fetched from the group's table when the window opens
 shown. Requests not sent yet show "Waiting to send".
 """
 
+import clr
+
 from pyrevit import forms, script
 
-from System.Data import DataTable
+# System.Data is not loaded in Revit 2024 by default ("No module named Data")
+clr.AddReference('System.Data')
+from System.Data import DataTable  # noqa: E402
 
 from peer_feedback import client, config, outbox, runs, sent, texts
 from peer_feedback.transport import SendError
@@ -47,17 +51,13 @@ def refresh():
 
 
 def build_table():
-    queued = set()
-    for _path, item in outbox.items():
-        try:
-            queued.add(item['data']['id'])
-        except (KeyError, TypeError):
-            pass
+    queued = outbox.ids()
+    rejected = outbox.rejected_ids()
     labels = dict((c, l) for c, l, _h in texts.TOPICS)
     table = DataTable()
     for col in sent.COLUMNS:
         table.Columns.Add(col)
-    for row in sent.table_rows(sent.items(), queued, labels, _local_text):
+    for row in sent.table_rows(sent.items(), queued, labels, _local_text, rejected):
         r = table.NewRow()
         for col, val in zip(sent.COLUMNS, row):
             r[col] = val
@@ -66,23 +66,67 @@ def build_table():
 
 
 class MyRequestsWindow(forms.WPFWindow):
+    """Shows the last known statuses at once, fetches new ones in a thread."""
+
     def __init__(self, xaml_path):
         forms.WPFWindow.__init__(self, xaml_path)
+        self.busy = False
+        self.closed = False
+        self.Closed += self._on_closed
+        self.show_table()
         self.load()
 
-    def load(self):
+    def show_table(self):
         from System.Windows import Visibility
-        note = refresh()
-        self.lbl_note.Text = note
         table = build_table()
         self.grid.ItemsSource = table.DefaultView
         self.lbl_empty.Visibility = Visibility.Collapsed if table.Rows.Count else Visibility.Visible
+
+    def load(self):
+        import threading
+        from System import TimeSpan
+        from System.Windows.Threading import DispatcherTimer
+        if self.busy:
+            return
+        self.busy = True
+        self.btn_refresh.IsEnabled = False
+        self.lbl_note.Text = u'Updating statuses...'
+        box = {}
+
+        def run():
+            try:
+                box['note'] = refresh()
+            except Exception as ex:
+                box['note'] = u'Update failed: {0}'.format(ex)
+
+        worker = threading.Thread(target=run, name='peer_myrequests_refresh')
+        worker.daemon = True
+        worker.start()
+        timer = DispatcherTimer()
+        timer.Interval = TimeSpan.FromMilliseconds(200)
+
+        def tick(s, e):
+            if worker.is_alive():
+                return
+            timer.Stop()
+            self.busy = False
+            if self.closed:
+                return
+            self.lbl_note.Text = box.get('note', u'')
+            self.btn_refresh.IsEnabled = True
+            self.show_table()
+
+        timer.Tick += tick
+        timer.Start()
 
     def on_refresh(self, sender, args):
         self.load()
 
     def on_close(self, sender, args):
         self.Close()
+
+    def _on_closed(self, sender, args):
+        self.closed = True
 
 
 MyRequestsWindow(script.get_bundle_file('MyRequestsForm.xaml')).ShowDialog()
