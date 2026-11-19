@@ -135,6 +135,19 @@ def load_family(doc, path, family_id, overwrite=False, type_names=None):
     return find_family(doc, family_id)
 
 
+def family_type_names(doc, fam):
+    """Names of the types of a family in the project (catalog families: these
+    are the types to reload on update)."""
+    if fam is None:
+        return []
+    names = []
+    for i in fam.GetFamilySymbolIds():
+        p = doc.GetElement(i).get_Parameter(DB.BuiltInParameter.SYMBOL_NAME_PARAM)
+        if p is not None and p.AsString():
+            names.append(p.AsString())
+    return names
+
+
 def first_symbol(doc, fam, prefer=None):
     if fam is None:
         return None

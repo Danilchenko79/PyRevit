@@ -35,8 +35,19 @@ def main():
         ProposeWindow(XAML, doc, revit.uidoc, backend).ShowDialog()
 
 
-try:
-    main()
-except Exception as ex:
-    log.write(u'Propose button', exc=True)
-    forms.alert(u'{0}\n\nDetails: {1}'.format(ex, log.log_file()), title=strings.APP)
+def __selfinit__(script_cmp, ui_button_cmp, __rvt__):
+    """Hidden where the library is not set up (no service address / folder)."""
+    try:
+        if not config.panel_visible():
+            ui_button_cmp.visible = False
+    except Exception:
+        pass
+    return True
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except Exception as ex:
+        log.write(u'Propose button', exc=True)
+        forms.alert(u'{0}\n\nDetails: {1}'.format(ex, log.log_file()), title=strings.APP)

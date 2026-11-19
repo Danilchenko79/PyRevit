@@ -135,6 +135,35 @@ test('deprecate keeps the family in the index with status', async () => {
   assert.equal(idx.data.families[0].status, 'deprecated');
 });
 
+test('access request: send, admin approves, key delivered once and works', async () => {
+  const r = await call('POST', '/access/request', null, { name: 'Boris', note: 'remote' });
+  assert.equal(r.status, 200);
+  const { id, token } = r.data;
+  assert.equal((await call('POST', '/access/status', null, { id, token })).data.status, 'pending');
+  assert.equal((await call('POST', '/access/status', null, { id, token: 'wrong' })).status, 404);
+  assert.equal((await call('GET', '/access', USER)).status, 403);
+  const list = await call('GET', '/access', ADMIN);
+  assert.deepEqual(list.data.map(x => x.name), ['Boris']);
+  assert.equal((await call('POST', '/access/approve', ADMIN, { id, role: 'user' })).status, 200);
+  const got = await call('POST', '/access/status', null, { id, token });
+  assert.equal(got.data.status, 'delivered');
+  assert.match(got.data.key, /^peer_/);
+  assert.equal((await call('GET', '/auth', got.data.key)).data.name, 'Boris');
+  const again = await call('POST', '/access/status', null, { id, token });
+  assert.equal(again.data.status, 'delivered');
+  assert.equal(again.data.key, undefined);                 // the key is handed over only once
+  assert.equal((await call('GET', '/access', ADMIN)).data.length, 0);
+});
+
+test('access request: reject, name required, spam limit', async () => {
+  assert.equal((await call('POST', '/access/request', null, { name: '' })).status, 400);
+  const r = await call('POST', '/access/request', null, { name: 'Spam' });
+  assert.equal((await call('POST', '/access/reject', ADMIN, { id: r.data.id })).status, 200);
+  assert.equal((await call('POST', '/access/status', null, r.data)).data.status, 'rejected');
+  for (let i = 0; i < 20; i++) await call('POST', '/access/request', null, { name: 'x' + i });
+  assert.equal((await call('POST', '/access/request', null, { name: 'one more' })).status, 429);
+});
+
 test('audit records downloads and publishes', async () => {
   const r = await call('POST', '/publish', ADMIN, publishForm('PEER_Beam', 1));
   await call('GET', '/file/' + encodeURI(r.data.files['.rfa']), USER);

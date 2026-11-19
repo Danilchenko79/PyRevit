@@ -83,7 +83,8 @@ def _send_dotnet(method, url, key, json_body=None, parts=None, target=None, time
     req.Method = method
     req.Timeout = timeout * 1000
     req.ReadWriteTimeout = timeout * 1000
-    req.Headers.Add('Authorization', 'Bearer ' + key)
+    if key:
+        req.Headers.Add('Authorization', 'Bearer ' + key)
     req.UserAgent = 'PEER-Library'
     utf8 = Encoding.UTF8
     if json_body is not None:
@@ -144,7 +145,9 @@ def _send_urllib(method, url, key, json_body=None, parts=None, target=None, time
         from urllib.error import HTTPError, URLError
     except ImportError:
         from urllib2 import Request, urlopen, HTTPError, URLError
-    headers = {'Authorization': 'Bearer ' + key, 'User-Agent': 'PEER-Library'}
+    headers = {'User-Agent': 'PEER-Library'}
+    if key:
+        headers['Authorization'] = 'Bearer ' + key
     body = None
     if json_body is not None:
         body = json.dumps(json_body, ensure_ascii=True).encode('utf-8')
@@ -205,16 +208,18 @@ class HttpBackend(Backend):
     def has_key(self):
         return bool(self.key)
 
-    def _call(self, method, path, json_body=None, parts=None, target=None, timeout=TIMEOUT_S):
+    def _call(self, method, path, json_body=None, parts=None, target=None, timeout=TIMEOUT_S,
+              auth=True):
         if not self.url.startswith('https://') and not self.url.startswith('http://127.0.0.1'):
             raise LibraryError(u'The library address is not set (https://...).')
-        if not self.key:
+        if auth and not self.key:
             raise AccessError(u'Sign in with your PEER library key.')
         url = self.url + path
         last = None
         for attempt in (1, 2):
             try:
-                return _send(method, url, self.key, json_body, parts, target, timeout)
+                return _send(method, url, self.key if auth else None, json_body, parts, target,
+                             timeout)
             except HttpStatusError as ex:
                 if ex.status == 401:
                     raise AccessError(u'{0}'.format(ex))
@@ -222,6 +227,8 @@ class HttpBackend(Backend):
                     raise AccessError(u'{0}'.format(ex))
                 if ex.status == 404:
                     raise NotFoundError(u'{0}'.format(ex))
+                if ex.status == 429:
+                    raise LibraryError(u'{0}'.format(ex))
                 if ex.status == 409:
                     raise ConflictError(u'{0}'.format(ex))
                 if ex.status >= 500 and attempt == 1:
@@ -360,3 +367,24 @@ class HttpBackend(Backend):
 
     def audit(self, limit=200):
         return self._get_json('/audit?limit={0}'.format(int(limit)))
+
+    # ---- access requests ------------------------------------------------------
+    def request_access(self, name, note=u''):
+        """No key needed. Returns {'id', 'token', 'status'}; keep id + token."""
+        return json.loads(self._call('POST', '/access/request', auth=False,
+                                     json_body={'name': name, 'note': note}))
+
+    def access_status(self, request_id, token):
+        """{'status': pending|approved|rejected|delivered, 'key': once when delivered}."""
+        return json.loads(self._call('POST', '/access/status', auth=False,
+                                     json_body={'id': request_id, 'token': token}))
+
+    def list_access_requests(self):
+        return self._get_json('/access')
+
+    def approve_access(self, request_id, role='user'):
+        return json.loads(self._call('POST', '/access/approve',
+                                     json_body={'id': request_id, 'role': role}))
+
+    def reject_access(self, request_id):
+        return json.loads(self._call('POST', '/access/reject', json_body={'id': request_id}))

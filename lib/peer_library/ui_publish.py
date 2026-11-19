@@ -161,6 +161,8 @@ class PublishWindow(forms.WPFWindow):
         if not upd and any(k.lower() == draft['id'].lower() for k in self.cards):
             res.append(('error', 'mode', u'"{0}" is already in the library - choose '
                                          u'"New version of an existing family"'.format(draft['id'])))
+        if upd and not (self.note_box.Text or u'').strip():
+            res.append(('error', 'note', strings.NOTE_NEEDED))
         return res, draft
 
     def on_check(self, sender, args):

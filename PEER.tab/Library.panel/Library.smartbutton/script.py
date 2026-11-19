@@ -91,6 +91,7 @@ def main():
     backend = session.connect(cfg)
     if backend is None:
         return
+    from peer_library.ui_library import LibraryWindow
     win = LibraryWindow(XAML, doc, revit.uidoc, backend, config.load())
     win.ShowDialog()
     if win.place_symbol is not None:
@@ -100,10 +101,19 @@ def main():
             forms.alert(u'{0}'.format(ex), title=strings.APP)
 
 
-from peer_library.ui_library import LibraryWindow  # noqa: E402
+def __selfinit__(script_cmp, ui_button_cmp, __rvt__):
+    """Hidden where the library is not set up (no service address / folder)."""
+    try:
+        if not config.panel_visible():
+            ui_button_cmp.visible = False
+    except Exception:
+        pass
+    return True
 
-try:
-    main()
-except Exception as ex:
-    log.write(u'Library button', exc=True)
-    forms.alert(u'{0}\n\nDetails: {1}'.format(ex, log.log_file()), title=strings.APP)
+
+if __name__ == '__main__':
+    try:
+        main()
+    except Exception as ex:
+        log.write(u'Library button', exc=True)
+        forms.alert(u'{0}\n\nDetails: {1}'.format(ex, log.log_file()), title=strings.APP)

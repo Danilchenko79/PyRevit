@@ -35,6 +35,21 @@ CREATE TABLE IF NOT EXISTS audit (
 );
 CREATE INDEX IF NOT EXISTS audit_time ON audit(time);
 
+-- "Request access" from the sign-in window: no key yet. The key is created only
+-- when the requester picks up an approved request (never stored in plain text).
+CREATE TABLE IF NOT EXISTS access_requests (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    note        TEXT NOT NULL DEFAULT '',
+    created     TEXT NOT NULL,
+    token_hash  TEXT NOT NULL,            -- SHA-256 of the secret the requester polls with
+    status      TEXT NOT NULL DEFAULT 'pending',   -- pending / approved / rejected / delivered
+    role        TEXT NOT NULL DEFAULT 'user',
+    resolved_by TEXT NOT NULL DEFAULT '',
+    resolved    TEXT NOT NULL DEFAULT '',
+    key_id      TEXT NOT NULL DEFAULT ''
+);
+
 CREATE TABLE IF NOT EXISTS locks (
     name    TEXT PRIMARY KEY,
     owner   TEXT,

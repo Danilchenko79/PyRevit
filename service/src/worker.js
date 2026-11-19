@@ -19,6 +19,11 @@
 //   POST   /keys                 {name, role} -> key shown once      admin
 //   DELETE /keys/<id>            revoke                              admin
 //   GET    /audit?limit=N        last actions                        admin
+//   POST   /access/request       {name, note} -> {id, token}         no key (sign-in window)
+//   POST   /access/status        {id, token} -> status / key once    no key
+//   GET    /access               waiting access requests             admin
+//   POST   /access/approve       {id, role}                          admin
+//   POST   /access/reject        {id}                                admin
 //
 // Publishing is all-or-nothing: new files go to new version keys
 // (<group>/<ID>/v<N>.rfa), index.json is written last (the commit point),
@@ -322,14 +327,83 @@ async function revokeKey(env, who, id) {
   return json({ id, active: false });
 }
 
+// ---- access requests (no key yet) ----------------------------------------------------
+const MAX_PENDING_REQUESTS = 20;
+const REQUEST_DAYS = 14;
+
+async function requestAccess(request, env) {
+  const body = await request.json().catch(() => ({}));
+  const name = String(body.name || '').trim().slice(0, 60);
+  const note = String(body.note || '').trim().slice(0, 300);
+  if (name.length < 2) throw new HttpError(400, 'Write your name.');
+  const old = new Date(Date.now() - REQUEST_DAYS * 86400000).toISOString().slice(0, 19);
+  await env.DB.prepare("DELETE FROM access_requests WHERE status IN ('pending', 'rejected') AND created < ?")
+    .bind(old).run();
+  const n = await env.DB.prepare("SELECT COUNT(*) AS n FROM access_requests WHERE status = 'pending'").first();
+  if (n && n.n >= MAX_PENDING_REQUESTS) {
+    throw new HttpError(429, 'Too many requests are waiting - ask a library admin directly.');
+  }
+  const id = randomToken(9);
+  const token = randomToken(24);
+  await env.DB.prepare('INSERT INTO access_requests (id, name, note, created, token_hash) VALUES (?, ?, ?, ?, ?)')
+    .bind(id, name, note, nowIso(), await digestHex('SHA-256', token)).run();
+  await audit(env, null, 'access_request', id, name);
+  return json({ id, token, status: 'pending' });
+}
+
+async function accessStatus(request, env) {
+  const body = await request.json().catch(() => ({}));
+  const row = await env.DB.prepare('SELECT * FROM access_requests WHERE id = ?').bind(String(body.id || '')).first();
+  if (!row || row.token_hash !== await digestHex('SHA-256', String(body.token || ''))) {
+    throw new HttpError(404, 'No such request - send a new one.');
+  }
+  if (row.status !== 'approved') return json({ status: row.status, name: row.name });
+  // approved: create the key now and hand it over exactly once
+  const key = 'peer_' + randomToken(32);
+  const keyId = randomToken(6);
+  await env.DB.prepare('INSERT INTO keys (id, hash, name, role, active, created, created_by) VALUES (?, ?, ?, ?, 1, ?, ?)')
+    .bind(keyId, await digestHex('SHA-256', key), row.name, row.role, nowIso(), row.resolved_by).run();
+  const res = await env.DB.prepare("UPDATE access_requests SET status = 'delivered', key_id = ? WHERE id = ? AND status = 'approved'")
+    .bind(keyId, row.id).run();
+  if (!res.meta || res.meta.changes !== 1) {       // picked up twice at the same moment
+    await env.DB.prepare('DELETE FROM keys WHERE id = ?').bind(keyId).run();
+    throw new HttpError(409, 'Already delivered.');
+  }
+  await audit(env, { id: keyId, name: row.name }, 'key_delivered', keyId, row.role);
+  return json({ status: 'delivered', name: row.name, role: row.role, key });
+}
+
+async function resolveAccess(request, env, who, approve) {
+  needAdmin(who);
+  const body = await request.json().catch(() => ({}));
+  const role = body.role === 'admin' ? 'admin' : 'user';
+  const res = await env.DB.prepare(
+    "UPDATE access_requests SET status = ?, role = ?, resolved_by = ?, resolved = ? WHERE id = ? AND status = 'pending'")
+    .bind(approve ? 'approved' : 'rejected', role, who.name, nowIso(), String(body.id || '')).run();
+  if (!res.meta || res.meta.changes !== 1) throw new HttpError(404, 'No pending request ' + body.id);
+  await audit(env, who, approve ? 'access_approve' : 'access_reject', body.id, role);
+  return json({ id: body.id, status: approve ? 'approved' : 'rejected' });
+}
+
 // ---- router ---------------------------------------------------------------------
 async function route(request, env) {
   const url = new URL(request.url);
   const path = url.pathname.replace(/\/+$/, '') || '/';
   const method = request.method.toUpperCase();
   if (path === '/' && method === 'GET') return json({ service: 'peer-library', ok: true });
+  if (path === '/access/request' && method === 'POST') return requestAccess(request, env);
+  if (path === '/access/status' && method === 'POST') return accessStatus(request, env);
 
   const who = await authenticate(request, env);
+
+  if (method === 'GET' && path === '/access') {
+    needAdmin(who);
+    const r = await env.DB.prepare(
+      "SELECT id, name, note, created, status FROM access_requests WHERE status = 'pending' ORDER BY created").all();
+    return json(r.results || []);
+  }
+  if (method === 'POST' && path === '/access/approve') return resolveAccess(request, env, who, true);
+  if (method === 'POST' && path === '/access/reject') return resolveAccess(request, env, who, false);
   let m;
 
   if (method === 'GET' && path === '/auth') return json({ id: who.id, name: who.name, role: who.role });

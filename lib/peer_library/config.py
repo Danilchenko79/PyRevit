@@ -27,6 +27,8 @@ DEFAULTS = {
     'user': u'',
     'overwrite_params': False,
     'last_ok': u'',      # http: last successful key check (ISO), 14 days offline grace
+    'seen_until': u'',   # changelog time the user has seen (library window opened)
+    'notify_checked': u'',  # last startup notification check (ISO, local)
 }
 
 OFFLINE_DAYS = 14
@@ -93,6 +95,16 @@ def is_configured(cfg=None):
     if cfg['backend'] == 'http':
         return cfg['url'].startswith('https://')
     return bool(cfg['root']) and os.path.isdir(cfg['root'])
+
+
+def panel_visible(cfg=None):
+    """Library buttons show only where the library is set up (service address
+    in settings.json / on this computer, or a reachable folder) - colleagues
+    without it see no buttons that cannot work."""
+    try:
+        return is_configured(cfg)
+    except Exception:
+        return False
 
 
 def make_backend(cfg=None):

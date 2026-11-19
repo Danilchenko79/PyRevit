@@ -22,3 +22,25 @@ try:
     _peer_usage.upload_async()
 except Exception:
     pass
+
+# Панель Library видна только там, где библиотека настроена (адрес сервиса в
+# lib/peer_library/settings.json или на этом компьютере): без настройки её кнопки не работают.
+try:
+    from peer_library import config as _peer_library_config
+    if not _peer_library_config.panel_visible():
+        from pyrevit.coreutils import ribbon as _peer_ribbon
+        for _tab in _peer_ribbon.get_current_ui().get_pyrevit_tabs():
+            if _tab.name == 'PEER':
+                _panel = _tab.find_child('Library')
+                if _panel is not None:
+                    _panel.visible = False
+except Exception:
+    pass
+
+# В фоне: уведомление «что нового в библиотеке семейств» (раз в 6 часов, только с ключом),
+# админам - сколько ждут предложений и заявок на доступ. Логика - lib/peer_library/notify.py.
+try:
+    from peer_library import notify as _peer_library_notify
+    _peer_library_notify.check_async()
+except Exception:
+    pass

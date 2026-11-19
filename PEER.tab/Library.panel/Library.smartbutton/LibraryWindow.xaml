@@ -138,6 +138,8 @@
                                     <TextBlock x:Name="d_name" FontSize="17" FontWeight="SemiBold"
                                                TextWrapping="Wrap" Margin="0,10,0,0"/>
                                     <TextBlock x:Name="d_id" Foreground="#57534E" TextWrapping="Wrap"/>
+                                    <Button x:Name="fav_btn" Style="{StaticResource Secondary}" Padding="10,3"
+                                            Margin="0,8,0,0" HorizontalAlignment="Left" Click="on_fav"/>
                                     <WrapPanel x:Name="d_chips" Margin="0,6,0,0"/>
                                     <TextBlock x:Name="d_version" Margin="0,6,0,0" TextWrapping="Wrap"/>
                                     <TextBlock x:Name="d_project" TextWrapping="Wrap"/>
@@ -184,7 +186,14 @@
             </TabItem>
         </TabControl>
 
-        <TextBlock x:Name="status_text" Grid.Row="2" Margin="0,8,0,0" Foreground="#44403C"
-                   TextWrapping="Wrap"/>
+        <Grid Grid.Row="2" Margin="0,8,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock x:Name="status_text" Foreground="#44403C" TextWrapping="Wrap" VerticalAlignment="Center"/>
+            <Button x:Name="update_all_btn" Grid.Column="1" Style="{StaticResource Primary}" Margin="8,0,0,0"
+                    Visibility="Collapsed" Click="on_update_all"/>
+        </Grid>
     </Grid>
 </Window>

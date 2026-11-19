@@ -9,13 +9,30 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <Border Grid.Row="0" Background="White" BorderBrush="#D6D3D1" BorderThickness="1" Padding="12">
+        <Border x:Name="requests_box" Grid.Row="0" Margin="0,0,0,12" Background="#FFEDD5" BorderBrush="#7C2D12"
+                BorderThickness="1" Padding="12">
             <StackPanel>
-                <TextBlock FontWeight="SemiBold" Text="Give a key to a person"/>
+                <TextBlock x:Name="requests_title" FontWeight="SemiBold" Foreground="#7C2D12"/>
+                <ListBox x:Name="requests_list" Margin="0,8,0,0" MaxHeight="120" BorderBrush="#D6D3D1"/>
+                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                    <Button Content="Approve as user" Padding="12,4" Foreground="White" Background="#14532D"
+                            BorderBrush="#14532D" FontWeight="SemiBold" Click="on_approve_user"/>
+                    <Button Content="Approve as admin" Padding="12,4" Margin="8,0,0,0" Background="White"
+                            BorderBrush="#14532D" Click="on_approve_admin"/>
+                    <Button Content="Decline" Padding="12,4" Margin="8,0,0,0" Background="White"
+                            BorderBrush="#7F1D1D" Foreground="#7F1D1D" Click="on_decline"/>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <Border Grid.Row="1" Background="White" BorderBrush="#D6D3D1" BorderThickness="1" Padding="12">
+            <StackPanel>
+                <TextBlock FontWeight="SemiBold" Text="Give a key to a person yourself"/>
                 <Grid Margin="0,8,0,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
@@ -44,8 +61,8 @@
             </StackPanel>
         </Border>
 
-        <TextBlock Grid.Row="1" Margin="0,14,0,6" FontWeight="SemiBold" Text="Keys"/>
-        <ListView x:Name="keys_list" Grid.Row="2" BorderBrush="#D6D3D1">
+        <TextBlock Grid.Row="2" Margin="0,14,0,6" FontWeight="SemiBold" Text="Keys"/>
+        <ListView x:Name="keys_list" Grid.Row="3" BorderBrush="#D6D3D1">
             <ListView.View>
                 <GridView>
                     <GridViewColumn Header="Name" Width="200" DisplayMemberBinding="{Binding name}"/>
@@ -57,7 +74,7 @@
             </ListView.View>
         </ListView>
 
-        <StackPanel Grid.Row="3" Margin="0,10,0,0">
+        <StackPanel Grid.Row="4" Margin="0,10,0,0">
             <TextBlock x:Name="status_text" TextWrapping="Wrap" Margin="0,0,0,8"/>
             <StackPanel Orientation="Horizontal">
                 <Button Content="Revoke selected key" Padding="14,6" Background="White"

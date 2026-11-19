@@ -95,5 +95,36 @@ def forget():
         pass
 
 
+# ---- pending "request access" (id + secret token to pick the key up) -----------------
+def request_file():
+    return os.path.join(config.appdata_dir(), 'library_request.bin')
+
+
+def save_request(request_id, token, name=u''):
+    folder = os.path.dirname(request_file())
+    if not os.path.isdir(folder):
+        os.makedirs(folder)
+    text = u'\n'.join([request_id, token, name or u''])
+    with open(request_file(), 'wb') as f:
+        f.write(_dpapi(text.encode('utf-8')))
+
+
+def load_request():
+    """(id, token, name) or None."""
+    try:
+        with open(request_file(), 'rb') as f:
+            parts = _dpapi(f.read(), decrypt=True).decode('utf-8').split(u'\n')
+        return parts[0], parts[1], (parts[2] if len(parts) > 2 else u'')
+    except Exception:
+        return None
+
+
+def forget_request():
+    try:
+        os.remove(request_file())
+    except OSError:
+        pass
+
+
 def mask(key):
     return (key[:9] + u'…') if key else u''

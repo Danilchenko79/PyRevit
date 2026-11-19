@@ -153,6 +153,21 @@ class TestHttp(unittest.TestCase):
             boris.auth()
         self.assertEqual(self.backend(self.user_key).auth()['role'], 'user')
 
+    def test_request_access_flow(self):
+        newbie, admin = self.backend(None), self.backend(self.admin_key)
+        r = newbie.request_access(u'Борис', u'удалённо')
+        keystore.save_request(r['id'], r['token'], u'Борис')
+        self.assertEqual(keystore.load_request()[2], u'Борис')
+        self.assertEqual(newbie.access_status(r['id'], r['token'])['status'], 'pending')
+        self.assertEqual([x['name'] for x in admin.list_access_requests()], [u'Борис'])
+        admin.approve_access(r['id'], 'user')
+        st = newbie.access_status(r['id'], r['token'])
+        self.assertEqual(st['status'], 'delivered')
+        info = newbie.sign_in(st['key'])
+        self.assertEqual((info['name'], info['role']), (u'Борис', 'user'))
+        self.assertEqual(keystore.load(), st['key'])
+        self.assertNotIn('key', newbie.access_status(r['id'], r['token']))
+
     def test_offline_grace(self):
         admin, user = self.backend(self.admin_key), self.backend(None)
         self.publish(admin)

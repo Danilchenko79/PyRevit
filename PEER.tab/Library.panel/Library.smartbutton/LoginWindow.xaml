@@ -1,0 +1,42 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="PEER Library - sign in"
+        Width="500" SizeToContent="Height" ResizeMode="NoResize"
+        WindowStartupLocation="CenterScreen" ShowInTaskbar="False" PreviewKeyDown="on_key"
+        Background="#F5F5F4" FontFamily="Segoe UI" FontSize="13" Foreground="#111827">
+    <StackPanel Margin="20">
+        <TextBlock FontSize="17" FontWeight="SemiBold" Text="Sign in to the PEER library"/>
+        <TextBlock x:Name="status_text" Margin="0,8,0,0" TextWrapping="Wrap" FontWeight="SemiBold"/>
+
+        <Border Margin="0,12,0,0" Background="White" BorderBrush="#D6D3D1" BorderThickness="1" Padding="14">
+            <StackPanel>
+                <TextBlock FontWeight="SemiBold" Text="I have a key"/>
+                <TextBlock Margin="0,4,0,0" TextWrapping="Wrap" Foreground="#44403C" FontSize="12"
+                           Text="Paste the key from a library admin (starts with peer_). It is stored encrypted for your Windows user on this computer only."/>
+                <PasswordBox x:Name="key_box" Margin="0,8,0,0" Padding="6,5" BorderBrush="#111827"/>
+                <Button x:Name="ok_btn" Content="Sign in" Margin="0,10,0,0" Padding="16,6" HorizontalAlignment="Left"
+                        Foreground="White" Background="#111827" BorderBrush="#111827" FontWeight="SemiBold"
+                        Click="on_ok"/>
+            </StackPanel>
+        </Border>
+
+        <Border x:Name="request_box" Margin="0,12,0,0" Background="White" BorderBrush="#D6D3D1"
+                BorderThickness="1" Padding="14">
+            <StackPanel>
+                <TextBlock FontWeight="SemiBold" Text="No key yet? Request access"/>
+                <TextBlock Margin="0,4,0,0" TextWrapping="Wrap" Foreground="#44403C" FontSize="12"
+                           Text="An admin gets your request and approves it. Then press Library again - you are signed in automatically, nothing to copy."/>
+                <TextBlock Margin="0,8,0,2" FontSize="12" Text="Your name (as colleagues know you)"/>
+                <TextBox x:Name="name_box" Padding="6,4" BorderBrush="#78716C"/>
+                <TextBlock Margin="0,8,0,2" FontSize="12" Text="Note for the admin (optional: team, office / remote)"/>
+                <TextBox x:Name="note_box" Padding="6,4" BorderBrush="#78716C"/>
+                <Button x:Name="request_btn" Content="Request access" Margin="0,10,0,0" Padding="16,6"
+                        HorizontalAlignment="Left" Background="White" BorderBrush="#111827"
+                        FontWeight="SemiBold" Click="on_request"/>
+            </StackPanel>
+        </Border>
+
+        <Button Content="Close" Margin="0,14,0,0" Padding="16,6" HorizontalAlignment="Right"
+                Background="White" BorderBrush="#78716C" Click="on_cancel"/>
+    </StackPanel>
+</Window>

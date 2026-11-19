@@ -38,6 +38,7 @@ class KeysWindow(forms.WPFWindow):
         forms.WPFWindow.__init__(self, XAML)
         self.backend = backend
         self.rows = []
+        self.requests = []
         self.role_box.Items.Add('user')
         self.role_box.Items.Add('admin')
         self.role_box.SelectedIndex = 0
@@ -49,6 +50,7 @@ class KeysWindow(forms.WPFWindow):
             self.Close()
 
     def refresh(self):
+        self.refresh_requests()
         try:
             self.rows = self.backend.list_keys()
         except Exception as ex:
@@ -66,6 +68,53 @@ class KeysWindow(forms.WPFWindow):
 
     def on_refresh(self, sender, args):
         self.refresh()
+
+    # ---- access requests ------------------------------------------------------
+    def refresh_requests(self):
+        try:
+            self.requests = self.backend.list_access_requests()
+        except Exception as ex:
+            log.write(u'access requests: {0}'.format(ex))
+            self.requests = []
+        self.requests_list.Items.Clear()
+        for r in self.requests:
+            note = u'  -  {0}'.format(r['note']) if r.get('note') else u''
+            self.requests_list.Items.Add(u'{0}{1}   ({2})'.format(
+                r['name'], note, (r.get('created') or u'')[:16].replace(u'T', u' ')))
+        self.requests_box.Visibility = Visibility.Visible if self.requests else Visibility.Collapsed
+        self.requests_title.Text = u'{0} person(s) ask for access'.format(len(self.requests))
+        if self.requests:
+            self.requests_list.SelectedIndex = 0
+
+    def _resolve(self, approve, role='user'):
+        i = self.requests_list.SelectedIndex
+        if i < 0 or i >= len(self.requests):
+            self.status_text.Text = u'Select a request.'
+            return
+        r = self.requests[i]
+        if role == 'admin' and not forms.alert(u'Give ADMIN rights to {0}?'.format(r['name']),
+                                               yes=True, no=True):
+            return
+        try:
+            if approve:
+                self.backend.approve_access(r['id'], role)
+            else:
+                self.backend.reject_access(r['id'])
+        except Exception as ex:
+            self.status_text.Text = u'{0}'.format(ex)
+            return
+        self.refresh()
+        self.status_text.Text = (u'{0}: approved - signed in the next time they press Library.'
+                                 if approve else u'{0}: declined.').format(r['name'])
+
+    def on_approve_user(self, sender, args):
+        self._resolve(True, 'user')
+
+    def on_approve_admin(self, sender, args):
+        self._resolve(True, 'admin')
+
+    def on_decline(self, sender, args):
+        self._resolve(False)
 
     def on_add(self, sender, args):
         name = (self.name_box.Text or u'').strip()

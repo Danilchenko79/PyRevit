@@ -15,11 +15,12 @@ from System.Windows.Input import Cursors, Key, Keyboard, ModifierKeys  # noqa: E
 from System.Windows.Media import Stretch  # noqa: E402
 from System.Windows.Threading import DispatcherTimer  # noqa: E402
 
-from peer_library import catalog, groups, index, loader, log, strings  # noqa: E402
+from peer_library import catalog, groups, index, loader, log, strings, userprefs  # noqa: E402
 from peer_library import ui_common as U  # noqa: E402
 from peer_library.cache import Cache  # noqa: E402
 
 PREVIEWS_PER_TICK = 12
+SPECIAL_GROUPS = ('all', 'favorites', 'recent', 'new', 'project', 'outdated')
 
 
 class Item(object):
@@ -51,6 +52,7 @@ class LibraryWindow(forms.WPFWindow):
         self.place_symbol = None
         self.type_boxes = []
         self.online = False
+        self.prefs = userprefs.load()
         self._texts()
         self.timer = DispatcherTimer()
         self.timer.Interval = TimeSpan.FromMilliseconds(40)
@@ -105,6 +107,12 @@ class LibraryWindow(forms.WPFWindow):
         else:
             self.status_text.Text = strings.OFFLINE.format(idx.get('built', u''))
         self.timer.Start()
+        if self.online:
+            try:                     # startup notifications count news from here on
+                from peer_library import notify
+                notify.mark_seen(self.cache.changelog())
+            except Exception:
+                log.write(u'mark seen', exc=True)
 
     def _set_status(self, it, in_project):
         it.code, it.pv, it.label = loader.status(it.card, in_project)
@@ -128,7 +136,8 @@ class LibraryWindow(forms.WPFWindow):
             g.Children.Add(badge)
         sp.Children.Add(g)
         t = TextBlock()
-        t.Text = it.card.get('name') or it.card['id']
+        it.name_block = t
+        t.Text = self._tile_name(it)
         t.TextWrapping = TextWrapping.Wrap
         t.TextTrimming = TextTrimming.CharacterEllipsis
         t.MaxHeight = 36
@@ -142,6 +151,10 @@ class LibraryWindow(forms.WPFWindow):
         b.Child = sp
         b.ToolTip = u'{0}\n{1}'.format(it.card['id'], groups.title(it.card.get('group')))
         return b
+
+    def _tile_name(self, it):
+        star = u'★ ' if it.card['id'] in self.prefs['favorites'] else u''
+        return star + (it.card.get('name') or it.card['id'])
 
     def _preview_tick(self, sender, args):
         todo = [it for it in self.items if not it.preview_done
@@ -165,12 +178,17 @@ class LibraryWindow(forms.WPFWindow):
         counts = {}
         for it in self.items:
             counts[it.card.get('group')] = counts.get(it.card.get('group'), 0) + 1
+        ids = set(i.card['id'] for i in self.items)
         rows = [('all', strings.GROUP_ALL, len(self.items)),
+                ('favorites', strings.GROUP_FAVORITES,
+                 sum(1 for x in self.prefs['favorites'] if x in ids)),
+                ('recent', strings.GROUP_RECENT, sum(1 for x in self.prefs['recent'] if x in ids)),
                 ('new', strings.GROUP_NEW, sum(1 for i in self.items if i.is_new)),
                 ('project', strings.GROUP_IN_PROJECT,
                  sum(1 for i in self.items if i.code != loader.MISSING)),
                 ('outdated', strings.GROUP_OUTDATED,
                  sum(1 for i in self.items if i.code == loader.OUTDATED))]
+        n_special = len(rows)
         for g in groups.GROUPS:
             rows.append((g[0], g[1], counts.get(g[0], 0)))
         self.group_list.Items.Clear()
@@ -179,7 +197,9 @@ class LibraryWindow(forms.WPFWindow):
             t = TextBlock()
             t.Text = u'{0}  ({1})'.format(title, n)
             t.Padding = Thickness(6, 4, 6, 4)
-            if i == 3:
+            if key == 'outdated' and n:
+                t.FontWeight = FontWeights.SemiBold
+            if i == n_special - 1:
                 t.Margin = Thickness(0, 0, 0, 8)
             self.group_list.Items.Add(t)
             self.group_keys.append(key)
@@ -194,7 +214,11 @@ class LibraryWindow(forms.WPFWindow):
             return False
         if k == 'outdated' and it.code != loader.OUTDATED:
             return False
-        if k not in ('all', 'new', 'project', 'outdated') and it.card.get('group') != k:
+        if k == 'favorites' and it.card['id'] not in self.prefs['favorites']:
+            return False
+        if k == 'recent' and it.card['id'] not in self.prefs['recent']:
+            return False
+        if k not in SPECIAL_GROUPS and it.card.get('group') != k:
             return False
         return all(w in it.text for w in words)
 
@@ -209,6 +233,10 @@ class LibraryWindow(forms.WPFWindow):
             else Visibility.Visible
         if self.online is not None and self.items:
             self.status_text.Text = u'{0} / {1}'.format(shown, len(self.items))
+        n_out = sum(1 for i in self.items if i.code == loader.OUTDATED)
+        show_all = self.group_key == 'outdated' and n_out > 0
+        self.update_all_btn.Visibility = Visibility.Visible if show_all else Visibility.Collapsed
+        self.update_all_btn.Content = strings.BTN_UPDATE_ALL.format(n_out)
         if self.timer is not None and not self.timer.IsEnabled:
             self.timer.Start()
 
@@ -227,6 +255,17 @@ class LibraryWindow(forms.WPFWindow):
         elif args.Key == Key.F and Keyboard.Modifiers == ModifierKeys.Control:
             self.search_box.Focus()
             self.search_box.SelectAll()
+        elif args.Key == Key.Enter and self.current is not None \
+                and self.tile_list.IsKeyboardFocusWithin:
+            args.Handled = True
+            self._do_load(place=Keyboard.Modifiers == ModifierKeys.Shift)
+        elif args.Key == Key.Down and self.search_box.IsKeyboardFocusWithin:
+            for idx, it in enumerate(self.items):          # first shown tile
+                if it.lbi.Visibility == Visibility.Visible:
+                    self.tile_list.SelectedIndex = idx
+                    it.lbi.Focus()
+                    args.Handled = True
+                    break
 
     def on_tab(self, sender, args):
         if args.OriginalSource is not self.tabs:
@@ -289,6 +328,21 @@ class LibraryWindow(forms.WPFWindow):
         update = it.code in (loader.OUTDATED, loader.UNKNOWN, loader.NEWER, loader.CURRENT)
         self.load_btn.Content = strings.BTN_UPDATE if update else strings.BTN_LOAD
         self.place_btn.Content = strings.BTN_UPDATE_PLACE if update else strings.BTN_LOAD_PLACE
+        fav = c['id'] in self.prefs['favorites']
+        self.fav_btn.Content = strings.FAV_ON if fav else strings.FAV_OFF
+
+    def on_fav(self, sender, args):
+        it = self.current
+        if it is None:
+            return
+        userprefs.toggle_favorite(it.card['id'])
+        self.prefs = userprefs.load()
+        it.name_block.Text = self._tile_name(it)
+        self._show_details(it)
+        sel = self.group_list.SelectedIndex
+        self._fill_groups()
+        self.group_list.SelectedIndex = sel
+        self._apply_filter()
 
     def _help_link(self, url):
         self.d_help.Inlines.Clear()
@@ -303,19 +357,22 @@ class LibraryWindow(forms.WPFWindow):
         self.type_boxes = []
         self.types_list.Items.Clear()
         self.types_search.Text = u''
-        names = []
+        params, rows = [], []
         if card.get('type_catalog'):
             try:
                 path = self.cache.get(card, '.txt')
-                names = catalog.type_names(path) if path else []
+                if path:
+                    params, rows = catalog.read(path)
             except Exception as ex:
                 log.write(u'catalog {0}'.format(card['id']), exc=True)
                 self.status_text.Text = u'{0}'.format(ex)
-        self.types_panel.Visibility = Visibility.Visible if names else Visibility.Collapsed
-        self.types_header.Text = strings.TYPES_HEADER.format(len(names))
-        for n in names:
+        self.types_panel.Visibility = Visibility.Visible if rows else Visibility.Collapsed
+        self.types_header.Text = strings.TYPES_HEADER.format(len(rows))
+        for name, values in rows:
             cb = CheckBox()
-            cb.Content = n
+            extra = catalog.short_values(params, values)
+            cb.Content = u'{0}    {1}'.format(name, extra) if extra else name
+            cb.Tag = name
             cb.Margin = Thickness(2)
             self.type_boxes.append(cb)
             self.types_list.Items.Add(cb)
@@ -323,7 +380,7 @@ class LibraryWindow(forms.WPFWindow):
     def on_types_search(self, sender, args):
         words = (self.types_search.Text or u'').lower().split()
         for cb in self.type_boxes:
-            ok = all(w in (cb.Content or u'').lower() for w in words)
+            ok = all(w in (u'{0}'.format(cb.Content) or u'').lower() for w in words)
             cb.Visibility = Visibility.Visible if ok else Visibility.Collapsed
 
     def on_types_all(self, sender, args):
@@ -349,7 +406,7 @@ class LibraryWindow(forms.WPFWindow):
         if self.doc.IsFamilyDocument:
             U.error(strings.FAMILY_DOC)
             return
-        types = [cb.Content for cb in self.type_boxes if cb.IsChecked]
+        types = [cb.Tag for cb in self.type_boxes if cb.IsChecked]
         if self.type_boxes and not types:
             U.error(strings.TYPES_NONE)
             return
@@ -379,6 +436,8 @@ class LibraryWindow(forms.WPFWindow):
                 x.chip_host.Child = U.chip(x.label, x.code)
         msg = (strings.UPDATED.format(card['id'], card.get('version')) if was != loader.MISSING
                else strings.LOADED.format(card['id']))
+        userprefs.add_recent(card['id'])
+        self.prefs = userprefs.load()
         self.status_text.Text = msg
         self._show_details(it)
         if place:
@@ -386,6 +445,46 @@ class LibraryWindow(forms.WPFWindow):
             if sym is not None:
                 self.place_symbol = sym
                 self.Close()
+
+    def on_update_all(self, sender, args):
+        """Update every family that is older in the project than in the library.
+        Parameter values in the project are kept. Catalog families: the types
+        already in the project are reloaded."""
+        todo = [x for x in self.items if x.code == loader.OUTDATED]
+        if not todo or self.doc.IsFamilyDocument:
+            return
+        if not U.ask(strings.UPDATE_ALL_ASK.format(len(todo))):
+            return
+        done, failed = [], []
+        self.Cursor = Cursors.Wait
+        try:
+            for x in todo:
+                card = x.card
+                self.status_text.Text = strings.DOWNLOADING.format(card['id'])
+                try:
+                    path = self.cache.get(card, '.rfa')
+                    types = None
+                    if card.get('type_catalog'):
+                        self.cache.get(card, '.txt')
+                        types = loader.family_type_names(
+                            self.doc, loader.find_family(self.doc, card['id'])) or None
+                    loader.load_family(self.doc, path, card['id'], False, types)
+                    done.append(card['id'])
+                except Exception as ex:
+                    log.write(u'update all {0}'.format(card['id']), exc=True)
+                    failed.append(u'{0}: {1}'.format(card['id'], ex))
+        finally:
+            self.Cursor = None
+        in_project = loader.project_families(self.doc)
+        for x in self.items:
+            self._set_status(x, in_project)
+            x.chip_host.Child = U.chip(x.label, x.code)
+        self._fill_groups()
+        self._apply_filter()
+        text = strings.UPDATE_ALL_DONE.format(len(done))
+        if failed:
+            text += u'\n\n' + u'\n'.join(failed[:10])
+        U.info(text)
 
     # ---- other tabs ----------------------------------------------------
     def _line(self, text, sub=None, code=None):

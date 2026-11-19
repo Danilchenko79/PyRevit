@@ -236,6 +236,18 @@ class TestChecks(unittest.TestCase):
         self.assertTrue(index.is_new({'updated': '2026-11-10'}, d))
         self.assertFalse(index.is_new({'updated': '2026-10-01'}, d))
 
+    def test_notify_text(self):
+        from peer_library import notify
+        log = {'entries': [
+            {'time': '2026-11-01T10:00:00', 'action': 'added', 'by': 'anna'},
+            {'time': '2026-11-20T10:00:00', 'action': 'added', 'by': 'anna'},
+            {'time': '2026-11-20T11:00:00', 'action': 'updated', 'by': 'anna'},
+            {'time': '2026-11-20T12:00:00', 'action': 'added', 'by': 'dima'}]}
+        self.assertEqual(notify.news_text(log, '2026-11-10T00:00:00', 'dima'),
+                         u'1 new, 1 updated families')
+        self.assertEqual(notify.news_text(log, '2026-11-20T12:00:00'), u'')
+        self.assertEqual(notify.latest_time(log), '2026-11-20T12:00:00')
+
     def test_card_validation(self):
         self.assertEqual(index.validate(index.new_card(id='PEER_A', group='01_Framing',
                                                        version=1)), [])
