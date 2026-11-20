@@ -32,12 +32,17 @@ def entry(manifest, version):
     return None
 
 
-def target(manifest, channel=STABLE):
+def target(manifest, channel=STABLE, follow=True):
     """The version entry this computer should run, or None (nothing published).
-    A beta computer follows stable whenever stable is newer than beta (or
-    there is no beta) - it never stays behind everybody else."""
+    follow=True (the template): a beta computer takes stable whenever stable is
+    newer than beta or there is no beta - it never stays behind everybody else.
+    follow=False (the PEER package): each channel is its own edition (stable =
+    PEER, beta = PEER_dev with its own tab) - one never turns into the other."""
     channels = (manifest or {}).get('channels') or {}
     stable = channels.get(STABLE) or u''
+    if not follow:
+        want = channels.get(BETA if channel == BETA else STABLE) or u''
+        return entry(manifest, want) if want else None
     want = stable
     if channel == BETA:
         beta = channels.get(BETA) or u''

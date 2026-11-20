@@ -17,8 +17,9 @@ from pyrevit import forms
 from peer_library import config, keystore, log, strings
 from peer_library.backend_base import AccessError, LibraryError, OfflineError
 
-LOGIN_XAML = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-                          'PEER.tab', 'Library.panel', 'Library.smartbutton', 'LoginWindow.xaml')
+from peer_library import version as _version
+
+LOGIN_XAML = os.path.join(_version.tab_dir(), 'Library.panel', 'Library.smartbutton', 'LoginWindow.xaml')
 
 
 class LoginWindow(forms.WPFWindow):

@@ -171,10 +171,10 @@ def _is_peer(rec):
     the script path decides first.
     """
     parts = payload.u(rec.get('scriptpath')).replace(u'\\', u'/').lower().split(u'/')
-    if TAB.lower() in parts:
+    if TAB.lower() in parts or u'peer_dev.tab' in parts:
         return True
     ext = payload.u(rec.get('commandextension')).strip().lower()
-    return ext == EXTENSION.lower()
+    return ext in (EXTENSION.lower(), u'peer_dev')
 
 
 def load_runs(folder, since=None, max_files=200):

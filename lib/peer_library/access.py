@@ -149,8 +149,10 @@ def apply_ribbon(st=None):
         ready = library_ready()
     except Exception:
         ready = True
+    from peer_library import version
+    mine = version.tab_name()                      # PEER, or PEER_dev in the dev edition
     for tab in ribbon.get_current_ui().get_pyrevit_tabs():
-        if tab.name != TAB:
+        if tab.name != mine:
             continue
         panels = dict((p.name, p) for p in list(tab))
         for name, visible in panel_plan(panels.keys(), st.locked, library, ready).items():

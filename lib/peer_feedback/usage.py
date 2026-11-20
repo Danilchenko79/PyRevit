@@ -156,7 +156,10 @@ def queue_pending(folder=None, base=None, today=None, tab_dir=None):
         if not queued:
             done = day - datetime.timedelta(days=1)
             break
-    tab_dir = tab_dir or os.path.join(config.ext_dir(), 'PEER.tab')
+    if not tab_dir:
+        tab_dir = os.path.join(config.ext_dir(), 'PEER.tab')
+        if not os.path.isdir(tab_dir) and os.path.isdir(os.path.join(config.ext_dir(), 'PEER_dev.tab')):
+            tab_dir = os.path.join(config.ext_dir(), 'PEER_dev.tab')
     names = payload.list_buttons(tab_dir)
     if names:
         item_id = _hash(u'buttons', today.isoformat(), machine)

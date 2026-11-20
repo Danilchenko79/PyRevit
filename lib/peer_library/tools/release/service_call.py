@@ -72,6 +72,16 @@ elif cmd == 'installer':
     r = __import__('json').loads(backend._call('PUT', '/install', raw=args[2]))
     print('INSTALLER', r.get('size'), 'bytes ->', backend.url + '/install')
 elif cmd == 'promote':
+    if product in ('ext', 'boot'):
+        # stable = PEER, beta = PEER_dev: different packages (other tab name) - only a roll back
+        # inside the same channel makes sense
+        m, _ = backend.release_manifest(product)
+        e = releases.entry(m, args[2]) or {}
+        is_dev = (e.get('name') or u'').startswith('PEER_dev')
+        if e and is_dev != (args[3] == 'beta'):
+            raise SystemExit('Version {0} is a {1} package - it cannot go to the {2} channel. '
+                             'Release it from the other branch instead.'.format(
+                                 args[2], 'PEER_dev' if is_dev else 'PEER', args[3]))
     r = backend.release_promote(product, args[2], args[3])
     print('PROMOTED', r.get('version'), 'to', r.get('channel'), r.get('channels'))
 else:

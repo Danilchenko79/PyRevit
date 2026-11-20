@@ -13,9 +13,12 @@ param(
 # Release PEER through the PEER service (admin key of this Windows user, never printed).
 #
 #   release.ps1                                        what is published now (nothing changes)
-#   release.ps1 -Do ext -Note "what changed"           package of HEAD (+ the public loader) -> beta
-#   release.ps1 -Do ext -Ref dev -Channel stable -Note "..."
-#   release.ps1 -Do promote -Version 2026.11.20.1 -Channel stable     beta -> everybody / roll back
+# Two editions, each its own extension and ribbon tab in Revit:
+#   stable = PEER      (branch main, everybody)        beta = PEER_dev (branch dev, for trying)
+#   release.ps1 -Do ext -Ref dev -Channel beta -Note "what changed"       -> PEER_dev
+#   release.ps1 -Do ext -Ref main -Channel stable -Note "what changed"    -> PEER, for everybody
+#   release.ps1 -Do promote -Version 2026.11.20.1 -Channel stable         roll PEER back to that version
+# Pushing to GitHub does the same by itself when the release workflow is set up (.github/workflows).
 #   ... -Target production                             the office service instead of this computer's one
 #   release.ps1 -Do template -File "D:\work\PR_Template Concrete.rte" -Note "what changed"     template -> beta
 #   release.ps1 -Product template                      template versions

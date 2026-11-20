@@ -3,6 +3,9 @@
 # старее библиотечной версии. Только сохранённая копия индекса (без сети), ошибки молча.
 # Логика - lib/peer_library/project_check.py.
 try:
+    from peer_library import version as _v
+    if _v.is_secondary():
+        raise RuntimeError('the everyday PEER does this')
     from peer_library import project_check
     project_check.on_doc_opened(__eventargs__.Document)  # noqa: F821
 except Exception:

@@ -104,8 +104,14 @@ def _sync_repo(git, lg, repo_info):
 
 
 # ---- package from the PEER service ----------------------------------------------------
-def _work_dir():
+def _work_dir(ext_dir=None):
     base = os.environ.get('LOCALAPPDATA') or os.path.expanduser('~')
+    try:
+        from peer_library import version
+        if ext_dir and version.edition(ext_dir) == 'dev':
+            return os.path.join(base, 'PEER', 'Update_dev')
+    except Exception:
+        pass
     return os.path.join(base, 'PEER', 'Update')
 
 
@@ -171,12 +177,14 @@ def sync_package(ext_dir, any_path=False):
     if was_git and os.path.isfile(os.path.join(ext_dir, '.git', 'HEAD')) and git_branch(ext_dir) != BRANCH:
         return 'skip', u'git clone on branch "{0}" - left as it is'.format(git_branch(ext_dir) or u'?')
     old = _git_tracked(ext_dir) if was_git and not ext_update.installed_files(ext_dir) else None
-    channel = cfg.get('channel') or 'stable'
-    status, det = ext_update.sync(ext_dir, backend, channel, _work_dir(), old)
+    from peer_library import releases, version
+    # PEER.extension follows stable, PEER_dev.extension follows beta; a git clone being
+    # converted is the everyday PEER
+    channel = version.channel_of(ext_dir)
+    status, det = ext_update.sync(ext_dir, backend, channel, _work_dir(ext_dir), old)
     if status == 'nokey':
-        from peer_library import releases, version
         if version.is_loader(ext_dir):           # not signed in yet: keep the loader itself current
-            st2, det2 = ext_update.sync(ext_dir, backend, channel, _work_dir(), None, releases.BOOT)
+            st2, det2 = ext_update.sync(ext_dir, backend, channel, _work_dir(ext_dir), None, releases.BOOT)
             det += u'; loader: {0} {1}'.format(st2, det2)
     if was_git and status in ('updated', 'clean'):
         note = _drop_git(ext_dir)
@@ -218,9 +226,10 @@ def run(ext_dir=None):
                 toaster.send_toast(strings.UPD_FULL_TEXT, title=strings.UPD_FULL_TITLE)
             elif os.path.isfile(os.path.join(ext_dir, 'version.json')) and not _v.is_loader(ext_dir):
                 ver = _v.get(ext_dir)['version']
-                entry = releases.entry(jsonio.read(os.path.join(_work_dir(), 'ext_manifest.json')), ver) or {}
+                entry = releases.entry(jsonio.read(os.path.join(_work_dir(ext_dir), 'ext_manifest.json')), ver) or {}
                 note = (entry.get('note') or u'').strip().split(u'\n')[0][:160]
-                toaster.send_toast(strings.UPD_DONE_TEXT.format(note), title=strings.UPD_DONE_TITLE.format(ver))
+                toaster.send_toast(strings.UPD_DONE_TEXT.format(note),
+                                   title=strings.UPD_DONE_TITLE.format(_v.text(ext_dir, u'')))
         except Exception:
             pass
     return status, det

@@ -18,6 +18,7 @@ SKIP_PREFIXES = (
     u'feedback/',                # receiver script and setup notes
     u'docs/',
     u'installer/',               # downloaded from the site, not part of PEER
+    u'.github/',
     u'lib/.idea/',
     u'lib/peer_library/tests/',
     u'lib/peer_feedback/tests/',
@@ -65,9 +66,18 @@ def in_loader(rel):
     return wanted(rel) and (rel in LOADER_FILES or any(rel.startswith(p) for p in LOADER_PREFIXES))
 
 
+def edition_path(rel, edition):
+    """Path of a repo file inside a package: the dev edition has its own ribbon tab."""
+    if edition == 'dev' and rel.startswith(u'PEER.tab/'):
+        return u'PEER_dev.tab/' + rel[len(u'PEER.tab/'):]
+    return rel
+
+
 def build(source_zip, out_zip, version, channel=u'stable', built=None, flavor=u'full'):
-    """Returns (file count, sha1 of out_zip, size). flavor 'boot' = the loader only."""
+    """Returns (file count, sha1 of out_zip, size). flavor 'boot' = the loader only.
+    channel 'beta' builds the dev edition (PEER_dev: own tab, sits beside PEER)."""
     built = built or datetime.datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
+    edition = u'dev' if channel == u'beta' else u'stable'
     keep = in_loader if flavor == 'boot' else wanted
     files = {}
     with zipfile.ZipFile(source_zip) as src, zipfile.ZipFile(out_zip, 'w', zipfile.ZIP_DEFLATED) as out:
@@ -76,6 +86,7 @@ def build(source_zip, out_zip, version, channel=u'stable', built=None, flavor=u'
             if not keep(rel):
                 continue
             data = src.read(info)
+            rel = edition_path(rel, edition)
             files[rel] = hashlib.sha1(data).hexdigest()
             out.writestr(zipfile.ZipInfo(rel, (1980, 1, 1, 0, 0, 0)), data, zipfile.ZIP_DEFLATED)
         for must in (u'startup.py', u'lib/peer_update.py', u'lib/peer_library/ext_update.py'):
@@ -86,6 +97,8 @@ def build(source_zip, out_zip, version, channel=u'stable', built=None, flavor=u'
         meta_ver = {'version': version, 'channel': channel, 'built': built}
         if flavor == 'boot':
             meta_ver['flavor'] = 'boot'
+        if edition == 'dev':
+            meta_ver['edition'] = 'dev'
         ver = json.dumps(meta_ver, sort_keys=True)
         out.writestr(zipfile.ZipInfo(u'version.json', (1980, 1, 1, 0, 0, 0)), ver, zipfile.ZIP_DEFLATED)
     h = hashlib.sha1()

@@ -1,0 +1,31 @@
+# Push to GitHub = release through the PEER service.
+#   branch dev  -> channel beta   -> the PEER_dev tab (who installed it: for trying)
+#   branch main -> channel stable -> the PEER tab of everybody, at their next Revit start
+# Needs two repository secrets (Settings -> Secrets and variables -> Actions):
+#   PEER_URL          address of the PEER service
+#   PEER_RELEASE_KEY  an admin key made for this robot (revoke it in PEER -> Keys to stop releases)
+# Without the secrets the job does nothing.
+name: Release PEER
+on:
+  push:
+    branches: [main, dev]
+concurrency:
+  group: peer-release
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Release
+        env:
+          PEER_URL: ${{ secrets.PEER_URL }}
+          PEER_RELEASE_KEY: ${{ secrets.PEER_RELEASE_KEY }}
+          PEER_BEFORE: ${{ github.event.before }}
+        run: python lib/peer_library/tools/release/ci_release.py ${{ github.ref_name == 'main' && 'stable' || 'beta' }}

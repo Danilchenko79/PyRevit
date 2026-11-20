@@ -125,7 +125,7 @@ def changed(ext_dir, files):
     return sorted(out)
 
 
-def stage(zip_path, folder, flavor=None):
+def stage(zip_path, folder, flavor=None, edition=None):
     """Unpack and verify the package. Returns its file list {rel: sha1}."""
     _rmtree(folder)
     os.makedirs(folder)
@@ -138,6 +138,9 @@ def stage(zip_path, folder, flavor=None):
         raise UpdateError(u'The package has no version.')
     if flavor is not None and version.get(folder)['flavor'] != flavor:
         raise UpdateError(u'This is not the package that was asked for ({0}).'.format(version.get(folder)['flavor']))
+    if edition is not None and version.get(folder)['edition'] != edition:
+        raise UpdateError(u'This package is the {0} edition of PEER - not for this channel.'.format(
+            version.get(folder)['edition']))
     check_core(folder, files)
     for rel, sha in files.items():
         p = os.path.join(folder, _safe(rel))
@@ -254,13 +257,17 @@ def sync(ext_dir, backend, channel, work_dir, old_files=None, product=releases.E
         return 'nokey', u'{0}'.format(ex)
     except LibraryError as ex:
         return 'error', u'{0}'.format(ex)
-    goal = releases.target(manifest, channel)
+    goal = releases.target(manifest, channel, follow=False)
     if goal is None:
         return 'none', u'no PEER package is published yet'
+    want_edition = u'dev' if channel == releases.BETA else u'stable'
     want = goal['version']
     have = version.get(ext_dir)
     mine = installed_files(ext_dir)
     same_flavor = (have['flavor'] == 'boot') == boot       # a loader always takes the full PEER
+    if have['kind'] == 'package' and have['edition'] != want_edition:
+        return 'error', u'this installation is the {0} edition, the channel {1} is the other one'.format(
+            have['edition'], channel)
     if have['kind'] == 'package' and have['version'] == want and same_flavor and mine and \
             not changed(ext_dir, mine):
         return 'clean', want
@@ -272,7 +279,7 @@ def sync(ext_dir, backend, channel, work_dir, old_files=None, product=releases.E
                 os.remove(zip_path)
                 return 'error', u'the downloaded package {0} is damaged - will try again'.format(want)
         staged = os.path.join(work_dir, 'stage')
-        files = stage(zip_path, staged, u'boot' if boot else u'full')
+        files = stage(zip_path, staged, u'boot' if boot else u'full', want_edition)
         copied, removed, failed = apply(staged, ext_dir, files, mine or old_files or {})
         _rmtree(staged)
     except OfflineError as ex:

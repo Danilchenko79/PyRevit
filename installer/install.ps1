@@ -1,6 +1,6 @@
 param(
   [string]$Url = '',                    # PEER service address (install.bat passes it)
-  [ValidateSet('stable', 'beta')] [string]$Channel = 'stable',
+  [ValidateSet('stable', 'beta')] [string]$Channel = 'stable',     # beta = PEER_dev (branch dev), beside PEER
   [string]$ExtDir = '',                 # default: %APPDATA%\pyRevit\Extensions\PEER.extension
   [switch]$Quiet                        # no questions (tests): key from $env:PEER_INSTALL_KEY
 )
@@ -19,7 +19,10 @@ $keyFile = Join-Path $peerDir 'library_key.bin'
 $reqFile = Join-Path $peerDir 'library_request.bin'
 $cfgFile = Join-Path $peerDir 'library.json'
 $entropy = [Text.Encoding]::ASCII.GetBytes('PEER-Library-v1')       # same as lib/peer_library/keystore.py
-if (-not $ExtDir) { $ExtDir = Join-Path $env:APPDATA 'pyRevit\Extensions\PEER.extension' }
+# stable = PEER (what everybody runs); beta = PEER_dev: its own folder and its own ribbon tab, beside PEER
+$extName = 'PEER'; $edition = 'stable'
+if ($Channel -eq 'beta') { $extName = 'PEER_dev'; $edition = 'dev' }
+if (-not $ExtDir) { $ExtDir = Join-Path $env:APPDATA ('pyRevit\Extensions\' + $extName + '.extension') }
 $work = Join-Path $env:LOCALAPPDATA 'PEER\Update'
 
 function Say([string]$t) { Write-Host $t }
@@ -66,17 +69,6 @@ function Invoke-Peer([string]$method, [string]$path, [string]$key, $body, [strin
 
 function Get-Sha1([string]$path) { (Get-FileHash -Algorithm SHA1 -LiteralPath $path).Hash.ToLower() }
 
-function Compare-Version([string]$a, [string]$b) {
-  $x = @($a.Split('.') | ForEach-Object { [int]$_ }); $y = @($b.Split('.') | ForEach-Object { [int]$_ })
-  for ($i = 0; $i -lt [Math]::Max($x.Count, $y.Count); $i++) {
-    $p = 0; $q = 0
-    if ($i -lt $x.Count) { $p = $x[$i] }
-    if ($i -lt $y.Count) { $q = $y[$i] }
-    if ($p -ne $q) { return [Math]::Sign($p - $q) }
-  }
-  0
-}
-
 # ---- 0. address, pyRevit, Revit ------------------------------------------------------
 Say 'PEER for pyRevit - install'
 Say '---------------------------'
@@ -115,7 +107,7 @@ if ($key) {
 # ---- 2. settings of this computer ----------------------------------------------------
 $cfg = @{}
 if (Test-Path $cfgFile) { try { (Get-Content $cfgFile -Raw -Encoding UTF8 | ConvertFrom-Json).PSObject.Properties | ForEach-Object { $cfg[$_.Name] = $_.Value } } catch { } }
-$cfg['backend'] = 'http'; $cfg['url'] = $Url.TrimEnd('/'); $cfg['channel'] = $Channel
+$cfg['backend'] = 'http'; $cfg['url'] = $Url.TrimEnd('/')
 if ($who) { $cfg['user'] = $who.name; $cfg['role'] = $who.role; $cfg['last_ok'] = (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss') }
 [IO.File]::WriteAllText($cfgFile, ($cfg | ConvertTo-Json), (New-Object Text.UTF8Encoding($false)))
 
@@ -126,8 +118,8 @@ $r = Invoke-Peer 'GET' $manifest $key $null $null
 if ($r.status -ne 200) { Stop-Install ('Could not read the list of PEER versions: ' + $r.error) }
 $m = $r.data
 $want = $m.channels.stable
-if ($Channel -eq 'beta' -and $m.channels.beta -and (-not $want -or (Compare-Version $m.channels.beta $want) -ge 0)) { $want = $m.channels.beta }
-if (-not $want) { Stop-Install 'No PEER package is published yet. Ask a PEER admin.' }
+if ($Channel -eq 'beta') { $want = $m.channels.beta }
+if (-not $want) { Stop-Install ('No ' + $extName + ' package is published yet. Ask a PEER admin.') }
 $entry = $m.versions | Where-Object { $_.version -eq $want } | Select-Object -First 1
 if (-not $entry) { Stop-Install ('Version ' + $want + ' is not on the service any more. Ask a PEER admin.') }
 New-Item -ItemType Directory -Force $work | Out-Null
@@ -149,6 +141,8 @@ if (-not (Test-Path (Join-Path $stage 'version.json')) -or -not (Test-Path (Join
 $vj = Get-Content (Join-Path $stage 'version.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 $got = 'full'; if ($vj.flavor -eq 'boot') { $got = 'boot' }
 if ($got -ne $flavor) { Stop-Install 'The service sent another package than asked for. Ask a PEER admin.' }
+$gotEdition = 'stable'; if ($vj.edition -eq 'dev') { $gotEdition = 'dev' }
+if ($gotEdition -ne $edition) { Stop-Install 'The service sent the other edition of PEER. Ask a PEER admin.' }
 $backup = $null
 if (Test-Path $ExtDir) {
   $backup = $ExtDir + '.old-' + (Get-Date).ToString('yyyyMMdd-HHmmss')
@@ -159,19 +153,19 @@ New-Item -ItemType Directory -Force (Split-Path $ExtDir) | Out-Null
 Move-Item -LiteralPath $stage -Destination $ExtDir
 if ($backup) {
   # pyRevit loads every *.extension folder it finds: the backup must not look like one
-  $safe = Join-Path (Split-Path $ExtDir) ('PEER_backup_' + (Get-Date).ToString('yyyyMMdd-HHmmss'))
+  $safe = Join-Path (Split-Path $ExtDir) ($extName + '_backup_' + (Get-Date).ToString('yyyyMMdd-HHmmss'))
   Move-Item -LiteralPath $backup -Destination $safe
   Say ('The previous PEER folder is kept here: ' + $safe)
 }
 
 Say ''
 if ($key) {
-  Say ('[OK] PEER ' + $want + ' is installed for ' + $who.name + '.')
-  Say 'Start Revit - the PEER tab appears. Updates come by themselves when Revit starts.'
+  Say ('[OK] ' + $extName + ' ' + $want + ' is installed for ' + $who.name + '.')
+  Say ('Start Revit - the ' + $extName + ' tab appears. Updates come by themselves when Revit starts.')
 } else {
-  Say ('[OK] PEER ' + $want + ' is installed.')
-  Say 'Start Revit, open the PEER tab and press Account: paste your key, or request access.'
+  Say ('[OK] ' + $extName + ' ' + $want + ' is installed.')
+  Say ('Start Revit, open the ' + $extName + ' tab and press Account: paste your key, or request access.')
   Say 'After you sign in, PEER downloads all its tools by itself.'
 }
-if ($revitRuns) { Say 'Revit is running now: restart Revit to see the PEER tab.' }
+if ($revitRuns) { Say ('Revit is running now: restart Revit to see the ' + $extName + ' tab.') }
 exit 0

@@ -40,6 +40,8 @@ def make_zip(path, ver, files, channel=u'stable', listed=None, extra=None):
         meta = {'version': ver, 'channel': channel, 'built': u'now'}
         if flavor:
             meta['flavor'] = flavor
+        if channel == u'beta':
+            meta['edition'] = 'dev'
         z.writestr('version.json', json.dumps(meta))
     return path
 
@@ -60,7 +62,7 @@ class FakeService(object):
         return self.key
 
     def add(self, ver, files, channel='stable', **kw):
-        p = make_zip(os.path.join(self.folder, ver + '.zip'), ver, files, **kw)
+        p = make_zip(os.path.join(self.folder, ver + '.zip'), ver, files, channel=channel, **kw)
         self.manifest['versions'].append({'version': ver, 'sha1': rfa_info.sha1(p),
                                           'size': os.path.getsize(p), 'note': u'note ' + ver})
         self.manifest['channels'][channel] = ver
@@ -109,6 +111,11 @@ class TestReleases(unittest.TestCase):
         self.assertEqual(R.target(m, 'beta')['version'], '3')
         m['channels'] = {'stable': '2', 'beta': ''}
         self.assertEqual(R.target(m, 'beta')['version'], '2')
+        # the PEER package: each channel on its own
+        self.assertIsNone(R.target(m, 'beta', follow=False))
+        m['channels'] = {'stable': '3', 'beta': '2'}
+        self.assertEqual(R.target(m, 'beta', follow=False)['version'], '2')
+        self.assertEqual(R.target(m, 'stable', follow=False)['version'], '3')
         self.assertIsNone(R.target({'channels': {'stable': '', 'beta': '3'}, 'versions': [{'version': '3'}]}))
         self.assertIsNone(R.target({}, 'stable'))
         self.assertIsNone(R.target({'channels': {'stable': '9'}, 'versions': []}))   # file already removed
@@ -193,6 +200,33 @@ class TestPack(unittest.TestCase):
         self.assertNotIn(u'__PEER_', ready)
         with self.assertRaises(Exception):
             pack.installer_bat(u'Say "\u043f\u0440\u0438\u0432\u0435\u0442"')
+
+    def test_dev_edition_package_has_its_own_tab(self):
+        from peer_library import pack
+        self.assertEqual(pack.edition_path(u'PEER.tab/Walls.panel/x.py', 'dev'), u'PEER_dev.tab/Walls.panel/x.py')
+        self.assertEqual(pack.edition_path(u'PEER.tab/Walls.panel/x.py', 'stable'), u'PEER.tab/Walls.panel/x.py')
+        self.assertEqual(pack.edition_path(u'lib/PEER.tab/x.py', 'dev'), u'lib/PEER.tab/x.py')
+        tmp = tempfile.mkdtemp(prefix='peered_')
+        try:
+            src = os.path.join(tmp, 'src.zip')
+            with zipfile.ZipFile(src, 'w') as z:
+                for rel in (u'startup.py', u'lib/peer_update.py', u'lib/peer_library/ext_update.py',
+                            u'PEER.tab/bundle.yaml', u'PEER.tab/Walls.panel/W.pushbutton/script.py',
+                            u'PEER.tab/Account.panel/Account.pushbutton/script.py'):
+                    z.writestr(rel, b'x = 1\n')
+            for flavor, n in (('full', 6), ('boot', 5)):
+                out = os.path.join(tmp, flavor + '.zip')
+                self.assertEqual(pack.build(src, out, '7', 'beta', flavor=flavor)[0], n)
+                files = U.stage(out, os.path.join(tmp, 'st_' + flavor), flavor, 'dev')
+                self.assertTrue(all(not k.startswith('PEER.tab/') for k in files))
+                self.assertIn(u'PEER_dev.tab/Account.panel/Account.pushbutton/script.py', files)
+                with self.assertRaises(U.UpdateError):
+                    U.stage(out, os.path.join(tmp, 'st2_' + flavor), flavor, 'stable')
+            out = os.path.join(tmp, 'stable.zip')
+            pack.build(src, out, '7', 'stable')
+            self.assertIn(u'PEER.tab/bundle.yaml', U.stage(out, os.path.join(tmp, 'st3'), 'full', 'stable'))
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
 
     def test_build_is_repeatable_and_complete(self):
         from peer_library import pack
@@ -296,14 +330,47 @@ class TestUpdate(unittest.TestCase):
         self.assertEqual(self.read('lib/a.py'), b'a1')
         self.assertEqual(version.get(self.ext)['version'], u'1')
 
-    def test_beta_channel(self):
+    def test_two_editions_side_by_side(self):
+        """PEER follows stable, PEER_dev follows beta; one never becomes the other."""
+        dev = os.path.join(self.tmp, 'PEER_dev.extension')
+        os.makedirs(dev)
+        work_dev = os.path.join(self.tmp, 'work_dev')
         self.svc.add('1', self.V1)
-        self.svc.add('2', {'startup.py': b'beta'}, channel='beta')
-        self.sync('stable')
+        self.svc.add('2', {'startup.py': b'dev_two = 2', 'PEER_dev.tab/bundle.yaml': b'x'}, channel='beta')
+        self.assertEqual(self.sync('stable')[0], 'updated')
+        self.assertEqual(U.sync(dev, self.svc, 'beta', work_dev)[0], 'updated')
         self.assertEqual(self.read('startup.py'), b'one')
-        self.sync('beta')
-        self.assertEqual(self.read('startup.py'), b'beta')
-        self.assertEqual(version.text(self.ext, 'beta'), u'2 (beta)')
+        with open(os.path.join(dev, 'startup.py'), 'rb') as f:
+            self.assertEqual(f.read(), b'dev_two = 2')
+        self.assertEqual((version.edition(self.ext), version.edition(dev)), ('stable', 'dev'))
+        self.assertEqual((version.channel_of(self.ext), version.channel_of(dev)), ('stable', 'beta'))
+        self.assertEqual((version.tab_name(self.ext), version.tab_name(dev)), ('PEER', 'PEER_dev'))
+        self.assertEqual(version.text(dev, 'stable'), u'2 dev')
+        self.assertTrue(version.is_secondary(dev))                  # PEER.extension sits beside it
+        # stable moves on: PEER_dev stays on its own channel
+        self.svc.add('3', {'startup.py': b'three'})
+        self.assertEqual(self.sync('stable')[0], 'updated')
+        self.assertEqual(U.sync(dev, self.svc, 'beta', work_dev), ('clean', '2'))
+        # asking the wrong channel is refused, nothing changes
+        self.assertEqual(U.sync(dev, self.svc, 'stable', work_dev)[0], 'error')
+        self.assertEqual(self.sync('beta')[0], 'error')
+        self.assertEqual(self.read('startup.py'), b'three')
+        # a stable package put on the beta channel by mistake is refused
+        self.svc.manifest['channels']['beta'] = '3'
+        self.assertEqual(U.sync(dev, self.svc, 'beta', work_dev)[0], 'error')
+        with open(os.path.join(dev, 'startup.py'), 'rb') as f:
+            self.assertEqual(f.read(), b'dev_two = 2')
+
+    def test_dev_edition_beside_the_everyday_one_is_secondary(self):
+        root = os.path.join(self.tmp, 'Extensions')
+        dev, main = os.path.join(root, 'PEER_dev.extension'), os.path.join(root, 'PEER.extension')
+        os.makedirs(dev)
+        self.svc.add('2', {'startup.py': b'dev = 1'}, channel='beta')
+        U.sync(dev, self.svc, 'beta', self.work)
+        self.assertFalse(version.is_secondary(dev))
+        os.makedirs(main)
+        self.assertTrue(version.is_secondary(dev))
+        self.assertFalse(version.is_secondary(main))
 
     def test_no_key_offline_revoked_nothing_published(self):
         self.assertEqual(self.sync()[0], 'none')

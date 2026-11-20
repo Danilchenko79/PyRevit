@@ -40,11 +40,54 @@ def get(folder=None):
     if isinstance(data, dict) and data.get('version'):
         return {'version': u'{0}'.format(data['version']), 'channel': data.get('channel') or u'stable',
                 'built': data.get('built') or u'', 'kind': 'package',
-                'flavor': u'boot' if data.get('flavor') == 'boot' else u'full'}
+                'flavor': u'boot' if data.get('flavor') == 'boot' else u'full',
+                'edition': u'dev' if data.get('edition') == 'dev' else u'stable'}
     sha = _git_sha(folder)
     if sha:
-        return {'version': u'git {0}'.format(sha), 'channel': u'', 'built': u'', 'kind': 'git', 'flavor': u'full'}
-    return {'version': u'dev', 'channel': u'', 'built': u'', 'kind': 'dev', 'flavor': u'full'}
+        return {'version': u'git {0}'.format(sha), 'channel': u'', 'built': u'', 'kind': 'git', 'flavor': u'full',
+                'edition': u'stable'}
+    return {'version': u'dev', 'channel': u'', 'built': u'', 'kind': 'dev', 'flavor': u'full', 'edition': u'stable'}
+
+
+# Two editions can sit side by side in one Revit, each with its own ribbon tab:
+#   PEER       branch main, what everybody runs     PEER.extension / PEER.tab         channel stable
+#   PEER_dev   branch dev, for trying new things    PEER_dev.extension / PEER_dev.tab channel beta
+# They share the key, the service and the family library; only the tools differ.
+DEV_EXT, DEV_TAB = u'PEER_dev', u'PEER_dev'
+
+
+def edition(folder=None):
+    """'stable' | 'dev' of the installation in folder."""
+    return get(folder)['edition']
+
+
+def channel_of(folder=None):
+    """The release channel an installation follows: its edition decides."""
+    return u'beta' if edition(folder) == 'dev' else u'stable'
+
+
+def tab_dir(folder=None):
+    """The ribbon tab folder of this extension (PEER.tab, or PEER_dev.tab in the dev edition)."""
+    folder = folder or ext_dir()
+    for name in (u'PEER.tab', DEV_TAB + u'.tab'):
+        p = os.path.join(folder, name)
+        if os.path.isdir(p):
+            return p
+    return os.path.join(folder, u'PEER.tab')
+
+
+def tab_name(folder=None):
+    return os.path.basename(tab_dir(folder))[:-len('.tab')]
+
+
+def is_secondary(folder=None):
+    """True in the dev edition when the everyday PEER is installed next to it:
+    the things both would do at Revit start (notifications, the template,
+    usage upload) are left to the everyday one."""
+    folder = folder or ext_dir()
+    if edition(folder) != 'dev':
+        return False
+    return os.path.isdir(os.path.join(os.path.dirname(os.path.abspath(folder)), u'PEER.extension'))
 
 
 def is_loader(folder=None):
@@ -64,7 +107,7 @@ def text(folder=None, channel=None):
             channel = config.load().get('channel')
         except Exception:
             channel = u''
-    text = v['version'] + (u' loader' if v['flavor'] == 'boot' else u'')
-    if v['kind'] == 'package' and channel == 'beta':
+    text = v['version'] + (u' dev' if v['edition'] == 'dev' else u'') + (u' loader' if v['flavor'] == 'boot' else u'')
+    if v['kind'] == 'package' and channel == 'beta' and v['edition'] != 'dev':
         return u'{0} (beta)'.format(text)
     return text

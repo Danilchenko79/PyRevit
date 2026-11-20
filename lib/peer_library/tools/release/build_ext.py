@@ -36,9 +36,10 @@ def main():
     raw = os.path.join(a.out, 'source.zip')
     subprocess.check_call(['git', '-C', EXT, 'archive', '--format=zip', '-o', raw, a.ref])
     sha = subprocess.check_output(['git', '-C', EXT, 'rev-parse', '--short', a.ref]).decode('ascii').strip()
-    out = os.path.join(a.out, 'PEER-{0}.zip'.format(a.version))
+    name = 'PEER_dev' if a.channel == 'beta' else 'PEER'       # beta = the dev edition, its own tab
+    out = os.path.join(a.out, '{0}-{1}.zip'.format(name, a.version))
     count, digest, size = pack.build(raw, out, a.version, a.channel)
-    boot = os.path.join(a.out, 'PEER-loader-{0}.zip'.format(a.version))
+    boot = os.path.join(a.out, '{0}-loader-{1}.zip'.format(name, a.version))
     bcount, bdigest, bsize = pack.build(raw, boot, a.version, a.channel, flavor='boot')
     # the installer of the same commit: one .bat, placeholders filled in by the service
     import zipfile

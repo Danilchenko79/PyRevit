@@ -172,58 +172,70 @@ class TestHttp(unittest.TestCase):
         self.assertEqual(mine[pid2]['comment'], u'уже есть')
 
     def test_package_release_end_to_end(self):
-        """build a package -> upload -> publish to beta -> a colleague's
-        installation updates; promote; revoke the key -> no more updates."""
+        """build -> upload -> publish; a colleague's PEER updates from stable, a
+        PEER_dev beside it from beta; revoke the key -> no more updates."""
         import zipfile
         from peer_library import ext_update, pack, releases, version
         admin, user = self.backend(self.admin_key), self.backend(self.user_key)
 
-        def package(ver, files):
+        def package(ver, files, channel):
             src = os.path.join(self.tmp, 'src-{0}.zip'.format(ver))
             with zipfile.ZipFile(src, 'w') as z:
                 for rel, data in files.items():
                     z.writestr(rel, data)
             out = os.path.join(self.tmp, 'PEER-{0}.zip'.format(ver))
-            count, sha, size = pack.build(src, out, ver, 'beta')
+            count, sha, size = pack.build(src, out, ver, channel)
             return out, sha, size
 
-        base = {'startup.py': b's1', 'lib/peer_update.py': b'u1', 'lib/peer_library/ext_update.py': b'e1',
-                'service/src/worker.js': b'not for colleagues', 'PEER.tab/A.panel/B.pushbutton/OLD/x.py': b'old'}
-        out, sha, size = package('2026.11.20.1', base)
+        def release(ver, files, channel, note):
+            out, sha, size = package(ver, files, channel)
+            admin.release_upload(releases.EXT, ver, out, sha)
+            admin.release_publish(releases.EXT, ver, channel, note, sha)
+            return out, sha, size
+
+        base = {'startup.py': b's1', 'lib/peer_update.py': b'u = 1\n', 'lib/peer_library/ext_update.py': b'e = 1\n',
+                'PEER.tab/bundle.yaml': b'layout', 'service/src/worker.js': b'not for colleagues',
+                'PEER.tab/A.panel/B.pushbutton/OLD/x.py': b'old'}
+        out, sha, size = package('2026.11.20.1', base, 'stable')
         with self.assertRaises(AccessError):
             user.release_upload(releases.EXT, '2026.11.20.1', out, sha)
         up = admin.release_upload(releases.EXT, '2026.11.20.1', out, sha)
         self.assertEqual((up['size'], up['sha1']), (size, sha))
-        admin.release_publish(releases.EXT, '2026.11.20.1', 'beta', u'первый пакет', sha)
+        admin.release_publish(releases.EXT, '2026.11.20.1', 'stable', u'первый пакет', sha)
 
         ext = os.path.join(self.tmp, 'PEER.extension')
-        work = os.path.join(self.tmp, 'update')
+        dev = os.path.join(self.tmp, 'PEER_dev.extension')
+        work, work_dev = os.path.join(self.tmp, 'update'), os.path.join(self.tmp, 'update_dev')
         os.makedirs(ext)
-        self.assertEqual(ext_update.sync(ext, user, 'stable', work)[0], 'none')     # beta only so far
-        status, det = ext_update.sync(ext, user, 'beta', work)
+        os.makedirs(dev)
+        self.assertEqual(ext_update.sync(dev, user, 'beta', work_dev)[0], 'none')      # nothing on dev yet
+        status, det = ext_update.sync(ext, user, 'stable', work)
         self.assertEqual(status, 'updated', det)
-        self.assertTrue(os.path.isfile(os.path.join(ext, 'lib', 'peer_update.py')))
-        self.assertFalse(os.path.exists(os.path.join(ext, 'service')))              # not packed
-        self.assertFalse(os.path.exists(os.path.join(ext, 'PEER.tab')))
-        self.assertEqual(version.get(ext)['version'], u'2026.11.20.1')
-
-        admin.release_promote(releases.EXT, '2026.11.20.1', 'stable')
+        self.assertTrue(os.path.isfile(os.path.join(ext, 'PEER.tab', 'bundle.yaml')))
+        self.assertFalse(os.path.exists(os.path.join(ext, 'service')))                # not packed
+        self.assertFalse(os.path.exists(os.path.join(ext, 'PEER.tab', 'A.panel')))
         self.assertEqual(ext_update.sync(ext, user, 'stable', work), ('clean', u'2026.11.20.1'))
 
-        out2, sha2, _ = package('2026.11.20.2', dict(base, **{'startup.py': b's2'}))
-        admin.release_upload(releases.EXT, '2026.11.20.2', out2, sha2)
-        admin.release_publish(releases.EXT, '2026.11.20.2', 'stable', u'второй', sha2)
+        # push to dev: PEER_dev gets it, PEER does not
+        release('2026.11.20.2', dict(base, **{'startup.py': b's2_dev = 2'}), 'beta', u'проба')
+        self.assertEqual(ext_update.sync(dev, user, 'beta', work_dev)[0], 'updated')
+        self.assertTrue(os.path.isfile(os.path.join(dev, 'PEER_dev.tab', 'bundle.yaml')))
+        self.assertFalse(os.path.exists(os.path.join(dev, 'PEER.tab')))
+        self.assertEqual(version.text(dev, ''), u'2026.11.20.2 dev')
+        self.assertEqual(ext_update.sync(ext, user, 'stable', work), ('clean', u'2026.11.20.1'))
+
+        # merge to main: PEER gets it
+        release('2026.11.20.3', dict(base, **{'startup.py': b's3'}), 'stable', u'второй')
         self.assertEqual(ext_update.sync(ext, user, 'stable', work)[0], 'updated')
         with open(os.path.join(ext, 'startup.py'), 'rb') as f:
-            self.assertEqual(f.read(), b's2')
+            self.assertEqual(f.read(), b's3')
+        self.assertEqual(ext_update.sync(dev, user, 'beta', work_dev), ('clean', u'2026.11.20.2'))
 
         admin.revoke_key('usr1')                       # the person left
-        out3, sha3, _ = package('2026.11.20.3', dict(base, **{'startup.py': b's3'}))
-        admin.release_upload(releases.EXT, '2026.11.20.3', out3, sha3)
-        admin.release_publish(releases.EXT, '2026.11.20.3', 'stable', u'третий', sha3)
+        release('2026.11.20.4', dict(base, **{'startup.py': b's4'}), 'stable', u'третий')
         self.assertEqual(ext_update.sync(ext, user, 'stable', work)[0], 'nokey')
         with open(os.path.join(ext, 'startup.py'), 'rb') as f:
-            self.assertEqual(f.read(), b's2')          # stays on what was downloaded before
+            self.assertEqual(f.read(), b's3')          # stays on what was downloaded before
 
     def test_template_release_end_to_end(self):
         """admin releases the template -> a colleague's computer gets the file,

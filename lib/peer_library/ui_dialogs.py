@@ -9,7 +9,9 @@ from pyrevit import forms
 from peer_library import groups, log, strings
 
 HERE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-BTN_DIR = os.path.join(HERE, 'PEER.tab', 'Library.panel', 'Library.smartbutton')
+from peer_library import version as _version
+
+BTN_DIR = os.path.join(_version.tab_dir(), 'Library.panel', 'Library.smartbutton')
 
 
 class TextWindow(forms.WPFWindow):

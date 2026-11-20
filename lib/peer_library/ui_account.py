@@ -13,8 +13,7 @@ from pyrevit import forms
 from peer_library import access, config, keystore, log, session, strings, version
 from peer_library import ui_common as U
 
-XAML = os.path.join(version.ext_dir(), 'PEER.tab', 'Account.panel', 'Account.pushbutton',
-                    'AccountWindow.xaml')
+XAML = os.path.join(version.tab_dir(), 'Account.panel', 'Account.pushbutton', 'AccountWindow.xaml')
 
 # status code -> (label, text colour, background) - never colour alone, always the label
 CHIPS = {
