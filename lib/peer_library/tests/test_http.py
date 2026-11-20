@@ -122,6 +122,35 @@ class TestHttp(unittest.TestCase):
         with self.assertRaises(ConflictError):
             admin.publish(stale, self.file('x.rfa', b'x'))
 
+    def test_index_downloaded_only_when_changed(self):
+        admin, user = self.backend(self.admin_key), self.backend(self.user_key)
+        self.publish(admin)
+        got = []
+        real = user.get_index_if_changed
+
+        def spy(etag=None):
+            data, tag = real(etag)
+            got.append((etag, data is None))
+            return data, tag
+        user.get_index_if_changed = spy
+        c = cache.Cache(os.path.join(self.tmp, 'cache'), user)
+        first, _ = c.index()
+        second, online = c.index()
+        self.assertTrue(online)
+        self.assertEqual(first, second)
+        self.assertIsNone(got[0][0])                       # first time: no tag yet
+        self.assertEqual((bool(got[1][0]), got[1][1]), (True, True))   # then 304
+        self.publish(admin, data=b'rfa-2')
+        third, _ = c.index()
+        self.assertFalse(got[2][1])                         # changed: full index again
+        self.assertEqual(third['families'][0]['version'], 2)
+        # a damaged copy is downloaded again even if the tag still matches
+        with open(os.path.join(self.tmp, 'cache', cache.INDEX_COPY), 'w') as f:
+            f.write('{broken')
+        self.assertEqual(c.index()[0]['families'][0]['version'], 2)
+        self.assertEqual(len(c.changelog()['entries']), 2)
+        self.assertEqual(len(c.changelog()['entries']), 2)  # second time from 304 + copy
+
     def test_proposals_and_reject(self):
         admin, user = self.backend(self.admin_key), self.backend(self.user_key)
         pid = user.send_proposal({'name': u'Балка с вутом', 'group': '01_Framing', 'kind': 'new',

@@ -319,5 +319,53 @@ class TestChecks(unittest.TestCase):
         self.assertTrue(index.validate(index.new_card(id='PEER_A', group='nope', version=0)))
 
 
+class TestSearch(unittest.TestCase):
+
+    def setUp(self):
+        from peer_library import search
+        self.s = search
+        cards = [
+            {'id': 'EU_HE - Column', 'name': u'Steel column HE', 'tags': [u'steel'],
+             'types': [u'HE200A', u'HE300B'], 'revit_category': u'Structural Columns'},
+            {'id': 'PEER-Concrete-Column-Rectangular', 'name': u'Concrete column, rectangular',
+             'tags': [u'concrete'], 'revit_category': u'Structural Columns'},
+            {'id': 'PR_Pile', 'name': u'Bored pile', 'tags': [u'foundation'],
+             'description': u'Use for the column foundations'},
+            {'id': 'PR_Tag beams', 'name': u'Beam tag', 'tags': []},
+        ]
+        self.entries = [search.Entry(c) for c in cards]
+
+    def ids(self, q):
+        return [i for i, _ in self.s.rank(self.entries, q)]
+
+    def test_separators_and_case(self):
+        for q in (u'he200a', u'HE 200 A', u'he-200a', u'He200A'):
+            self.assertEqual(self.ids(q), [0], q)
+
+    def test_all_words_must_match(self):
+        self.assertEqual(self.ids(u'concrete column'), [1])
+        self.assertEqual(self.ids(u'concrete beam'), [])
+
+    def test_order_name_then_tags_then_description(self):
+        # 'column' is in names of 0 and 1, only in the description of 2
+        self.assertEqual(self.ids(u'column'), [0, 1, 2])
+        self.assertEqual(self.ids(u'foundation'), [2])
+
+    def test_name_prefix_first(self):
+        self.assertEqual(self.ids(u'concrete col')[0], 1)
+        self.assertEqual(self.s.rank(self.entries, u'beam tag')[0], (3, 0))
+
+    def test_russian_and_hebrew(self):
+        self.assertEqual(self.ids(u'колонна бетон'), [1])
+        self.assertEqual(self.ids(u'כלונס'), [2])
+        self.assertEqual(self.ids(u'Ёмкость'), [])          # unknown word: nothing, no error
+
+    def test_invisible_marks(self):
+        self.assertEqual(self.ids(u'‏bored'), [2])
+
+    def test_empty_query_keeps_all(self):
+        self.assertEqual(self.ids(u'  '), [0, 1, 2, 3])
+
+
 if __name__ == '__main__':
     unittest.main()

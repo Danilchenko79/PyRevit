@@ -39,6 +39,10 @@ class HttpStatusError(Exception):
         self.status = status
 
 
+class NotModified(Exception):
+    """304: the copy the client already has is current."""
+
+
 def _quote(path):
     try:
         from urllib import quote          # py2 / IronPython
@@ -72,10 +76,11 @@ def _part_head(boundary, name, filename):
 
 
 # ---- transport: .NET (Revit) ----------------------------------------------------
-def _send_dotnet(method, url, key, json_body=None, parts=None, target=None, timeout=TIMEOUT_S):
-    from System import Array, Byte
+def _send_dotnet(method, url, key, json_body=None, parts=None, target=None, timeout=TIMEOUT_S,
+                 headers=None, meta=None):
     from System.IO import File, FileMode, FileStream, StreamReader
-    from System.Net import HttpWebRequest, SecurityProtocolType, ServicePointManager, WebException
+    from System.Net import DecompressionMethods, HttpWebRequest, SecurityProtocolType, \
+        ServicePointManager, WebException
     from System.Text import Encoding
     ServicePointManager.SecurityProtocol = ServicePointManager.SecurityProtocol | \
         SecurityProtocolType.Tls12
@@ -83,8 +88,13 @@ def _send_dotnet(method, url, key, json_body=None, parts=None, target=None, time
     req.Method = method
     req.Timeout = timeout * 1000
     req.ReadWriteTimeout = timeout * 1000
+    # JSON comes gzipped from Cloudflare (the index is ~8x smaller); family
+    # files are sent as they are
+    req.AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate
     if key:
         req.Headers.Add('Authorization', 'Bearer ' + key)
+    for k, v in (headers or {}).items():
+        req.Headers.Add(k, v)
     req.UserAgent = 'PEER-Library'
     utf8 = Encoding.UTF8
     if json_body is not None:
@@ -125,6 +135,8 @@ def _send_dotnet(method, url, key, json_body=None, parts=None, target=None, time
         r.Close()
         raise HttpStatusError(status, _error_text(text))
     try:
+        if meta is not None:
+            meta['etag'] = resp.Headers['ETag'] or None
         if target:
             tmp = target + '.part'
             fs = FileStream(tmp, FileMode.Create)
@@ -139,13 +151,16 @@ def _send_dotnet(method, url, key, json_body=None, parts=None, target=None, time
 
 
 # ---- transport: urllib (tests, command line) --------------------------------------
-def _send_urllib(method, url, key, json_body=None, parts=None, target=None, timeout=TIMEOUT_S):
+def _send_urllib(method, url, key, json_body=None, parts=None, target=None, timeout=TIMEOUT_S,
+                 headers=None, meta=None):
     try:
         from urllib.request import Request, urlopen
         from urllib.error import HTTPError, URLError
     except ImportError:
         from urllib2 import Request, urlopen, HTTPError, URLError
+    extra = headers or {}
     headers = {'User-Agent': 'PEER-Library'}
+    headers.update(extra)
     if key:
         headers['Authorization'] = 'Bearer ' + key
     body = None
@@ -175,6 +190,8 @@ def _send_urllib(method, url, key, json_body=None, parts=None, target=None, time
     except URLError as ex:
         raise IOError(u'{0}'.format(ex.reason))
     try:
+        if meta is not None:
+            meta['etag'] = resp.headers.get('ETag')
         if target:
             tmp = target + '.part'
             with open(tmp, 'wb') as f:
@@ -209,7 +226,7 @@ class HttpBackend(Backend):
         return bool(self.key)
 
     def _call(self, method, path, json_body=None, parts=None, target=None, timeout=TIMEOUT_S,
-              auth=True):
+              auth=True, headers=None, meta=None):
         if not self.url.startswith('https://') and not self.url.startswith('http://127.0.0.1'):
             raise LibraryError(u'The library address is not set (https://...).')
         if auth and not self.key:
@@ -219,8 +236,10 @@ class HttpBackend(Backend):
         for attempt in (1, 2):
             try:
                 return _send(method, url, self.key if auth else None, json_body, parts, target,
-                             timeout)
+                             timeout, headers, meta)
             except HttpStatusError as ex:
+                if ex.status == 304:
+                    raise NotModified()
                 if ex.status == 401:
                     raise AccessError(u'{0}'.format(ex))
                 if ex.status == 403:
@@ -279,6 +298,22 @@ class HttpBackend(Backend):
 
     def get_changelog(self):
         return self._get_json('/changelog')
+
+    def get_json_if_changed(self, path, etag=None):
+        """(data, etag); data None = the copy with this etag is still current."""
+        meta = {}
+        try:
+            raw = self._call('GET', path, headers={'If-None-Match': etag} if etag else None,
+                             meta=meta)
+        except NotModified:
+            return None, etag
+        return json.loads(raw), meta.get('etag')
+
+    def get_index_if_changed(self, etag=None):
+        return self.get_json_if_changed('/index', etag)
+
+    def get_changelog_if_changed(self, etag=None):
+        return self.get_json_if_changed('/changelog', etag)
 
     def download(self, path, target):
         folder = os.path.dirname(target)

@@ -90,10 +90,14 @@ class LoadOptions(DB.IFamilyLoadOptions):
     # Out-parameters: IronPython hands them in as references (StrongBox) - set
     # .Value (as pyRevit's own revit.db.create does). Some IronPython builds
     # instead expect them as extra return values - then return a tuple.
+    used = None              # 'value' / 'tuple' - which convention IronPython used
+
     def OnFamilyFound(self, familyInUse, overwriteParameterValues):
         if hasattr(overwriteParameterValues, 'Value'):
             overwriteParameterValues.Value = self.overwrite
+            self.used = 'value'
             return True
+        self.used = 'tuple'
         return True, self.overwrite
 
     def OnSharedFamilyFound(self, sharedFamily, familyInUse, source, overwriteParameterValues):
@@ -158,7 +162,12 @@ def load_family(doc, path, family_id, overwrite=False, type_names=None):
             tx.RollBack()
     if tx.GetStatus() != DB.TransactionStatus.Committed:
         raise Exception(u'Revit rolled the load back (see the warnings in the log).')
+    global LAST_OPTIONS
+    LAST_OPTIONS = opts
     return find_family(doc, family_id)
+
+
+LAST_OPTIONS = None          # options of the last load (diagnostics / tests)
 
 
 def family_type_names(doc, fam):

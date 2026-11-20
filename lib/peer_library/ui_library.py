@@ -15,13 +15,19 @@ from System.Windows.Input import Cursors, Key, Keyboard, ModifierKeys  # noqa: E
 from System.Windows.Media import Stretch  # noqa: E402
 from System.Windows.Threading import DispatcherTimer  # noqa: E402
 
-from peer_library import catalog, groups, index, loader, log, strings, userprefs  # noqa: E402
+import threading  # noqa: E402
+
+from peer_library import catalog, groups, index, loader, log, search, strings, userprefs  # noqa: E402
 from peer_library import ui_common as U  # noqa: E402
 from peer_library.cache import Cache  # noqa: E402
 
 PREVIEWS_PER_TICK = 12
+SEARCH_DELAY_MS = 180
 SPECIAL_GROUPS = ('all', 'favorites', 'recent', 'new', 'project', 'outdated', 'popular',
                   'attention')
+
+# preview states (set by the background downloader, applied by the UI timer)
+P_WAIT, P_READY, P_NONE = None, 'ready', 'none'
 
 
 class Item(object):
@@ -33,12 +39,11 @@ class Item(object):
         self.lbi = None
         self.image = None
         self.chip_host = None
-        self.preview_done = False
+        self.preview_done = False          # image set on the tile (UI thread)
+        self.png = P_WAIT                  # preview file state (downloader thread)
+        self.shown = True                  # plain flag: readable from the downloader thread
         self.is_new = index.is_new(card)
-        self.text = u' '.join([card.get('id', u''), card.get('name', u''),
-                               u' '.join(card.get('tags') or []),
-                               card.get('revit_category', u''), card.get('description', u''),
-                               u' '.join(card.get('types') or [])]).lower()
+        self.entry = search.Entry(card)
         self.downloads = 0
         self.users = 0
 
@@ -61,12 +66,24 @@ class LibraryWindow(forms.WPFWindow):
         self.is_admin = getattr(backend, 'role', 'user') == 'admin'
         self.proj_rows = []
         self._busy = False
+        self._closing = False
+        self._shown_order = []
+        self._png_lock = threading.Lock()   # one download of a preview at a time
+        self._downloader = None
         self._texts()
         self.timer = DispatcherTimer()
         self.timer.Interval = TimeSpan.FromMilliseconds(40)
         self.timer.Tick += self._preview_tick
+        self.search_timer = DispatcherTimer()
+        self.search_timer.Interval = TimeSpan.FromMilliseconds(SEARCH_DELAY_MS)
+        self.search_timer.Tick += self._search_tick
         self.Loaded += self._on_loaded
-        self.Closing += lambda s, a: self.timer.Stop()
+        self.Closing += self._on_closing
+
+    def _on_closing(self, sender, args):
+        self._closing = True
+        self.timer.Stop()
+        self.search_timer.Stop()
 
     # ---- setup ---------------------------------------------------------
     def _texts(self):
@@ -148,6 +165,7 @@ class LibraryWindow(forms.WPFWindow):
                                                           self.cfg.get('root') or self.cfg.get('url'))
         else:
             self.status_text.Text = strings.OFFLINE.format(idx.get('built', u''))
+        self._start_downloader()
         self.timer.Start()
         if self.online:
             try:                     # startup notifications count news from here on
@@ -198,29 +216,75 @@ class LibraryWindow(forms.WPFWindow):
         star = u'★ ' if it.card['id'] in self.prefs['favorites'] else u''
         return star + (it.card.get('name') or it.card['id'])
 
+    # ---- previews: files checked / downloaded in a background thread, shown by
+    # the UI timer (WPF objects are touched only on the UI thread) ------------
+    def _start_downloader(self):
+        items = list(self.items)             # own copy: the UI thread re-sorts self.items
+        online = self.online
+
+        def next_item():
+            pending = [x for x in items if x.png is P_WAIT]
+            for x in pending:
+                if x.shown:                  # what the user sees first
+                    return x
+            return pending[0] if pending else None
+
+        def run():
+            try:
+                for x in items:              # quick pass: no preview / already on disk
+                    if self._closing:
+                        return
+                    if x.png is not P_WAIT:
+                        continue
+                    if not x.card.get('png_sha1'):
+                        x.png = P_NONE
+                    elif self.cache.has(x.card, '.png'):
+                        x.png = P_READY
+                while not self._closing:
+                    x = next_item()
+                    if x is None:
+                        return
+                    if not online:
+                        x.png = P_NONE
+                        continue
+                    try:
+                        with self._png_lock:
+                            ok = self.cache.get(x.card, '.png')
+                        x.png = P_READY if ok else P_NONE
+                    except Exception as ex:
+                        x.png = P_NONE
+                        log.write(u'preview {0}: {1}'.format(x.card.get('id'), ex))
+            except Exception:
+                log.write(u'preview downloader', exc=True)
+
+        self._downloader = threading.Thread(target=run, name='peer_library_previews')
+        self._downloader.daemon = True
+        self._downloader.start()
+
     def _preview_tick(self, sender, args):
-        todo = [it for it in self.items if not it.preview_done
-                and it.lbi.Visibility == Visibility.Visible][:PREVIEWS_PER_TICK]
-        if not todo:
-            todo = [it for it in self.items if not it.preview_done][:PREVIEWS_PER_TICK]
-        if not todo:
-            self.timer.Stop()
-            return
-        for it in todo:
+        ready = [it for it in self.items if not it.preview_done and it.png is not P_WAIT]
+        ready.sort(key=lambda it: 0 if it.shown else 1)
+        for it in ready[:PREVIEWS_PER_TICK]:
             it.preview_done = True
-            path = self._preview_path(it.card)
-            if path:
-                it.image.Source = U.bitmap(path, 150)
+            if it.png == P_READY:
+                it.image.Source = U.bitmap(self.cache.local_path(it.card, '.png'), 150)
+        if not any(not it.preview_done for it in self.items):
+            self.timer.Stop()
+        elif not ready and (self._downloader is None or not self._downloader.is_alive()):
+            for it in self.items:            # downloader gone: the rest has no preview
+                if it.png is P_WAIT:
+                    it.png = P_NONE
 
     def _preview_path(self, card):
-        """Preview from the cache; downloaded only when online (offline the UI
-        thread must not wait for network timeouts)."""
+        """Preview of the selected family; downloaded only when online (offline
+        the UI thread must not wait for network timeouts)."""
         if not card.get('png_sha1'):
             return None
         try:
             if not self.online:
                 return self.cache.local_path(card, '.png') if self.cache.has(card, '.png') else None
-            return self.cache.get(card, '.png')
+            with self._png_lock:
+                return self.cache.get(card, '.png')
         except Exception:
             return None
 
@@ -265,7 +329,8 @@ class LibraryWindow(forms.WPFWindow):
         self.group_list.SelectedIndex = self.group_keys.index(self.group_key) \
             if self.group_key in self.group_keys else 0
 
-    def _matches(self, it, words):
+    def _group_ok(self, it):
+        """Group / category / catalog filters (the search text is scored apart)."""
         k = self.group_key
         if k == 'new' and not it.is_new:
             return False
@@ -292,7 +357,7 @@ class LibraryWindow(forms.WPFWindow):
             return False
         if self.catalog_only.IsChecked and not it.card.get('type_catalog'):
             return False
-        return all(w in it.text for w in words)
+        return True
 
     def _collection(self, coll_id):
         for c in self.collections:
@@ -319,9 +384,24 @@ class LibraryWindow(forms.WPFWindow):
             self.items.sort(key=lambda i: (-i.downloads, (i.card.get('name') or u'').lower()))
         else:                # name
             self.items.sort(key=lambda i: (i.card.get('name') or i.card['id']).lower())
-        self.tile_list.Items.Clear()
-        for it in self.items:
-            self.tile_list.Items.Add(it.lbi)
+        self._show_order(self.items)
+
+    def _show_order(self, order):
+        """Put the tiles in this order (only when it changed); keeps the selection."""
+        ids = [id(x) for x in order]
+        if ids == self._shown_order:
+            return
+        sel = self.current
+        self._busy = True
+        try:
+            self.tile_list.Items.Clear()
+            for it in order:
+                self.tile_list.Items.Add(it.lbi)
+            self._shown_order = ids
+            if sel is not None and sel.lbi is not None and sel.shown:
+                self.tile_list.SelectedItem = sel.lbi
+        finally:
+            self._busy = False
 
     def on_sort(self, sender, args):
         if self._busy or not self.items:
@@ -335,12 +415,24 @@ class LibraryWindow(forms.WPFWindow):
         self._apply_filter()
 
     def _apply_filter(self):
-        words = [w for w in (self.search_box.Text or u'').lower().split() if w]
+        query = self.search_box.Text or u''
+        words = search.query_words(query)
         shown = 0
-        for it in self.items:
-            ok = self._matches(it, words)
+        scored = []
+        for n, it in enumerate(self.items):
+            s = it.entry.score(words, query) if self._group_ok(it) else None
+            ok = s is not None
+            it.shown = ok
             it.lbi.Visibility = Visibility.Visible if ok else Visibility.Collapsed
-            shown += 1 if ok else 0
+            if ok:
+                shown += 1
+                scored.append((s, n, it))
+        if words:                        # best matches first, the rest keeps the sort order
+            scored.sort(key=lambda x: (x[0], x[1]))
+            first = [x[2] for x in scored]
+            self._show_order(first + [it for it in self.items if not it.shown])
+        else:
+            self._show_order(self.items)
         self.search_hint.Visibility = Visibility.Collapsed if self.search_box.Text \
             else Visibility.Visible
         if self.online is not None and self.items:
@@ -357,7 +449,15 @@ class LibraryWindow(forms.WPFWindow):
             self.timer.Start()
 
     def on_search(self, sender, args):
-        self._apply_filter()
+        self.search_hint.Visibility = Visibility.Collapsed if self.search_box.Text \
+            else Visibility.Visible
+        self.search_timer.Stop()             # filter once typing pauses
+        self.search_timer.Start()
+
+    def _search_tick(self, sender, args):
+        self.search_timer.Stop()
+        if not self._closing:
+            self._apply_filter()
 
     def on_group(self, sender, args):
         i = self.group_list.SelectedIndex
@@ -375,11 +475,13 @@ class LibraryWindow(forms.WPFWindow):
                 and self.tile_list.IsKeyboardFocusWithin:
             args.Handled = True
             self._do_load(place=Keyboard.Modifiers == ModifierKeys.Shift)
-        elif args.Key == Key.Down and self.search_box.IsKeyboardFocusWithin:
-            for idx, it in enumerate(self.items):          # first shown tile
-                if it.lbi.Visibility == Visibility.Visible:
-                    self.tile_list.SelectedIndex = idx
-                    it.lbi.Focus()
+        elif args.Key in (Key.Down, Key.Enter) and self.search_box.IsKeyboardFocusWithin:
+            if self.search_timer.IsEnabled:                # typed just now: filter first
+                self._search_tick(None, None)
+            for lbi in self.tile_list.Items:               # first shown tile (best match)
+                if lbi.Visibility == Visibility.Visible:
+                    self.tile_list.SelectedItem = lbi
+                    lbi.Focus()
                     args.Handled = True
                     break
 
@@ -399,6 +501,8 @@ class LibraryWindow(forms.WPFWindow):
 
     # ---- details -------------------------------------------------------
     def on_tile(self, sender, args):
+        if self._busy:                       # tiles being re-ordered
+            return
         lbi = self.tile_list.SelectedItem
         self._show_details(lbi.Tag if lbi is not None else None)
 
@@ -689,9 +793,17 @@ class LibraryWindow(forms.WPFWindow):
 
     # ---- admin ------------------------------------------------------------
     def _refresh_item(self, it, card):
+        new_png = card.get('png_sha1') != it.card.get('png_sha1')
         it.card = card
-        it.text = Item(card).text
+        it.entry = search.Entry(card)
         it.name_block.Text = self._tile_name(it)
+        if new_png:                          # new version with a new preview
+            it.image.Source = None
+            it.preview_done = False
+            it.png = P_WAIT
+            if self._downloader is None or not self._downloader.is_alive():
+                self._start_downloader()
+            self.timer.Start()
         it.lbi.Content.ToolTip = u'{0}\n{1}'.format(card['id'], groups.title(card.get('group')))
 
     def on_edit_info(self, sender, args):

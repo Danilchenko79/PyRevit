@@ -211,3 +211,27 @@ test('audit records downloads and publishes', async () => {
   const a = await call('GET', '/audit', ADMIN);
   assert.deepEqual(a.data.map(x => x.action).slice(0, 2), ['download', 'publish']);
 });
+
+test('index and changelog: ETag, 304 when unchanged (also weak tags), new tag after publish', async () => {
+  await call('POST', '/publish', ADMIN, publishForm('PEER_Beam', 1));
+  const get = (path, tag) => worker.fetch(new Request('https://lib.test' + path, {
+    headers: Object.assign({ authorization: 'Bearer ' + USER }, tag ? { 'if-none-match': tag } : {}) }), env);
+  const a = await get('/index');
+  const tag = a.headers.get('etag');
+  assert.equal(a.status, 200);
+  assert.ok(tag && tag.startsWith('"'), tag);
+  assert.equal((await a.json()).count, 1);
+  const b = await get('/index', tag);
+  assert.equal(b.status, 304);
+  assert.equal((await b.arrayBuffer()).byteLength, 0);
+  assert.equal((await get('/index', 'W/' + tag)).status, 304);
+  assert.equal((await get('/index', '"other"')).status, 200);
+  await call('POST', '/publish', ADMIN, publishForm('PEER_Beam', 2));
+  const c = await get('/index', tag);
+  assert.equal(c.status, 200);
+  assert.notEqual(c.headers.get('etag'), tag);
+  const log = await get('/changelog');
+  assert.equal((await get('/changelog', log.headers.get('etag'))).status, 304);
+  assert.equal((await get('/index', null)).status, 200);
+  assert.equal((await worker.fetch(new Request('https://lib.test/index', { headers: { 'if-none-match': tag } }), env)).status, 401);
+});

@@ -16,7 +16,7 @@ The **Library** panel on the **PEER** tab appears once the library is set up for
 
 | Do | How |
 |---|---|
-| Search | type in the top box: name, ID, tag, Revit category, description or a type name (`HE200A`) |
+| Search | type in the top box: name, ID, tag, Revit category, description or a type name. Spaces and dashes do not matter (`he 200 a` = `HE200A`); Russian and Hebrew words work too (`колонна`, `כלונס`). Best matches (in the name) come first; **Enter** / **↓** jumps to the first tile |
 | Narrow down | groups on the left, Revit category, **With type catalog**, sort by name / newest / popular |
 | Keep at hand | **☆ Add to favorites**; **Recently loaded** fills itself |
 | Load | select a tile, **Load** (or **Enter**); **Load and place** (or double click, **Shift+Enter**) starts placing in the view |

@@ -23,7 +23,7 @@
 | `cache` локальная копия `<group>/<ID>.rfa`, офлайн 14 дней | `ui_library` окно (группы, избранное, недавние, популярное, коллекции, фильтры, сортировка, каталоги, «Этот проект», админ-действия) |
 | `backend_base` интерфейс; `backend_local` папка; `backend_http` сервис | `ui_publish` (+ Excel), `ui_inbox`, `ui_propose`, `ui_dialogs` |
 | `catalog` каталог типов; `cards_csv` карточки ↔ Excel; `importmeta` имена/теги | `notify` уведомление при старте; `project_check` + `hooks/doc-opened.py` |
-| `keystore` ключ и заявка (DPAPI); `userprefs` избранное/недавние | `ui_common` цвета/чипы (без синего, статус всегда с подписью) |
+| `keystore` ключ и заявка (DPAPI); `userprefs` избранное/недавние; `search` поиск (слитно, RU/HE-синонимы, порядок) | `ui_common` цвета/чипы (без синего, статус всегда с подписью) |
 
 ## Настройки
 `%APPDATA%\PEER\library.json` поверх `lib/peer_library/settings.json` (для офиса положить сюда адрес сервиса):
@@ -36,12 +36,14 @@
 ## Формат
 Revit **2024**, публиковать только из 2024. ID = имя файла = имя семейства в Revit, не меняется.
 Карточка — `index.CARD_DEFAULTS` (+ `types` для поиска по типам, `files` — адреса версий в сервисе).
+`/index` и `/changelog` отдаются с ETag: клиент хранит `index.json.etag` в кэше и при «304» берёт копию;
+превью окно качает в фоновом потоке (сначала видимые), WPF трогает только поток окна.
 `PEER_Version` — параметр типа формулой `"N"` (одно значение на все типы).
 
 ## Проверки
 ```
-py -3 -m unittest discover -s lib/peer_library/tests     # 29 тестов, в т.ч. клиент ↔ сервис (node)
-node --test service/test                                  # 15 тестов сервиса
+py -3 -m unittest discover -s lib/peer_library/tests     # 38 тестов, в т.ч. клиент ↔ сервис (node)
+node --test service/test                                  # 16 тестов сервиса
 ```
 Синтаксис IronPython и XAML — `ipy`-компиляция и `XamlReader` (см. историю сессии 20.11.2026).
 

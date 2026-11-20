@@ -5,8 +5,8 @@
 // of the key is checked here, never in the plugin.
 //
 //   GET    /auth                 name and role of the key            any key
-//   GET    /index                index.json                          any key
-//   GET    /changelog            changelog.json                      any key
+//   GET    /index                index.json (ETag; 304 if unchanged) any key
+//   GET    /changelog            changelog.json (ETag)               any key
 //   GET    /file/<path>          .rfa / .png / .txt                  any key
 //   POST   /inbox                send a proposal (multipart)         any key
 //   GET    /inbox/mine           own proposals                       any key
@@ -100,6 +100,22 @@ async function readJson(env, key, fallback) {
   const obj = await env.BUCKET.get(key);
   if (!obj) return fallback;
   try { return JSON.parse(await obj.text()); } catch (e) { return fallback; }
+}
+
+// A JSON file of the library as stored, with its ETag: a client that already has
+// this version (If-None-Match) gets an empty 304 - the window opens without
+// downloading the whole index again. (Cloudflare may weaken the tag to W/"...".)
+const bareTag = (t) => String(t || '').trim().replace(/^W\//, '');
+
+async function storedJson(request, env, key, fallback) {
+  const obj = await env.BUCKET.get(key);
+  if (!obj) return json(fallback);
+  const etag = obj.httpEtag || (obj.etag ? `"${obj.etag}"` : '');
+  const headers = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' };
+  if (etag) headers.etag = etag;
+  const asked = (request.headers.get('if-none-match') || '').split(',').map(bareTag);
+  if (etag && asked.includes(bareTag(etag))) return new Response(null, { status: 304, headers });
+  return new Response(obj.body, { headers });
 }
 
 const putJson = (env, key, data) => env.BUCKET.put(key, JSON.stringify(data, null, 1),
@@ -496,10 +512,10 @@ async function route(request, env) {
 
   if (method === 'GET' && path === '/auth') return json({ id: who.id, name: who.name, role: who.role });
   if (method === 'GET' && path === '/index') {
-    return json(await readJson(env, LIB + 'index.json', { format: 1, built: '', count: 0, families: [] }));
+    return storedJson(request, env, LIB + 'index.json', { format: 1, built: '', count: 0, families: [] });
   }
   if (method === 'GET' && path === '/changelog') {
-    return json(await readJson(env, LIB + 'changelog.json', { format: 1, entries: [] }));
+    return storedJson(request, env, LIB + 'changelog.json', { format: 1, entries: [] });
   }
   if (method === 'GET' && (m = /^\/file\/(.+)$/.exec(url.pathname))) {
     const p = safePath(m[1]);

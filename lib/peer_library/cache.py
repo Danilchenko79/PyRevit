@@ -6,6 +6,7 @@ or changed file is downloaded again. Without a connection a matching cached
 file still works; a missing one raises OfflineError.
 """
 
+import io
 import os
 
 from peer_library import index, jsonio, rfa_info
@@ -34,12 +35,44 @@ class Cache(object):
         the download address.)"""
         return os.path.join(self.folder, index.folder_of(card), card['id'] + ext)
 
+    def _fetch(self, copy, plain, if_changed):
+        """Download a JSON file of the library and keep the copy. With a service
+        that sends ETags the copy is downloaded only when it changed."""
+        tag_file = copy + '.etag'
+        if if_changed is None:
+            data = plain()
+            jsonio.write(copy, data)
+            return data
+        old = None
+        if os.path.isfile(copy) and os.path.isfile(tag_file):
+            try:
+                with io.open(tag_file, 'r', encoding='utf-8') as f:
+                    old = f.read().strip() or None
+            except (IOError, OSError):
+                old = None
+        data, tag = if_changed(old)
+        if data is None:                                    # 304: the copy is current
+            data = jsonio.read(copy)
+            if data is not None:
+                return data
+            data, tag = if_changed(None)                    # copy unreadable: full download
+        jsonio.write(copy, data)
+        try:
+            if tag:
+                with io.open(tag_file, 'w', encoding='utf-8') as f:
+                    f.write(u'{0}'.format(tag))
+            elif os.path.isfile(tag_file):
+                os.remove(tag_file)
+        except (IOError, OSError):
+            pass
+        return data
+
     def index(self):
         """(index, online). Falls back to the last downloaded index."""
         copy = os.path.join(self.folder, INDEX_COPY)
         try:
-            data = self.backend.get_index()
-            jsonio.write(copy, data)
+            data = self._fetch(copy, self.backend.get_index,
+                               getattr(self.backend, 'get_index_if_changed', None))
             self.online = True
             return data, True
         except AccessError:
@@ -62,9 +95,8 @@ class Cache(object):
     def changelog(self):
         copy = os.path.join(self.folder, CHANGELOG_COPY)
         try:
-            data = self.backend.get_changelog()
-            jsonio.write(copy, data)
-            return data
+            return self._fetch(copy, self.backend.get_changelog,
+                               getattr(self.backend, 'get_changelog_if_changed', None))
         except Exception:
             return jsonio.read(copy, {'entries': []}) or {'entries': []}
 

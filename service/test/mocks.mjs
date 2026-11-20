@@ -1,6 +1,7 @@
 // In-memory stand-ins for the Cloudflare bindings, enough for the worker:
 // R2 bucket (get / put / delete) and D1 (prepare / bind / first / run / all) on node:sqlite.
 import { DatabaseSync } from 'node:sqlite';
+import { createHash } from 'node:crypto';
 import { readFileSync, mkdirSync, writeFileSync, existsSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,8 +16,9 @@ function toBytes(value) {
 }
 
 function r2Object(key, bytes, httpMetadata) {
+  const etag = createHash('md5').update(bytes).digest('hex');      // like R2: md5 of the body
   return {
-    key, size: bytes.length, httpMetadata: httpMetadata || {},
+    key, size: bytes.length, httpMetadata: httpMetadata || {}, etag, httpEtag: `"${etag}"`,
     get body() { return new Blob([bytes]).stream(); },
     async text() { return new TextDecoder().decode(bytes); },
     async json() { return JSON.parse(new TextDecoder().decode(bytes)); },
