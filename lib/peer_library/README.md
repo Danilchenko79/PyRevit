@@ -47,6 +47,14 @@ node --test service/test                                  # 16 тестов се
 ```
 Синтаксис IronPython и XAML — `ipy`-компиляция и `XamlReader` (см. историю сессии 20.11.2026).
 
+Окна без Revit — настоящий код окон под IronPython pyRevit, Revit и `pyrevit.forms` заглушены, данные с живого
+сервиса (ваш ключ, только чтение), окна вне экрана, картинки в папку:
+```
+powershell -STA -ExecutionPolicy Bypass -File lib\peer_library\tools\ui_preview\run.ps1 [-Script library|windows] [-Out папка]
+```
+`library.py` — библиотека (поиск, детали, каталог, «Need update», «This project», «What's new»), `windows.py` —
+Keys, Inbox, Publish, Propose, вход, запрос, правка карточки. Загрузку в проект так не проверить — только в Revit.
+
 ## Инструменты (`tools/`)
 - `sort_source.py <сырые> <папка>` — раскладка по группам, журнал `_sort_log.csv`.
 - `backfill_plan.py` + `apply_plan.ps1` — имена/теги/типы для уже опубликованных карточек (без новых версий).
