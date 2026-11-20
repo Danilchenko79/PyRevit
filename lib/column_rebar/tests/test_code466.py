@@ -1,0 +1,170 @@
+# -*- coding: utf-8 -*-
+"""Section by SI 466 (office guide 2026-11-20):
+    py -3 -m unittest discover -s lib/column_rebar/tests"""
+
+import os
+import sys
+import unittest
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.dirname(os.path.dirname(HERE)))
+
+from column_rebar import code466 as c  # noqa: E402
+from column_rebar.code466 import RECT, CIRCLE, RED, YELLOW  # noqa: E402
+
+
+def codes(r, level=None):
+    return sorted(x['code'] for x in r['messages'] if level is None or x['level'] == level)
+
+
+class Spacing(unittest.TestCase):
+
+    def test_guide_example(self):
+        # guide, section 5: 400x600, D20 -> D8@250/100; D12 -> D8@175/100
+        self.assertEqual(c.design(RECT, 400, 600, 25, 20, 3, 4)['label'], u'Ø8@250/100')
+        self.assertEqual(c.main_spacing(400, 12), 175)
+        self.assertEqual(c.dense_spacing(250), 100)
+        self.assertEqual(c.dense_spacing(175), 100)
+        self.assertEqual(c.dense_spacing(150), 75)        # 0.6 * 150 = 90 -> 75
+
+    def test_short_side_governs(self):
+        self.assertEqual(c.main_spacing(200, 25), 200)
+
+    def test_user_spacing_checked(self):
+        r = c.design(RECT, 400, 600, 25, 12, 4, 4, spacing=250)
+        self.assertIn('spacing', codes(r, RED))
+        r = c.design(RECT, 400, 600, 25, 20, 3, 4, dense=150)
+        self.assertIn('dense', codes(r, RED))
+
+
+class StirrupDia(unittest.TestCase):
+
+    def test_series(self):
+        self.assertEqual(c.stirrup_dia_min(12), 8)
+        self.assertEqual(c.stirrup_dia_min(32), 8)
+        self.assertEqual(c.stirrup_dia_min(36), 10)       # 36/4 = 9
+
+    def test_user_too_thin(self):
+        r = c.design(RECT, 600, 600, 25, 36, 4, 4, stirrup_dia=8)
+        self.assertIn('stirrup_dia', codes(r, RED))
+
+    def test_tie_thicker_than_bar(self):
+        r = c.design(RECT, 400, 400, 25, 12, 3, 3, stirrup_dia=14)
+        self.assertIn('tie_hook', codes(r, RED))
+
+
+class Bars(unittest.TestCase):
+
+    def test_ratio_levels(self):
+        self.assertIn('rho_min', codes(c.design(RECT, 400, 600, 25, 12, 3, 3), RED))     # 0.38 %
+        self.assertIn('rho_reduced', codes(c.design(RECT, 300, 300, 25, 12, 2, 2), YELLOW))
+        self.assertIn('rho_max', codes(c.design(RECT, 300, 300, 25, 32, 4, 4), RED))
+
+    def test_min_dia_and_count(self):
+        self.assertIn('bar_dia', codes(c.design(RECT, 300, 300, 25, 10, 3, 3), RED))
+        self.assertIn('bar_count', codes(c.design(RECT, 300, 300, 25, 16, 1, 2), RED))
+        self.assertIn('bar_count', codes(c.design(CIRCLE, 400, None, 25, 16, 5), RED))
+
+    def test_wall_warning(self):
+        self.assertIn('wall', codes(c.design(RECT, 200, 1200, 25, 16, 2, 6), YELLOW))
+        self.assertNotIn('wall', codes(c.design(RECT, 150, 700, 25, 16, 2, 4)))   # < 800
+
+    def test_clear_gap(self):
+        r = c.design(RECT, 300, 300, 25, 25, 5, 5)
+        self.assertIn('gap', codes(r, RED))
+
+    def test_corner_in_bend(self):
+        # D20 in a D8 stirrup: r = 16, 25 + 8 + 16 - 6 / sqrt2
+        self.assertAlmostEqual(c.corner_offset(25, 8, 20), 44.757, places=3)
+        # bar thicker than the arc: touches both legs
+        self.assertAlmostEqual(c.corner_offset(25, 8, 40), 25 + 8 + 20)
+
+    def test_count_and_symmetry(self):
+        r = c.design(RECT, 400, 600, 25, 20, 3, 4)
+        self.assertEqual(len(r['bars']), 10)
+        xs = sorted(round(x, 6) for x, y in r['bars'])
+        self.assertEqual(xs, sorted(round(400 - x, 6) for x in xs))
+
+
+class Restraint(unittest.TestCase):
+
+    def test_every_second_when_close(self):
+        # 5 bars, 128 apart: corners + the middle one
+        r = c.design(RECT, 600, 600, 25, 16, 5, 5)
+        self.assertEqual([round(t['at']) for t in r['ties']], [300, 300])
+        self.assertFalse(c.blocked(r))
+
+    def test_every_bar_when_far(self):
+        # 4 bars, 235 apart: both middle bars tied
+        r = c.design(RECT, 800, 800, 25, 25, 4, 4, transverse=c.TIES)
+        self.assertEqual(len(r['ties']), 4)
+
+
+class Hoops(unittest.TestCase):
+
+    def test_column_pairs_ties_into_hoops(self):
+        # user sketch 2026-11-20: 800x800 4x4 -> one inner hoop per direction
+        r = c.design(RECT, 800, 800, 25, 25, 4, 4)
+        self.assertEqual(r['ties'], [])
+        self.assertEqual([x['bars'] for x in r['hoops']], [(1, 2), (1, 2)])
+        self.assertTrue(all(x['kind'] == 'rect' for x in r['hoops']))
+
+    def test_odd_middle_keeps_a_tie(self):
+        r = c.design(RECT, 1000, 1000, 25, 20, 7, 7)
+        self.assertEqual(len(r['ties']), 2)
+        self.assertEqual(len(r['hoops']), 4)
+
+    def test_pairing(self):
+        self.assertEqual(c.pair_up([1, 2]), ([(1, 2)], []))
+        self.assertEqual(c.pair_up([1, 3, 5]), ([(1, 5)], [3]))
+        self.assertEqual(c.pair_up([1, 2, 4, 5]), ([(1, 2), (4, 5)], []))
+        self.assertEqual(c.pair_up([1, 2, 3, 4, 5]), ([(1, 2), (4, 5)], [3]))
+
+    def test_pylon_triangles(self):
+        # user sketch 2026-11-20: pylon, middle bar of the short face by a triangle
+        r = c.design(RECT, 1500, 600, 25, 20, 7, 3)
+        tri = [x for x in r['hoops'] if x['kind'] == 'triangle']
+        self.assertEqual(len(tri), 2)
+        self.assertTrue(all(x['apex_angle'] <= 135 for x in tri))
+        self.assertTrue(all(t['direction'] == c.VERTICAL for t in r['ties']))   # short ties only
+        self.assertEqual(len(r['ties']), 3)          # the tie under the triangle leg is gone
+
+    def test_modes_compare(self):
+        a = c.design(RECT, 800, 800, 25, 25, 4, 4, transverse=c.TIES)
+        b = c.design(RECT, 800, 800, 25, 25, 4, 4, transverse=c.HOOPS)
+        self.assertGreater(b['set_length'], a['set_length'])
+
+    def test_single_middle_bar_over_150_is_tied(self):
+        r = c.design(RECT, 400, 400, 25, 20, 3, 3)       # 155 from both corners
+        self.assertEqual(len(r['ties']), 2)
+
+    def test_too_far_even_tied(self):
+        r = c.design(RECT, 800, 400, 25, 16, 2, 2)       # 715 between the corners
+        self.assertIn('restrained', codes(r, RED))
+
+    def test_corners_always_restrained(self):
+        r = c.design(RECT, 400, 400, 25, 20, 2, 2)       # rule broken, corners still held
+        self.assertEqual(r['restrained'], [True] * 4)
+
+    def test_side_rule(self):
+        self.assertEqual(c.restrain_side([0, 140, 280]), [0, 2])
+        self.assertEqual(c.restrain_side([0, 160, 320]), [0, 1, 2])
+        self.assertIsNone(c.restrain_side([0, 310]))
+        got = c.restrain_side([0, 100, 200, 300, 400, 500, 600])
+        self.assertEqual(got, sorted(6 - k for k in got))   # symmetric
+
+    def test_circle_all_restrained(self):
+        r = c.design(CIRCLE, 500, None, 30, 16, 8)
+        self.assertTrue(all(r['restrained']))
+        self.assertEqual(r['ties'], [])
+        self.assertIn('restrained', codes(c.design(CIRCLE, 1200, None, 30, 20, 6), RED))
+
+
+class OldLegend(unittest.TestCase):
+
+    def test_counts(self):
+        self.assertEqual(c.from_old_counts(2, 3), (4, 5))
+
+
+if __name__ == '__main__':
+    unittest.main()

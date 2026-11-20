@@ -8,3 +8,5 @@ __pycache__/
 
 service/node_modules/
 service/.wrangler/
+
+lib/column_rebar/tests/out/
