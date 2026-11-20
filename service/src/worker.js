@@ -38,6 +38,7 @@ const LIB = 'PEER-Library/';
 const INBOX = 'PEER-Inbox/';
 const MAX_FILE = 25 * 1024 * 1024;
 const LOCK_SECONDS = 120;
+const KEEP_VERSIONS = 5;          // files of the last N versions stay (admins can restore them)
 const CHANGELOG_KEEP = 1000;
 const LAST_USED_EVERY_MS = 60 * 60 * 1000;
 const AUDIT_KEEP_DAYS = 400;
@@ -236,9 +237,6 @@ async function publish(request, env, who) {
     next.png_sha1 = png ? await digestHex('SHA-1', png) : '';
     next.catalog_sha1 = txt ? await digestHex('SHA-1', txt) : '';
     next.type_catalog = !!txt;
-    next.history = (cur && cur.history ? cur.history.slice() : []).concat([{
-      v: expected, date: next.updated, note: note || (cur ? '' : 'First version'), by: who.name }]);
-
     const base = `${next.group}/${next.id}/v${expected}`;
     const files = { '.rfa': base + '.rfa' };
     await env.BUCKET.put(LIB + files['.rfa'], rfa, { httpMetadata: { contentType: 'application/octet-stream' } });
@@ -251,13 +249,27 @@ async function publish(request, env, who) {
       await env.BUCKET.put(LIB + files['.txt'], txt, { httpMetadata: { contentType: 'text/plain' } });
     }
     next.files = files;
+    // each history entry keeps the addresses of its files, so an admin can restore
+    // one of the last KEEP_VERSIONS versions; older files are deleted
+    const history = (cur && cur.history ? cur.history : []).map(h => ({ ...h }));
+    const prev = cur ? history.find(h => h.v === cur.version) : null;
+    if (prev && !prev.files && cur.files) { prev.files = cur.files; prev.sha1 = cur.sha1; }   // cards from before
+    history.push({ v: expected, date: next.updated, note: note || (cur ? '' : 'First version'),
+      by: who.name, sha1: next.sha1, files });
+    const keep = new Set();
+    for (const h of history.slice(-KEEP_VERSIONS)) for (const f of Object.values(h.files || {})) keep.add(f);
+    const stale = [];
+    for (const h of history.slice(0, -KEEP_VERSIONS)) {
+      for (const f of Object.values(h.files || {})) if (!keep.has(f)) stale.push(LIB + f);
+      delete h.files;
+    }
+    if (cur && cur.files) for (const f of Object.values(cur.files)) if (!keep.has(f) && !stale.includes(LIB + f)) stale.push(LIB + f);
+    next.history = history;
     await putJson(env, LIB + `${next.group}/${next.id}/card.json`, next);
 
     if (pos >= 0) families[pos] = next; else families.push(next);
     await writeIndex(env, families);                       // commit point
 
-    const stale = [];
-    if (cur && cur.files) for (const p of Object.values(cur.files)) if (!Object.values(files).includes(p)) stale.push(LIB + p);
     if (cur && cur.group !== next.group) stale.push(LIB + `${cur.group}/${cur.id}/card.json`);
     if (stale.length) await env.BUCKET.delete(stale);
 

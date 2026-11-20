@@ -61,7 +61,7 @@ test('user cannot publish, admin can; files and index', async () => {
   assert.equal(log.data.entries[0].action, 'added');
 });
 
-test('new version: version check, history, old files removed', async () => {
+test('new version: version check, history with files, the last 5 versions kept', async () => {
   await call('POST', '/publish', ADMIN, publishForm('PEER_Beam', 1));
   assert.equal((await call('POST', '/publish', ADMIN, publishForm('PEER_Beam', 1))).status, 409);
   const r = await call('POST', '/publish', ADMIN, publishForm('PEER_Beam', 2, { note: 'вут', png: false }));
@@ -69,10 +69,33 @@ test('new version: version check, history, old files removed', async () => {
   assert.deepEqual(r.data.history.map(h => h.v), [1, 2]);
   assert.equal(r.data.history[1].note, 'вут');
   assert.equal(r.data.png_sha1, '');
-  const keys = env.BUCKET.keys();
+  assert.equal(r.data.history[0].files['.rfa'], '01_Framing/PEER_Beam/v1.rfa');
+  assert.equal(r.data.history[1].sha1, r.data.sha1);
+  let keys = env.BUCKET.keys();
   assert.ok(keys.includes('PEER-Library/01_Framing/PEER_Beam/v2.rfa'));
+  assert.ok(keys.includes('PEER-Library/01_Framing/PEER_Beam/v1.rfa'));     // kept for restore
+  const old = await call('GET', '/file/01_Framing/PEER_Beam/v1.rfa', USER);
+  assert.equal(new TextDecoder().decode(old.data), 'rfa-1');
+  let last;
+  for (let v = 3; v <= 7; v++) last = await call('POST', '/publish', ADMIN, publishForm('PEER_Beam', v));
+  keys = env.BUCKET.keys();
   assert.ok(!keys.includes('PEER-Library/01_Framing/PEER_Beam/v1.rfa'));
   assert.ok(!keys.includes('PEER-Library/01_Framing/PEER_Beam/v1.png'));
+  assert.ok(!keys.includes('PEER-Library/01_Framing/PEER_Beam/v2.rfa'));
+  for (let v = 3; v <= 7; v++) assert.ok(keys.includes(`PEER-Library/01_Framing/PEER_Beam/v${v}.rfa`), 'v' + v);
+  assert.deepEqual(last.data.history.map(h => !!h.files), [false, false, true, true, true, true, true]);
+  const idx = await call('GET', '/index', USER);
+  assert.ok(!idx.data.families[0].history[0].files);                       // index says the same
+});
+
+test('a card published before file history gets its current files kept', async () => {
+  await call('POST', '/publish', ADMIN, publishForm('PEER_Old', 1));
+  const idx = JSON.parse(await (await env.BUCKET.get('PEER-Library/index.json')).text());
+  for (const h of idx.families[0].history) { delete h.files; delete h.sha1; }   // as before the change
+  await env.BUCKET.put('PEER-Library/index.json', JSON.stringify(idx));
+  const r = await call('POST', '/publish', ADMIN, publishForm('PEER_Old', 2));
+  assert.equal(r.data.history[0].files['.rfa'], '01_Framing/PEER_Old/v1.rfa');
+  assert.ok(env.BUCKET.keys().includes('PEER-Library/01_Framing/PEER_Old/v1.rfa'));
 });
 
 test('bad card and path traversal are refused', async () => {

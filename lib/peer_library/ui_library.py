@@ -544,9 +544,16 @@ class LibraryWindow(forms.WPFWindow):
             t = TextBlock()
             t.TextWrapping = TextWrapping.Wrap
             t.Margin = Thickness(0, 0, 0, 3)
-            t.Text = u'v{0} · {1} · {2}{3}'.format(
+            t.Inlines.Add(Run(u'v{0} · {1} · {2}{3}'.format(
                 h.get('v'), h.get('date'), h.get('note') or u'-',
-                u' ({0})'.format(h['by']) if h.get('by') else u'')
+                u' ({0})'.format(h['by']) if h.get('by') else u'')))
+            if self.is_admin and h.get('v') != c.get('version') and (h.get('files') or {}).get('.rfa'):
+                t.Inlines.Add(Run(u'  '))
+                link = Hyperlink(Run(strings.RESTORE))
+                link.Foreground = U.brush(U.INK)
+                link.ToolTip = strings.RESTORE_TIP.format(h.get('v'))
+                link.Click += self._restore_handler(it, h)
+                t.Inlines.Add(link)
             self.d_history.Children.Add(t)
         update = it.code in (loader.OUTDATED, loader.UNKNOWN, loader.NEWER, loader.CURRENT)
         self.load_btn.Content = strings.BTN_UPDATE if update else strings.BTN_LOAD
@@ -748,18 +755,52 @@ class LibraryWindow(forms.WPFWindow):
         it = self.current
         if it is None or not self.is_admin:
             return
+        self._publish_window(it, {'family_id': it.card['id']})
+
+    def _publish_window(self, it, prefill):
         import os
         from pyrevit import HOST_APP
         from peer_library.ui_publish import PublishWindow
         xaml = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
             os.path.abspath(__file__)))), 'PEER.tab', 'Library.panel', 'Publish.smartbutton',
             'PublishWindow.xaml')
-        win = PublishWindow(xaml, HOST_APP.app, self.backend, {'family_id': it.card['id']})
+        win = PublishWindow(xaml, HOST_APP.app, self.backend, prefill)
         win.ShowDialog()
         if win.published:
             self._refresh_item(it, win.published)
             self._refresh_statuses()
             self._show_details(it)
+        return win.published
+
+    def _restore_handler(self, it, h):
+        return lambda s, a: self._restore(it, h)
+
+    def _restore(self, it, h):
+        """Old version -> Publish window as the next version (the file gets the
+        new PEER_Version and a fresh preview there). Needs Revit 2024."""
+        import os
+        import shutil
+        from peer_library import publish, rfa_info
+        card = it.card
+        work = publish.workdir_for(card['id']) + u'.restore'
+        target = os.path.join(work, card['id'] + u'.rfa')     # file name = family name
+        self.Cursor = Cursors.Wait
+        try:
+            shutil.rmtree(work, ignore_errors=True)
+            self.backend.download(h['files']['.rfa'], target)
+            if h.get('sha1') and rfa_info.sha1(target) != h['sha1']:
+                raise Exception(strings.RESTORE_BAD.format(h.get('v')))
+        except Exception as ex:
+            log.write(u'restore {0} v{1}'.format(card['id'], h.get('v')), exc=True)
+            U.error(u'{0}'.format(ex))
+            return
+        finally:
+            self.Cursor = None
+        try:
+            self._publish_window(it, {'family_id': card['id'], 'file': target,
+                                      'reason': strings.RESTORE_NOTE.format(h.get('v'))})
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
 
     # ---- requests & issues ---------------------------------------------
     def on_request(self, sender, args):

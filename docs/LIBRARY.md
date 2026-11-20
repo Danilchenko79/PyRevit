@@ -53,6 +53,7 @@ Admin buttons are visible only with an admin key: **Publish**, **Inbox**, **Keys
 |---|---|
 | Put a family into the library | **Publish** (Revit 2024 only): checks, `PEER_Version` in every type, preview, compact save |
 | New version | Publish → *New version of an existing family* (or **New version…** in the card); a note is required |
+| Undo a bad version | card → History → **restore** next to an older version: Publish opens with that file and publishes it as the next version (the last 5 versions are kept) |
 | Import a sorted folder | Publish → **Publish a sorted folder…** (`<group>/<ID>.rfa`) |
 | Names, tags, descriptions of many families | Publish → **Info to Excel…**, edit, **Info from Excel…** (no new versions) |
 | One family's info | card → **Edit info…** |
