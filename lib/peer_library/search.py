@@ -79,6 +79,7 @@ class Entry(object):
         self.text = dict((k, normalize(v)) for k, v in fields.items())
         self.flat = dict((k, compact(v)) for k, v in fields.items())
         self.name = self.text['name']
+        self.category = normalize(card.get('revit_category') or u'')
 
     def _word_in(self, word, field):
         for w in [word] + SYNONYMS.get(word, []):
@@ -107,13 +108,30 @@ class Entry(object):
         return best
 
 
+    def in_category(self, words):
+        """A query word names the Revit category ('column' -> Structural Columns):
+        such families go first among equal matches."""
+        for w in words:
+            for alt in [w] + SYNONYMS.get(w, []):
+                if len(alt) > 2 and alt in self.category:
+                    return True
+        return False
+
+    def order_key(self, words, phrase=u''):
+        """Sort key among matches (lower = first), None = no match."""
+        s = self.score(words, phrase)
+        if s is None:
+            return None
+        return (s, 0 if words and self.in_category(words) else 1)
+
+
 def rank(entries, query):
     """[(index, score)] of the matching entries, best first, stable."""
     words = query_words(query)
     out = []
     for i, e in enumerate(entries):
-        s = e.score(words, query)
-        if s is not None:
-            out.append((i, s))
-    out.sort(key=lambda x: (x[1], x[0]))
-    return out
+        k = e.order_key(words, query)
+        if k is not None:
+            out.append((k, i))
+    out.sort()
+    return [(i, k[0]) for k, i in out]

@@ -115,7 +115,8 @@
                     </Grid.ColumnDefinitions>
 
                     <ListBox x:Name="group_list" Grid.Column="0" BorderBrush="#D6D3D1"
-                             SelectionChanged="on_group" Background="White"/>
+                             SelectionChanged="on_group" Background="White"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"/>
 
                     <ListBox x:Name="tile_list" Grid.Column="1" Margin="10,0" BorderBrush="#D6D3D1"
                              Background="White" SelectionChanged="on_tile"
@@ -134,6 +135,9 @@
                                 <RowDefinition Height="*"/>
                                 <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
+                            <TextBlock x:Name="d_empty" Margin="28" TextWrapping="Wrap" TextAlignment="Center"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       Foreground="#57534E" LineHeight="20"/>
                             <ScrollViewer VerticalScrollBarVisibility="Auto">
                                 <StackPanel x:Name="details" Margin="14">
                                     <Border Height="200" Background="#FAFAF9" BorderBrush="#E7E5E4"
@@ -223,7 +227,8 @@
                         <TextBlock x:Name="proj_summary" VerticalAlignment="Center" FontWeight="SemiBold"/>
                         <ComboBox x:Name="proj_filter" Width="220" Margin="14,0,0,0" SelectionChanged="on_proj_filter"/>
                     </StackPanel>
-                    <ListView x:Name="proj_list" Grid.Row="1" BorderBrush="#D6D3D1" SelectionMode="Extended">
+                    <ListView x:Name="proj_list" Grid.Row="1" BorderBrush="#D6D3D1" SelectionMode="Extended"
+                              Foreground="#111827">
                         <ListView.View>
                             <GridView>
                                 <GridViewColumn Header="Family" Width="330" DisplayMemberBinding="{Binding family}"/>

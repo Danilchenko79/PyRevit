@@ -351,6 +351,17 @@ class TestSearch(unittest.TestCase):
         self.assertEqual(self.ids(u'column'), [0, 1, 2])
         self.assertEqual(self.ids(u'foundation'), [2])
 
+    def test_category_first_among_equal(self):
+        cards = [{'id': 'PR_Column Number', 'name': u'Column Number',
+                  'revit_category': u'Generic Annotations'},
+                 {'id': 'PEER-Col', 'name': u'Concrete column', 'revit_category': u'Structural Columns'}]
+        entries = [self.s.Entry(c) for c in cards]
+        # both have 'column' in the name; the Structural Columns one first ...
+        self.assertEqual([i for i, _ in self.s.rank(entries, u'concrete column')], [1])
+        self.assertEqual([i for i, _ in self.s.rank(entries, u'колонна')], [1, 0])
+        # ... but a name that starts with the query still wins
+        self.assertEqual([i for i, _ in self.s.rank(entries, u'column')], [0, 1])
+
     def test_name_prefix_first(self):
         self.assertEqual(self.ids(u'concrete col')[0], 1)
         self.assertEqual(self.s.rank(self.entries, u'beam tag')[0], (3, 0))

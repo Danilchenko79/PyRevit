@@ -8,8 +8,9 @@ from System import TimeSpan  # noqa: E402
 from System.Diagnostics import Process  # noqa: E402
 from System.Windows import FontWeights, HorizontalAlignment, TextTrimming, TextWrapping, Thickness, \
     VerticalAlignment, Visibility  # noqa: E402
-from System.Windows.Controls import Border, CheckBox, Grid, Image, ListBoxItem, \
-    Orientation, StackPanel, TextBlock  # noqa: E402
+from System.Windows import Clipboard  # noqa: E402
+from System.Windows.Controls import Border, CheckBox, ContextMenu, Grid, Image, ListBoxItem, \
+    MenuItem, Orientation, Separator, StackPanel, TextBlock  # noqa: E402
 from System.Windows.Documents import Hyperlink, Run  # noqa: E402
 from System.Windows.Input import Cursors, Key, Keyboard, ModifierKeys  # noqa: E402
 from System.Windows.Media import Stretch  # noqa: E402
@@ -79,6 +80,53 @@ class LibraryWindow(forms.WPFWindow):
         self.search_timer.Tick += self._search_tick
         self.Loaded += self._on_loaded
         self.Closing += self._on_closing
+        self._build_menu()
+
+    # ---- right click on a tile ---------------------------------------------
+    def _build_menu(self):
+        m = ContextMenu()
+        self.menu = {}
+
+        def add(key, action):
+            mi = MenuItem()
+            mi.Click += lambda s, a: self._menu_do(action)
+            m.Items.Add(mi)
+            self.menu[key] = mi
+        add('load', lambda: self._do_load(place=False))
+        add('place', lambda: self._do_load(place=True))
+        m.Items.Add(Separator())
+        add('fav', lambda: self.on_fav(None, None))
+        add('copy', lambda: Clipboard.SetText(self.current.card['id']))
+        add('issue', lambda: self.on_issue(None, None))
+        if self.is_admin:
+            m.Items.Add(Separator())
+            add('edit', lambda: self.on_edit_info(None, None))
+            add('newver', lambda: self.on_new_version(None, None))
+        self.menu['copy'].Header = strings.MENU_COPY_ID
+        self.menu['issue'].Header = strings.BTN_ISSUE
+        if self.is_admin:
+            self.menu['edit'].Header = strings.BTN_EDIT_INFO
+            self.menu['newver'].Header = strings.BTN_NEW_VERSION
+        self.tile_list.ContextMenu = m
+        self.tile_list.ContextMenuOpening += self._on_menu_opening
+
+    def _on_menu_opening(self, sender, args):
+        it = self.current
+        if it is None:
+            args.Handled = True                      # empty space: no menu
+            return
+        self.menu['load'].Header = self.load_btn.Content
+        self.menu['place'].Header = self.place_btn.Content
+        self.menu['fav'].Header = self.fav_btn.Content
+
+    def _menu_do(self, action):
+        if self.current is None:
+            return
+        try:
+            action()
+        except Exception as ex:
+            log.write(u'tile menu', exc=True)
+            U.error(u'{0}'.format(ex))
 
     def _on_closing(self, sender, args):
         self._closing = True
@@ -98,6 +146,7 @@ class LibraryWindow(forms.WPFWindow):
         self.load_btn.Content = strings.BTN_LOAD
         self.place_btn.Content = strings.BTN_LOAD_PLACE
         self.d_noimage.Text = strings.NO_PREVIEW
+        self.d_empty.Text = strings.DETAILS_HINT
         self.user_text.Text = u'{0} · {1}'.format(self.cfg['user'], self.cfg['role'])
         self.tab_project.Header = strings.TAB_PROJECT
         self.catalog_only.Content = strings.FILTER_CATALOG
@@ -319,6 +368,8 @@ class LibraryWindow(forms.WPFWindow):
         for i, (key, title, n) in enumerate(rows):
             t = TextBlock()
             t.Text = u'{0}  ({1})'.format(title, n)
+            t.TextTrimming = TextTrimming.CharacterEllipsis      # long collection names
+            t.ToolTip = t.Text
             t.Padding = Thickness(6, 4, 6, 4)
             if key == 'outdated' and n:
                 t.FontWeight = FontWeights.SemiBold
@@ -420,7 +471,7 @@ class LibraryWindow(forms.WPFWindow):
         shown = 0
         scored = []
         for n, it in enumerate(self.items):
-            s = it.entry.score(words, query) if self._group_ok(it) else None
+            s = it.entry.order_key(words, query) if self._group_ok(it) else None
             ok = s is not None
             it.shown = ok
             it.lbi.Visibility = Visibility.Visible if ok else Visibility.Collapsed
@@ -514,6 +565,7 @@ class LibraryWindow(forms.WPFWindow):
         self.current = it
         has = it is not None
         self.details.Visibility = Visibility.Visible if has else Visibility.Hidden
+        self.d_empty.Visibility = Visibility.Collapsed if has else Visibility.Visible
         self.load_btn.IsEnabled = has
         self.place_btn.IsEnabled = has
         self.overwrite_box.IsEnabled = has
@@ -560,8 +612,8 @@ class LibraryWindow(forms.WPFWindow):
         self.place_btn.Content = strings.BTN_UPDATE_PLACE if update else strings.BTN_LOAD_PLACE
         fav = c['id'] in self.prefs['favorites']
         self.fav_btn.Content = strings.FAV_ON if fav else strings.FAV_OFF
-        self.d_stats.Text = strings.STATS_LINE.format(it.downloads, it.users) if it.downloads \
-            else u''
+        self.d_stats.Text = strings.STATS_LINE.format(
+            strings.times(it.downloads), strings.people(it.users)) if it.downloads else u''
         if self.is_admin:
             need = index.attention(c)
             self.admin_header.Text = strings.ADMIN_HEADER + (

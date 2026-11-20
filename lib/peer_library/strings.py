@@ -25,12 +25,21 @@ UPDATE_ALL_ASK = (u'Update {0} families in this project to the library version?\
 UPDATE_ALL_DONE = u'Updated {0} families.'
 NOTE_NEEDED = u'Write what changed in this version (it goes to the history and What’s new).'
 GROUP_POPULAR = u'Popular (90 days)'
-GROUP_ATTENTION = u'⚠ Needs attention (admin)'
+GROUP_ATTENTION = u'⚠ Needs attention'
 NEEDS = u'needs: {0}'
 ALL_CATEGORIES = u'All Revit categories'
 FILTER_CATALOG = u'With type catalog'
 SORTS = [u'Sort: name', u'Sort: newest', u'Sort: popular']
-STATS_LINE = u'Loaded {0} times by {1} people in 90 days'
+STATS_LINE = u'Loaded {0} by {1} in 90 days'
+
+
+def times(n):
+    return u'once' if n == 1 else u'{0} times'.format(n)
+
+
+def people(n):
+    return u'1 person' if n == 1 else u'{0} people'.format(n)
+
 TAB_PROJECT = u'This project'
 
 # ---- requests / issues -------------------------------------------------------
@@ -60,6 +69,7 @@ OTHER_DOCS_FAILED = u'Loaded here, but not into:'
 BTN_COLL_ADD = u'Add to collection…'
 BTN_COLL_REMOVE = u'Remove from this collection'
 BTN_DEPRECATE = u'Deprecate…'
+MENU_COPY_ID = u'Copy ID'
 RESTORE = u'restore'
 RESTORE_TIP = u'Publish v{0} again as the next version (opens Publish with that file)'
 RESTORE_NOTE = u'Restored v{0}: '
@@ -117,6 +127,10 @@ TYPES_HEADER = u'Types from the type catalog ({0})'
 TYPES_HINT = u'Tick the types to load. Nothing ticked = choose before loading.'
 TYPES_NONE = u'Tick at least one type from the catalog.'
 NOTHING_SELECTED = u'Select a family on the left.'
+DETAILS_HINT = (u'Select a family to see its preview, versions and types.\n\n'
+                u'Double click or Shift+Enter: load and place.\n'
+                u'Right click: more actions.\n'
+                u'Type in the search box, Enter jumps to the best match.')
 OFFLINE = u'Offline - showing the saved copy of the library ({0}).'
 ONLINE = u'{0} families · {1}'
 LOADING = u'Loading the library…'
