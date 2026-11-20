@@ -238,7 +238,7 @@ class TestVersion(unittest.TestCase):
                            ('Library.smartbutton', 'EditInfoWindow.xaml'), ('Account.pushbutton', 'AccountWindow.xaml'),
                            ('Publish.smartbutton', 'PublishWindow.xaml'), ('Propose.smartbutton', 'ProposeWindow.xaml'),
                            ('Keys.smartbutton', 'KeysWindow.xaml'), ('Contact.pushbutton', 'ContactForm.xaml'),
-                           ('Contact.pushbutton', 'MyRequestsForm.xaml')):
+                           ('Contact.pushbutton', 'MyRequestsForm.xaml'), ('About.pushbutton', 'AboutWindow.xaml')):
             self.assertTrue(os.path.isfile(os.path.join(version.bundle_dir(name), xaml)), name + '/' + xaml)
 
     def test_ribbon_layout_lists_what_exists(self):
@@ -248,13 +248,15 @@ class TestVersion(unittest.TestCase):
 
         def layout(path):
             with io.open(path, encoding='utf-8') as f:
-                return [l.strip()[2:].strip('"') for l in f if l.strip().startswith('- ')]
+                # '- "Account[beforeall:]"' -> 'Account' (the part in brackets tells pyRevit where to
+                # move a panel that already exists in the running Revit)
+                return [l.strip()[2:].strip('"').split('[')[0] for l in f if l.strip().startswith('- ')]
 
         order = layout(os.path.join(tab, 'bundle.yaml'))
         self.assertEqual(order[:2], ['Account', 'Library'])
         for panel in order:
             self.assertTrue(os.path.isdir(os.path.join(tab, panel + '.panel')), panel)
-        for panel, first, hidden in (('Account', 'AccountTools', 'NewProject'), ('Library', 'LibraryMain', 'LibraryAdmin')):
+        for panel, first, hidden in (('Account', 'AccountTools', 'About'), ('Library', 'LibraryMain', 'LibraryAdmin')):
             base = os.path.join(tab, panel + '.panel')
             items = layout(os.path.join(base, 'bundle.yaml'))
             self.assertEqual(items[0], first)
@@ -267,7 +269,9 @@ class TestVersion(unittest.TestCase):
                 inside = layout(os.path.join(sdir, 'bundle.yaml'))
                 self.assertTrue(2 <= len(inside) <= 3, st)           # Revit stacks hold 2 or 3 buttons
                 have = sorted(d.split('.')[0] for d in os.listdir(sdir) if os.path.isdir(os.path.join(sdir, d)))
-                self.assertEqual(sorted(inside), have, st)
+                # Info: the Wiki button under its previous folder name, kept for one release and left
+                # out of the layout (pyRevit does not create what a layout does not list)
+                self.assertEqual(sorted(inside), [h for h in have if h != 'Info'], st)
 
     def test_version_is_a_safe_header(self):
         import re

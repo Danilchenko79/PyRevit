@@ -354,3 +354,23 @@ COPY_BUSY_KEY = (u'The clipboard is busy (another program holds it). Press Copy 
 ACC_SIGNOUT_ADMIN = (u'You are a PEER admin.\n\nIf you sign out and have no copy of your key, only another admin can '
                      u'give you access again - or, when there is no other admin, a new admin key has to be made through '
                      u'the Cloudflare account of the service.\n\nSign out anyway?')
+UPD_FULL_TEXT_AUTO = u'PEER is downloaded - all PEER panels appear in a few seconds.'
+UPD_DONE_PLAIN = u'PEER is up to date.'
+
+# ---- About / Wiki -----------------------------------------------------------------
+ABOUT_TITLE = u'PEER - About'
+ABOUT_VERSION = u'Version {0}'
+ABOUT_KIND_PACKAGE = u'Installed from the PEER service - updates by itself when Revit starts'
+ABOUT_KIND_LOADER = u'Loader only - sign in (Account) to get all PEER tools'
+ABOUT_KIND_GIT = u'Working copy of a developer (git) - updated with git pull'
+ABOUT_KIND_DEV = u'Working copy of a developer'
+ABOUT_NO_NOTE = u'-'
+ABOUT_NOT_INSTALLED = u'A working copy is not updated from the service.'
+ABOUT_CHECKING = u'Checking...'
+ABOUT_UP_TO_DATE = u'PEER is up to date.'
+ABOUT_OFFLINE = u'No connection to the PEER service. Check the internet.'
+ABOUT_NOKEY = u'Sign in first: PEER -> Account.'
+ABOUT_UPDATING = u'A new version is downloaded. PEER installs it now and pyRevit reloads - a few seconds.'
+WIKI_TITLE = u'PEER - Wiki'
+WIKI_NOT_SET = (u'The PEER site is not ready yet - its address is not set.\n'
+                u'(An admin sets it once: "wiki_url" in lib/peer_library/settings.json.)')

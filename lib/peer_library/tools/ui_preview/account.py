@@ -43,3 +43,33 @@ for name, st, has_key, check in STATES:
     except Exception:
         print('FAILED', name)
         traceback.print_exc()
+
+# ---- About window ---------------------------------------------------------------------------
+from peer_library import ui_about, config as _config  # noqa: E402
+import tempfile as _tempfile, io as _io  # noqa: E402
+
+ABOUT_XAML = os.path.join(B('About.pushbutton'), 'AboutWindow.xaml')  # noqa: F821
+_pkg = _tempfile.mkdtemp(prefix='peer_about_')
+with _io.open(os.path.join(_pkg, 'version.json'), 'w', encoding='utf-8') as _f:
+    _f.write(u'{"version": "2026.11.20.9", "channel": "stable", "built": "2026-11-20T18:30:00"}')
+for name, folder, wiki, signed in (('about_installed.png', _pkg, u'https://wiki.example', True),
+                                   ('about_working_copy.png', None, u'', False)):
+    try:
+        real_ext, real_load = version.ext_dir, _config.load
+        if folder:
+            version.ext_dir = lambda _f=folder: _f
+        _config.load = lambda _w=wiki, _r=real_load: dict(_r(), wiki_url=_w)
+        access.status = lambda cfg=None, _s=signed: access.Status(access.OK if _s else access.NONE, True, 14, u'Anna', 'user')
+        ui_about.releases.entry = lambda m, v: {'note': u'New ribbon: Account and Library first, small buttons; Feedback with My requests; Wiki'} if folder else None
+        win = ui_about.AboutWindow(ABOUT_XAML)
+        show(win, 300)      # noqa: F821
+        snap(win, OUT, name)   # noqa: F821
+        print(name, '|', win.name_text.Text, '|', win.version_text.Text, '|', win.kind_text.Text, '|', win.status_text.Text,
+              '| update', win.update_btn.IsEnabled, 'wiki', win.wiki_btn.IsEnabled)
+        win.Close()
+        pump(50)            # noqa: F821
+    except Exception:
+        print('FAILED', name)
+        traceback.print_exc()
+    finally:
+        version.ext_dir, _config.load = real_ext, real_load

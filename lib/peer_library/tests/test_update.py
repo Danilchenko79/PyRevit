@@ -134,6 +134,93 @@ class TestReleases(unittest.TestCase):
         self.assertEqual(R.next_version({}, '2026.01.05'), '2026.01.05.1')
 
 
+class TestStartThenIdle(unittest.TestCase):
+    """Revit start only looks; the package is installed when Revit is idle (after the
+    ribbon is drawn) and pyRevit reloads once."""
+
+    def setUp(self):
+        import peer_update
+        from peer_library import config
+        self.pu, self.config = peer_update, config
+        self.tmp = tempfile.mkdtemp(prefix='peeridle_')
+        self.env = dict(os.environ)
+        os.environ['APPDATA'] = os.path.join(self.tmp, 'appdata')
+        os.environ['LOCALAPPDATA'] = os.path.join(self.tmp, 'local')
+        os.environ['TEMP'] = os.path.join(self.tmp, 'temp')
+        os.environ.pop(peer_update.RELOADS_ENV, None)
+        self.ext = os.path.join(os.environ['APPDATA'], 'pyRevit', 'Extensions', 'PEER.extension')
+        os.makedirs(self.ext)
+        os.makedirs(os.path.join(self.tmp, 'svc'))
+        os.makedirs(os.path.join(os.environ['APPDATA'], 'PEER'))
+        with io.open(os.path.join(os.environ['APPDATA'], 'PEER', 'library.json'), 'w', encoding='utf-8') as f:
+            f.write(u'{"backend": "http", "url": "https://peer.example"}')
+        self.svc = FakeService(os.path.join(self.tmp, 'svc'))
+        self.real = (config.make_backend, peer_update._when_idle)
+        config.make_backend = lambda cfg=None: self.svc
+        self.idle = []
+        peer_update._when_idle = lambda action: (self.idle.append(action), True)[1]
+
+    def tearDown(self):
+        self.config.make_backend, self.pu._when_idle = self.real
+        os.environ.clear()
+        os.environ.update(self.env)
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def log(self):
+        with io.open(os.path.join(os.environ['TEMP'], 'peer_revit_logs', 'peer_update.log'), encoding='utf-8') as f:
+            return f.read()
+
+    def test_start_waits_idle_installs_reloads_once(self):
+        V1 = {'startup.py': b'one = 1', 'PEER.tab/Old.panel/A.pushbutton/script.py': b'a = 1'}
+        self.svc.add('1', V1)
+        self.assertEqual(self.pu.run(self.ext)[0], 'needed')
+        self.assertEqual(os.listdir(self.ext), [])                  # the ribbon is still being drawn: untouched
+        self.assertEqual(len(self.idle), 1)
+        self.assertIn(u'will be installed when the ribbon is ready', self.log())
+        reloads = []
+        self.pu.sync_package_real = self.pu.sync_package
+        status, det = self.pu.apply_and_reload(self.ext, lambda: reloads.append(1))
+        self.assertEqual(status, 'updated', det)
+        self.assertEqual(reloads, [1])
+        self.assertTrue(os.path.isfile(os.path.join(self.ext, 'PEER.tab', 'Old.panel', 'A.pushbutton', 'script.py')))
+        # pyRevit reloaded -> startup runs again: nothing to do, nothing scheduled, no second reload
+        self.idle[:] = []
+        self.assertEqual(self.pu.run(self.ext), ('clean', u'1'))
+        self.assertEqual(self.idle, [])
+        # a release that moves a button into another folder
+        self.svc.add('2', {'startup.py': b'one = 1', 'PEER.tab/New.panel/S.stack/A.pushbutton/script.py': b'a = 2'})
+        self.assertEqual(self.pu.run(self.ext)[0], 'needed')
+        self.assertTrue(os.path.isdir(os.path.join(self.ext, 'PEER.tab', 'Old.panel')))    # old folders intact
+        self.pu.apply_and_reload(self.ext, lambda: reloads.append(2))
+        self.assertFalse(os.path.exists(os.path.join(self.ext, 'PEER.tab', 'Old.panel')))
+        self.assertEqual(reloads, [1, 2])
+
+    def test_reload_limit_per_session(self):
+        reloads = []
+        for i in range(1, 6):
+            self.svc.add(str(i), {'startup.py': ('v = %d' % i).encode('ascii')})
+            self.pu.apply_and_reload(self.ext, lambda: reloads.append(1))
+        self.assertEqual(len(reloads), self.pu.MAX_RELOADS)         # then only a line in the log
+        self.assertIn(u'too many automatic reloads', self.log())
+        with open(os.path.join(self.ext, 'startup.py'), 'rb') as f:
+            self.assertEqual(f.read(), b'v = 5')                    # still installed
+
+    def test_nothing_to_install_no_reload(self):
+        self.assertEqual(self.pu.run(self.ext)[0], 'none')
+        self.assertEqual(self.idle, [])
+        self.svc.add('1', {'startup.py': b'one = 1'})
+        self.svc.key = False                                         # not signed in, not a loader
+        self.assertEqual(self.pu.run(self.ext)[0], 'nokey')
+        self.assertEqual(self.idle, [])
+
+    def test_author_copy_is_never_touched(self):
+        mine = os.path.join(self.tmp, 'Desktop', 'PyRevitV2.extension')
+        os.makedirs(mine)
+        self.svc.add('1', {'startup.py': b'one = 1'})
+        self.assertEqual(self.pu.run(mine)[0], 'skip')
+        self.assertEqual((os.listdir(mine), self.idle), ([], []))
+
+
 class TestGitBranch(unittest.TestCase):
 
     def test_branch(self):
@@ -175,7 +262,8 @@ class TestPack(unittest.TestCase):
                u'PEER.tab/Account.panel/Account.pushbutton/script.py', u'PEER.tab/bundle.yaml',
                u'PEER.tab/Library.panel/Library.smartbutton/LoginWindow.xaml', u'lib/peer_feedback/client.py',
                u'PEER.tab/Account.panel/AccountTools.stack/Contact.pushbutton/script.py',
-               u'PEER.tab/Account.panel/AccountTools.stack/Info.pushbutton/script.py', u'hooks/doc-opened.py']
+               u'PEER.tab/Account.panel/AccountTools.stack/Wiki.pushbutton/script.py',
+               u'PEER.tab/Account.panel/About.pushbutton/AboutWindow.xaml', u'hooks/doc-opened.py']
         no = [u'PEER.tab/Walls.panel/WallRebar2D.pushbutton/script.py', u'lib/wallrebar2d/core.py',
               u'lib/kz_dims.py', u'lib/tributary/engine.js', u'PEER.tab/Sheets.panel/Worksets.pushbutton/script.py',
               u'lib/peer_library/tests/test_core.py', u'lib/peer_feedback/tests/test_x.py', u'service/src/worker.js']
@@ -504,6 +592,17 @@ class TestUpdate(unittest.TestCase):
         status, det = U.sync(self.ext, self.svc, 'stable', self.work, None, 'boot')
         self.assertEqual(status, 'error')
         self.assertEqual(os.listdir(self.ext), [])
+
+    def test_check_touches_nothing(self):
+        self.svc.add('1', self.V1)
+        self.assertEqual(U.check(self.ext, self.svc, 'stable', self.work), ('needed', u'dev -> 1'))
+        self.assertEqual(os.listdir(self.ext), [])                  # only looked and downloaded
+        self.assertEqual(self.svc.downloads, ['1'])
+        self.assertEqual(self.sync()[0], 'updated')
+        self.assertEqual(self.svc.downloads, ['1'])                 # sync reuses the download
+        self.assertEqual(U.check(self.ext, self.svc, 'stable', self.work), ('clean', u'1'))
+        self.svc.key = False
+        self.assertEqual(U.check(self.ext, self.svc, 'stable', self.work)[0], 'nokey')
 
     def test_interrupted_update_finishes_next_time(self):
         self.svc.add('1', self.V1)

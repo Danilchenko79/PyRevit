@@ -238,12 +238,10 @@ def read_manifest(backend, work_dir, quick=True, product=releases.EXT):
     return data
 
 
-def sync(ext_dir, backend, channel, work_dir, old_files=None, product=releases.EXT):
-    """-> (status, details). status: clean / updated / partial / none / nokey /
-    offline / error. old_files: tracked files of an installation that has no
-    files.json yet (a git clone being converted).
-    product 'ext' = the full PEER (needs a key); 'boot' = the public loader,
-    only for an installation that is a loader itself (never replaces a full one)."""
+def _prepare(ext_dir, backend, channel, work_dir, product):
+    """Everything up to touching the installation. Returns (status, details) when
+    there is nothing to install, else ('needed', (zip_path, goal, have, mine, want_edition)):
+    the package is downloaded and its SHA-1 checked."""
     boot = product == releases.BOOT
     if not boot and not backend.has_key():
         return 'nokey', u'no PEER key on this computer - sign in (PEER -> Account)'
@@ -278,12 +276,40 @@ def sync(ext_dir, backend, channel, work_dir, old_files=None, product=releases.E
             if rfa_info.sha1(zip_path) != goal.get('sha1'):
                 os.remove(zip_path)
                 return 'error', u'the downloaded package {0} is damaged - will try again'.format(want)
+    except OfflineError as ex:
+        return 'offline', u'{0}'.format(ex)
+    except (LibraryError, IOError, OSError) as ex:
+        return 'error', u'{0}'.format(ex)
+    return 'needed', (zip_path, goal, have, mine, want_edition)
+
+
+def check(ext_dir, backend, channel, work_dir, product=releases.EXT):
+    """Is there something to install? Nothing in the installation is touched.
+    -> (status, details): 'needed' = the package is downloaded and verified,
+    sync() will apply it; else as sync() (clean / none / nokey / offline / error)."""
+    status, det = _prepare(ext_dir, backend, channel, work_dir, product)
+    if status == 'needed':
+        return 'needed', u'{0} -> {1}'.format(det[2]['version'], det[1]['version'])
+    return status, det
+
+
+def sync(ext_dir, backend, channel, work_dir, old_files=None, product=releases.EXT):
+    """-> (status, details). status: clean / updated / partial / none / nokey /
+    offline / error. old_files: tracked files of an installation that has no
+    files.json yet (a git clone being converted).
+    product 'ext' = the full PEER (needs a key); 'boot' = the public loader,
+    only for an installation that is a loader itself (never replaces a full one)."""
+    boot = product == releases.BOOT
+    status, det = _prepare(ext_dir, backend, channel, work_dir, product)
+    if status != 'needed':
+        return status, det
+    zip_path, goal, have, mine, want_edition = det
+    want = goal['version']
+    try:
         staged = os.path.join(work_dir, 'stage')
         files = stage(zip_path, staged, u'boot' if boot else u'full', want_edition)
         copied, removed, failed = apply(staged, ext_dir, files, mine or old_files or {})
         _rmtree(staged)
-    except OfflineError as ex:
-        return 'offline', u'{0}'.format(ex)
     except (LibraryError, UpdateError, IOError, OSError) as ex:
         return 'error', u'{0}'.format(ex)
     _tidy(work_dir, [_zip_name(want, product), _zip_name(have['version'], product)], product)

@@ -1,0 +1,53 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="PEER - About"
+        Width="520" SizeToContent="Height" ResizeMode="NoResize"
+        WindowStartupLocation="CenterScreen" ShowInTaskbar="False" PreviewKeyDown="on_key"
+        Background="#F5F5F4" FontFamily="Segoe UI" FontSize="13" Foreground="#111827">
+    <StackPanel Margin="20">
+        <TextBlock x:Name="name_text" FontSize="26" FontWeight="SemiBold" Text="PEER"/>
+        <TextBlock Margin="0,2,0,0" Foreground="#57534E" Text="Structural tools for Revit - PEER Engineering"/>
+
+        <Border Margin="0,14,0,0" Background="White" BorderBrush="#D6D3D1" BorderThickness="1" Padding="14">
+            <StackPanel>
+                <TextBlock x:Name="version_text" FontSize="16" FontWeight="SemiBold" Text="Version"/>
+                <TextBlock x:Name="kind_text" Margin="0,2,0,0" Foreground="#57534E" TextWrapping="Wrap"/>
+                <TextBlock Margin="0,12,0,3" FontWeight="SemiBold" FontSize="12" Text="What came with this version"/>
+                <TextBlock x:Name="note_text" TextWrapping="Wrap"/>
+
+                <Grid Margin="0,12,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="90"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition/><RowDefinition/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Margin="0,3" Foreground="#57534E" Text="Signed in"/>
+                    <TextBlock Grid.Row="0" Grid.Column="1" Margin="0,3" x:Name="who_text" TextTrimming="CharacterEllipsis"/>
+                    <TextBlock Grid.Row="1" Margin="0,3" Foreground="#57534E" Text="Installed in"/>
+                    <TextBlock Grid.Row="1" Grid.Column="1" Margin="0,3" x:Name="folder_text" TextWrapping="Wrap"
+                               FontSize="12"/>
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <TextBlock x:Name="status_text" Margin="0,10,0,0" TextWrapping="Wrap" FontWeight="SemiBold" MinHeight="18"/>
+
+        <Grid Margin="0,10,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <Button x:Name="update_btn" Grid.Column="0" Content="Check for updates" Padding="14,6"
+                    Foreground="White" Background="#111827" BorderBrush="#111827" FontWeight="SemiBold"
+                    Click="on_update"/>
+            <Button x:Name="wiki_btn" Grid.Column="1" Content="Wiki" Margin="8,0,0,0" Padding="14,6"
+                    Background="White" BorderBrush="#111827" Click="on_wiki"/>
+            <Button Grid.Column="3" Content="Close" Padding="14,6" IsCancel="True"
+                    Background="White" BorderBrush="#78716C" Click="on_close"/>
+        </Grid>
+    </StackPanel>
+</Window>

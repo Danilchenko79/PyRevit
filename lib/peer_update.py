@@ -163,29 +163,53 @@ def git_branch(ext_dir):
     return head[len('ref: refs/heads/'):] if head.startswith('ref: refs/heads/') else u''
 
 
+def _package_setup(ext_dir, any_path=False):
+    """(None, cfg, backend, channel) for an installation the package way applies to,
+    else (('skip', reason), None, None, None)."""
+    if not any_path and not _installed_by_installer(ext_dir):
+        return ('skip', u'not an installed copy (author working folder): ' + ext_dir), None, None, None
+    from peer_library import config, version
+    cfg = config.load()
+    if cfg['backend'] != 'http' or not config.is_configured(cfg):
+        return ('skip', u'the PEER service is not set up on this computer'), None, None, None
+    if os.path.isfile(os.path.join(ext_dir, '.git', 'HEAD')) and git_branch(ext_dir) != BRANCH:
+        return ('skip', u'git clone on branch "{0}" - left as it is'.format(git_branch(ext_dir) or u'?')), None, None, None
+    # PEER.extension follows stable, PEER_dev.extension follows beta; a git clone being
+    # converted is the everyday PEER
+    return None, cfg, config.make_backend(cfg), version.channel_of(ext_dir)
+
+
+def check_package(ext_dir, any_path=False):
+    """Is there a package to install? Touches nothing in the installation.
+    -> (status, details); 'needed' = downloaded, ready for sync_package()."""
+    stop, cfg, backend, channel = _package_setup(ext_dir, any_path)
+    if stop:
+        return stop
+    from peer_library import ext_update, releases, version
+    status, det = ext_update.check(ext_dir, backend, channel, _work_dir(ext_dir))
+    if status == 'nokey' and version.is_loader(ext_dir):     # not signed in: the loader itself
+        st2, det2 = ext_update.check(ext_dir, backend, channel, _work_dir(ext_dir), releases.BOOT)
+        if st2 == 'needed':
+            return 'needed', u'loader ' + det2
+    return status, det
+
+
 def sync_package(ext_dir, any_path=False):
     """-> (status, details). status: skip / nokey / none / offline / clean /
     updated / partial / error (see peer_library/ext_update.py)."""
-    if not any_path and not _installed_by_installer(ext_dir):
-        return 'skip', u'not an installed copy (author working folder): ' + ext_dir
-    from peer_library import config, ext_update
-    cfg = config.load()
-    if cfg['backend'] != 'http' or not config.is_configured(cfg):
-        return 'skip', u'the PEER service is not set up on this computer'
-    backend = config.make_backend(cfg)
+    stop, cfg, backend, channel = _package_setup(ext_dir, any_path)
+    if stop:
+        return stop
+    from peer_library import ext_update, releases, version
     was_git = os.path.isdir(os.path.join(ext_dir, '.git'))
-    if was_git and os.path.isfile(os.path.join(ext_dir, '.git', 'HEAD')) and git_branch(ext_dir) != BRANCH:
-        return 'skip', u'git clone on branch "{0}" - left as it is'.format(git_branch(ext_dir) or u'?')
     old = _git_tracked(ext_dir) if was_git and not ext_update.installed_files(ext_dir) else None
-    from peer_library import releases, version
-    # PEER.extension follows stable, PEER_dev.extension follows beta; a git clone being
-    # converted is the everyday PEER
-    channel = version.channel_of(ext_dir)
     status, det = ext_update.sync(ext_dir, backend, channel, _work_dir(ext_dir), old)
     if status == 'nokey':
         if version.is_loader(ext_dir):           # not signed in yet: keep the loader itself current
             st2, det2 = ext_update.sync(ext_dir, backend, channel, _work_dir(ext_dir), None, releases.BOOT)
             det += u'; loader: {0} {1}'.format(st2, det2)
+            if st2 in ('updated', 'partial'):
+                status = st2
     if was_git and status in ('updated', 'clean'):
         note = _drop_git(ext_dir)
         if note:
@@ -193,11 +217,34 @@ def sync_package(ext_dir, any_path=False):
     return status, det
 
 
-def run(ext_dir=None):
-    # папка расширения = родитель lib/, где лежит этот модуль
-    if ext_dir is None:
-        ext_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    lines = []
+def _announce(ext_dir, was_loader):
+    """Notification after an update: what came."""
+    try:
+        from peer_library import jsonio, releases, strings, version as _v
+        from pyrevit.forms import toaster
+        if _v.is_loader(ext_dir):
+            return
+        if was_loader:
+            toaster.send_toast(strings.UPD_FULL_TEXT_AUTO, title=strings.UPD_FULL_TITLE)
+            return
+        ver = _v.get(ext_dir)['version']
+        entry = releases.entry(jsonio.read(os.path.join(_work_dir(ext_dir), 'ext_manifest.json')), ver) or {}
+        note = (entry.get('note') or u'').strip().split(u'\n')[0][:160]
+        toaster.send_toast(note or strings.UPD_DONE_PLAIN, title=strings.UPD_DONE_TITLE.format(_v.text(ext_dir, u'')))
+    except Exception:
+        pass
+
+
+RELOADS_ENV = 'PEER_UPDATE_RELOADS'      # automatic reloads in this Revit session (a safety limit)
+MAX_RELOADS = 3
+
+
+def apply_and_reload(ext_dir, reload_fn=None):
+    """Install the waiting package and reload pyRevit. Runs when Revit is idle,
+    AFTER pyRevit has finished drawing the ribbon: pyRevit reads the folders
+    first and draws the buttons later, so moving folders in between makes it
+    look for buttons that are no longer there (errors in the pyRevit window).
+    -> (status, details)."""
     try:
         from peer_library import version as _v
         was_loader = _v.is_loader(ext_dir)
@@ -207,8 +254,80 @@ def run(ext_dir=None):
         status, det = sync_package(ext_dir)
     except Exception as ex:
         status, det = 'error', u'{0}'.format(ex)
+    lines = [u'PEER update (package, after the ribbon was built): ' + status, det]
+    if status == 'updated':
+        n = int(os.environ.get(RELOADS_ENV) or 0)
+        if n < MAX_RELOADS:
+            os.environ[RELOADS_ENV] = str(n + 1)
+            lines.append(u'reloading pyRevit ({0})'.format(n + 1))
+            _log(lines)
+            _announce(ext_dir, was_loader)
+            try:
+                if reload_fn is None:
+                    from pyrevit.loader import sessionmgr
+                    reload_fn = sessionmgr.reload_pyrevit
+                reload_fn()
+            except Exception as ex:
+                _log(lines + [u'reload failed: {0}'.format(ex)])
+            return status, det
+        lines.append(u'too many automatic reloads in this session - press pyRevit -> Reload')
+    _log(lines)
+    return status, det
+
+
+def _when_idle(action):
+    """Run action() once, the first time Revit is idle. True = scheduled."""
+    try:
+        from pyrevit import HOST_APP
+        from System import EventHandler
+        from Autodesk.Revit.UI.Events import IdlingEventArgs
+        uiapp = HOST_APP.uiapp
+        box = {}
+
+        def on_idle(sender, args):
+            try:
+                uiapp.Idling -= box['h']
+            except Exception:
+                pass
+            if box.get('done'):
+                return
+            box['done'] = True
+            try:
+                action()
+            except Exception as ex:
+                _log([u'PEER update when idle: error', u'{0}'.format(ex)])
+
+        box['h'] = EventHandler[IdlingEventArgs](on_idle)
+        uiapp.Idling += box['h']
+        return True
+    except Exception:
+        return False
+
+
+def run(ext_dir=None):
+    # папка расширения = родитель lib/, где лежит этот модуль
+    if ext_dir is None:
+        ext_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    lines = []
+    # 1. Пакет с сервиса: при старте только смотрим и скачиваем. Ставим позже, когда pyRevit
+    #    дорисует ленту (иначе он ищет кнопки по старым путям и сыплет ошибками), и сразу
+    #    перезагружаем pyRevit - новая версия видна в тот же запуск, без ручного Reload.
+    try:
+        status, det = check_package(ext_dir)
+    except Exception as ex:
+        status, det = 'error', u'{0}'.format(ex)
     lines += [u'PEER update (package): ' + status, det]
-    # пакет не сработал и установка ещё из git - старый способ (пока репозиторий открыт)
+    if status == 'needed':
+        if _when_idle(lambda: apply_and_reload(ext_dir)):
+            lines.append(u'will be installed when the ribbon is ready')
+            _log(lines)
+            return status, det
+        try:                                   # no way to wait: the old immediate way
+            status, det = sync_package(ext_dir)
+        except Exception as ex:
+            status, det = 'error', u'{0}'.format(ex)
+        lines += [u'PEER update (package, at once): ' + status, det]
+    # 2. Пакет не применим и установка ещё из git - старый способ (пока репозиторий открыт)
     if status in ('skip', 'nokey', 'none', 'offline', 'error') and \
             os.path.isdir(os.path.join(ext_dir, '.git')) and \
             not os.path.isfile(os.path.join(ext_dir, 'version.json')):
@@ -218,18 +337,4 @@ def run(ext_dir=None):
             status, det = 'error', u'{0}'.format(ex)
         lines += [u'PEER update (git): ' + status, det]
     _log(lines)
-    if status == 'updated':
-        try:
-            from peer_library import jsonio, releases, strings, version as _v
-            from pyrevit.forms import toaster
-            if was_loader and not _v.is_loader(ext_dir):
-                toaster.send_toast(strings.UPD_FULL_TEXT, title=strings.UPD_FULL_TITLE)
-            elif os.path.isfile(os.path.join(ext_dir, 'version.json')) and not _v.is_loader(ext_dir):
-                ver = _v.get(ext_dir)['version']
-                entry = releases.entry(jsonio.read(os.path.join(_work_dir(ext_dir), 'ext_manifest.json')), ver) or {}
-                note = (entry.get('note') or u'').strip().split(u'\n')[0][:160]
-                toaster.send_toast(strings.UPD_DONE_TEXT.format(note),
-                                   title=strings.UPD_DONE_TITLE.format(_v.text(ext_dir, u'')))
-        except Exception:
-            pass
     return status, det

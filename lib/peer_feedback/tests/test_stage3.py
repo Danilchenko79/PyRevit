@@ -72,7 +72,7 @@ def test_queue_pending_once_per_day(home, tmp_path):
     assert sorted(r['button'] for r in rows) == [u'Documentation / WinTag', u'Walls / WallRebar2D']
     assert all(set(r) >= {'id', 'date', 'user', 'machine', 'runs', 'failures'} for r in rows)
     names = [it for it in items if it['action'] == 'buttons'][0]['data']['names']
-    assert u'Account / Contact' in names and u'Account / Info' in names
+    assert u'Account / Contact' in names and u'Account / Wiki' in names
     # second start the same day: nothing new
     assert usage.queue_pending(folder=str(tele), tab_dir=tab) == 0
     assert outbox.count() == 2
