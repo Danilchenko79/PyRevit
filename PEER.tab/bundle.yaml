@@ -1,4 +1,6 @@
 layout:
+  - Account
+  - Library
   - Sheets
   - Reinforcement
   - Columns
@@ -6,6 +8,3 @@ layout:
   - Piles
   - Analysis
   - Documentation
-  - Library
-  - Feedback
-  - Account

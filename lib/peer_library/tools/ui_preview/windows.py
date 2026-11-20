@@ -23,22 +23,22 @@ def run(name, make):
 
 
 def keys():
-    ns = {'__name__': 'keys_preview', '__file__': os.path.join(PANEL, 'Keys.smartbutton', 'script.py')}
+    ns = {'__name__': 'keys_preview', '__file__': os.path.join(B('Keys.smartbutton'), 'script.py')}
     execfile(ns['__file__'], ns)   # noqa: F821
     return ns['KeysWindow'](be)
 
 
 run('keys.png', keys)
 from peer_library.ui_inbox import InboxWindow  # noqa: E402
-run('inbox.png', lambda: InboxWindow(os.path.join(PANEL, 'Inbox.smartbutton', 'InboxWindow.xaml'), be,
-                                     os.path.join(PANEL, 'Publish.smartbutton', 'PublishWindow.xaml'),
+run('inbox.png', lambda: InboxWindow(os.path.join(B('Inbox.smartbutton'), 'InboxWindow.xaml'), be,
+                                     os.path.join(B('Publish.smartbutton'), 'PublishWindow.xaml'),
                                      FakeApp()))
 from peer_library.ui_publish import PublishWindow  # noqa: E402
 first_id = be.get_index()['families'][0]['id']
-run('publish.png', lambda: PublishWindow(os.path.join(PANEL, 'Publish.smartbutton', 'PublishWindow.xaml'),
+run('publish.png', lambda: PublishWindow(os.path.join(B('Publish.smartbutton'), 'PublishWindow.xaml'),
                                          FakeApp(), be, {'family_id': first_id}))
 from peer_library.ui_propose import ProposeWindow  # noqa: E402
-run('propose.png', lambda: ProposeWindow(os.path.join(PANEL, 'Propose.smartbutton', 'ProposeWindow.xaml'),
+run('propose.png', lambda: ProposeWindow(os.path.join(B('Propose.smartbutton'), 'ProposeWindow.xaml'),
                                          FakeDoc(), None, be, preset_file=r'C:\Temp\My_Family.rfa'))
 from peer_library import session, strings  # noqa: E402
 run('login.png', lambda: session.LoginWindow(be))

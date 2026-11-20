@@ -20,7 +20,7 @@ from peer_library import ui_common as U  # noqa: E402
 
 from peer_library import version as _version
 
-BTN_DIR = os.path.join(_version.tab_dir(), 'Library.panel', 'Library.smartbutton')
+BTN_DIR = _version.bundle_dir('Library.smartbutton')
 
 # level -> (label, text colour, background); no blue (ТЗ)
 LOOK = {D.ERROR: (strings.CHECK_L_ERROR, '#7F1D1D', '#FBEBEB'),

@@ -74,7 +74,7 @@ STRINGS = {
     'background': u'The window was closed while sending.\n'
                   u'The request is saved on this computer and is being sent; '
                   u'if that fails it goes on the next Revit start. '
-                  u'See My Requests.',
+                  u'See Feedback -> My requests.',
     'not_configured': u'The receiver is not set up yet.\n'
                       u'The request is saved on this computer and will be sent '
                       u'as soon as the receiver address is set.',

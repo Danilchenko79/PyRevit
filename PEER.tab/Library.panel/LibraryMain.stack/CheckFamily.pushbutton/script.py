@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-__title__ = "Check\nfamily"
+__title__ = "Check family"
 __author__ = "Dima D"
 __doc__ = """WHAT IT DOES
 Checks a family while you make or fix it, before Publish or before a

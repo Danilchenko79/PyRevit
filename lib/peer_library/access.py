@@ -64,8 +64,20 @@ def evaluate(cfg, has_key, has_request=False, now=None):
 
 
 def status(cfg=None):
+    """What this computer has. The lock applies to an installed PEER (a package
+    from the service). A developer's working copy (a git clone) is never locked:
+    its owner has the code anyway, and must not be shut out of his own tools by
+    a lost key - the key there only opens the library."""
     cfg = cfg or config.load()
-    return evaluate(cfg, bool(keystore.load()), keystore.load_request() is not None)
+    st = evaluate(cfg, bool(keystore.load()), keystore.load_request() is not None)
+    if st.lock:
+        try:
+            from peer_library import version
+            if version.get()['kind'] != 'package':
+                st.lock = False
+        except Exception:
+            pass
+    return st
 
 
 def describe(st, check=u''):

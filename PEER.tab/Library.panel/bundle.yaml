@@ -1,8 +1,5 @@
 title: Library
 layout:
-  - Library
-  - Propose
-  - Publish
-  - CheckFamily
-  - Inbox
-  - Keys
+  - LibraryMain
+  - ">>>>>"
+  - LibraryAdmin

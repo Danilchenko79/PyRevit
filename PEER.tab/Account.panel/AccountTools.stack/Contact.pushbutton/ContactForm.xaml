@@ -234,6 +234,9 @@
         <Border Grid.Row="2" Background="White" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0"
                 Padding="24,12">
             <DockPanel LastChildFill="True">
+                <Button x:Name="btn_requests" DockPanel.Dock="Left" Style="{StaticResource Secondary}" Height="34"
+                        MinWidth="120" Margin="0,0,12,0" Content="My requests..." Click="on_requests"
+                        ToolTip="What happened to the requests you sent: New, Accepted, In progress, Done, Rejected - with the answer of the head of the group."/>
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                     <Button x:Name="btn_cancel" Style="{StaticResource Secondary}" Height="34" MinWidth="90"
                             Margin="0,0,8,0" Click="on_cancel" IsCancel="True"/>

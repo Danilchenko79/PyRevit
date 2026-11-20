@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-__title__ = "Contact"
+__title__ = "Feedback"
 __author__ = "Dima D"
 __doc__ = """WHAT IT DOES
 Sends a request, an idea or a bug report to the head of the group.
@@ -44,9 +44,14 @@ BACKGROUND = 'background'
 
 
 def _tab_dir():
-    # .../PEER.tab/Feedback.panel/Contact.pushbutton/script.py -> PEER.tab
+    # .../PEER.tab/Feedback.panel/<stack>/Contact.pushbutton/script.py -> PEER.tab
     here = os.path.dirname(os.path.abspath(__file__))
-    return os.path.dirname(os.path.dirname(here))
+    while here and not here.lower().endswith('.tab'):      # the button may sit in a stack
+        up = os.path.dirname(here)
+        if up == here:
+            break
+        here = up
+    return here
 
 
 class ContactWindow(forms.WPFWindow):
@@ -345,6 +350,14 @@ class ContactWindow(forms.WPFWindow):
 
         timer.Tick += tick
         timer.Start()
+
+    def on_requests(self, sender, args):
+        """My requests: what happened to what was sent from this computer."""
+        try:
+            from peer_feedback import ui_requests
+            ui_requests.show(script.get_bundle_file('MyRequestsForm.xaml'), owner=self)
+        except Exception as ex:
+            self.lbl_status.Text = u'{0}'.format(ex)
 
     def on_cancel(self, sender, args):
         self.Close()

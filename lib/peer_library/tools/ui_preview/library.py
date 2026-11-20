@@ -21,7 +21,7 @@ loader.project_family_list = lambda doc: [
 from peer_library.ui_library import LibraryWindow  # noqa: E402
 be, cfg = backend(OUT)   # noqa: F821
 t0 = time.time()
-win = LibraryWindow(os.path.join(PANEL, 'Library.smartbutton', 'LibraryWindow.xaml'), FakeDoc(), None, be, cfg)
+win = LibraryWindow(os.path.join(B('Library.smartbutton'), 'LibraryWindow.xaml'), FakeDoc(), None, be, cfg)
 show(win, 300)
 print('open: %.1f s, %d families, status: %s' % (time.time() - t0, len(win.items), win.status_text.Text))
 for i in range(60):

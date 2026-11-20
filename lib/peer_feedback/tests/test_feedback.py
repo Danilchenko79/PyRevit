@@ -86,7 +86,7 @@ def test_texts_english_only_and_topics_match_receiver():
 
 def test_list_buttons_real_tab():
     names = payload.list_buttons(TAB)
-    assert u'Feedback / Contact' in names
+    assert u'Account / Contact' in names
     assert u'Documentation / WinTag' in names          # .stack level dropped
     assert any(n.startswith(u'Reinforcement / RebarShape / ') for n in names)
     assert not any(u'.pushbutton' in n or u'.panel' in n for n in names)

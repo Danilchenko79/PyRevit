@@ -950,7 +950,7 @@ class LibraryWindow(forms.WPFWindow):
         from pyrevit import HOST_APP
         from peer_library.ui_publish import PublishWindow
         from peer_library import version as _version
-        xaml = os.path.join(_version.tab_dir(), 'Library.panel', 'Publish.smartbutton', 'PublishWindow.xaml')
+        xaml = os.path.join(_version.bundle_dir('Publish.smartbutton'), 'PublishWindow.xaml')
         win = PublishWindow(xaml, HOST_APP.app, self.backend, prefill)
         win.ShowDialog()
         if win.published:
@@ -1281,7 +1281,7 @@ class LibraryWindow(forms.WPFWindow):
             U.error(u'{0}'.format(ex))
             return
         from peer_library import version as _version
-        xaml = os.path.join(_version.tab_dir(), 'Library.panel', 'Propose.smartbutton', 'ProposeWindow.xaml')
+        xaml = os.path.join(_version.bundle_dir('Propose.smartbutton'), 'ProposeWindow.xaml')
         ProposeWindow(xaml, self.doc, self.uidoc, self.backend, preset_file=path).ShowDialog()
 
     # ---- other tabs ----------------------------------------------------

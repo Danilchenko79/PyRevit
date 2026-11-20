@@ -351,3 +351,6 @@ COPIED = u'Copied: {0}'
 COPY_BUSY = u'The clipboard is busy (another program holds it). Try again in a second.'
 COPY_BUSY_KEY = (u'The clipboard is busy (another program holds it). Press Copy again, or select the key '
                  u'with the mouse and press Ctrl+C.')
+ACC_SIGNOUT_ADMIN = (u'You are a PEER admin.\n\nIf you sign out and have no copy of your key, only another admin can '
+                     u'give you access again - or, when there is no other admin, a new admin key has to be made through '
+                     u'the Cloudflare account of the service.\n\nSign out anyway?')

@@ -19,7 +19,7 @@ from peer_library.backend_base import AccessError, LibraryError, OfflineError
 
 from peer_library import version as _version
 
-LOGIN_XAML = os.path.join(_version.tab_dir(), 'Library.panel', 'Library.smartbutton', 'LoginWindow.xaml')
+LOGIN_XAML = os.path.join(_version.bundle_dir('Library.smartbutton'), 'LoginWindow.xaml')
 
 
 class LoginWindow(forms.WPFWindow):

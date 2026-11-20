@@ -11,7 +11,7 @@ from peer_library import groups, log, strings
 HERE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from peer_library import version as _version
 
-BTN_DIR = os.path.join(_version.tab_dir(), 'Library.panel', 'Library.smartbutton')
+BTN_DIR = _version.bundle_dir('Library.smartbutton')
 
 
 class TextWindow(forms.WPFWindow):

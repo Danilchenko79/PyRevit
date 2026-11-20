@@ -58,7 +58,7 @@ def wanted(rel):
 LOADER_FILES = (u'startup.py', u'extensions.json', u'lib/__init__.py', u'lib/peer_update.py',
                 u'lib/peer_access.py', u'lib/peer_log.py', u'PEER.tab/bundle.yaml')
 LOADER_PREFIXES = (u'lib/peer_library/', u'lib/peer_feedback/', u'PEER.tab/Account.panel/',
-                   u'PEER.tab/Library.panel/', u'PEER.tab/Feedback.panel/', u'hooks/')
+                   u'PEER.tab/Library.panel/', u'hooks/')
 
 
 def in_loader(rel):

@@ -174,9 +174,10 @@ class TestPack(unittest.TestCase):
         yes = [u'startup.py', u'lib/peer_update.py', u'lib/peer_access.py', u'lib/peer_library/ui_account.py',
                u'PEER.tab/Account.panel/Account.pushbutton/script.py', u'PEER.tab/bundle.yaml',
                u'PEER.tab/Library.panel/Library.smartbutton/LoginWindow.xaml', u'lib/peer_feedback/client.py',
-               u'PEER.tab/Feedback.panel/Contact.pushbutton/script.py', u'hooks/doc-opened.py']
+               u'PEER.tab/Account.panel/AccountTools.stack/Contact.pushbutton/script.py',
+               u'PEER.tab/Account.panel/AccountTools.stack/Info.pushbutton/script.py', u'hooks/doc-opened.py']
         no = [u'PEER.tab/Walls.panel/WallRebar2D.pushbutton/script.py', u'lib/wallrebar2d/core.py',
-              u'lib/kz_dims.py', u'lib/tributary/engine.js', u'PEER.tab/Sheets.panel/bundle.yaml',
+              u'lib/kz_dims.py', u'lib/tributary/engine.js', u'PEER.tab/Sheets.panel/Worksets.pushbutton/script.py',
               u'lib/peer_library/tests/test_core.py', u'lib/peer_feedback/tests/test_x.py', u'service/src/worker.js']
         for rel in yes:
             self.assertTrue(pack.in_loader(rel), rel)

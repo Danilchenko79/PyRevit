@@ -27,6 +27,12 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 LIB = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))
 EXT = os.path.dirname(LIB)
 PANEL = os.path.join(EXT, 'PEER.tab', 'Library.panel')
+
+
+def B(name):
+    """Folder of a button by its name, wherever it sits in the tab."""
+    from peer_library import version
+    return version.bundle_dir(name, EXT)
 if LIB not in sys.path:
     sys.path.insert(0, LIB)
 

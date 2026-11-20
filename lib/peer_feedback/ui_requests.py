@@ -1,19 +1,16 @@
 # -*- coding: utf-8 -*-
-__title__ = "My\nRequests"
-__author__ = "Dima D"
-__doc__ = """WHAT IT DOES
-Shows the requests you sent with Contact from this computer and their
-status set by the head of the group: New, Accepted, In progress, Done,
-Rejected - with a short comment.
+"""My requests: the requests sent with Feedback from this computer and their
+status set by the head of the group (New, Accepted, In progress, Done,
+Rejected - with a short comment). Opened from the Feedback window.
 
-The status is fetched from the group's table when the window opens
-(Refresh fetches it again). Without internet the last known status is
-shown. Requests not sent yet show "Waiting to send".
+The status is fetched from the group's table when the window opens (Refresh
+fetches it again). Without internet the last known status is shown. Requests
+not sent yet show "Waiting to send".
 """
 
 import clr
 
-from pyrevit import forms, script
+from pyrevit import forms
 
 # System.Data is not loaded in Revit 2024 by default ("No module named Data")
 clr.AddReference('System.Data')
@@ -129,4 +126,8 @@ class MyRequestsWindow(forms.WPFWindow):
         self.closed = True
 
 
-MyRequestsWindow(script.get_bundle_file('MyRequestsForm.xaml')).ShowDialog()
+def show(xaml_path, owner=None):
+    win = MyRequestsWindow(xaml_path)
+    if owner is not None:
+        win.Owner = owner
+    win.ShowDialog()

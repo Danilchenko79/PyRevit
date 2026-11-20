@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-__title__ = "Propose\nfamily"
+__title__ = "Propose family"
 __author__ = "Dima D"
 __doc__ = """WHAT IT DOES
 Sends a family to the library admins for review: a file from disk, the

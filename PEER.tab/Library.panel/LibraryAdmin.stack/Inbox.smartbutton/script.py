@@ -16,7 +16,8 @@ from peer_library import config, log, session, strings
 
 HERE = os.path.dirname(__file__)
 XAML = os.path.join(HERE, 'InboxWindow.xaml')
-PUBLISH_XAML = os.path.join(os.path.dirname(HERE), 'Publish.smartbutton', 'PublishWindow.xaml')
+from peer_library import version as _version
+PUBLISH_XAML = os.path.join(_version.bundle_dir('Publish.smartbutton'), 'PublishWindow.xaml')
 
 
 def __selfinit__(script_cmp, ui_button_cmp, __rvt__):

@@ -122,6 +122,25 @@ class TestSettingsFiles(unittest.TestCase):
         self.assertEqual([f for f in os.listdir(os.path.dirname(self.config.local_file())) if f.endswith('.tmp')], [])
 
 
+class TestWorkingCopyIsNeverLocked(unittest.TestCase):
+
+    def test_lock_only_for_an_installed_package(self):
+        from peer_library import config, keystore
+        real = (config.load, keystore.load, keystore.load_request, version.get)
+        config.load = lambda: cfg(lock=True, last=u'')
+        keystore.load = lambda: None
+        keystore.load_request = lambda: None
+        try:
+            version.get = lambda folder=None: {'kind': 'git', 'version': u'git abc', 'flavor': u'full', 'edition': u'stable', 'channel': u''}
+            st = A.status()
+            self.assertEqual((st.code, st.locked), (A.NONE, False))      # the author's clone: tools stay
+            version.get = lambda folder=None: {'kind': 'package', 'version': u'1', 'flavor': u'full', 'edition': u'stable', 'channel': u'stable'}
+            st = A.status()
+            self.assertEqual((st.code, st.locked), (A.NONE, True))       # installed from the service: locked
+        finally:
+            config.load, keystore.load, keystore.load_request, version.get = real
+
+
 class TestRibbonPlan(unittest.TestCase):
     NAMES = ['Sheets', 'Reinforcement', 'Library', 'Feedback', 'Account']
 
@@ -203,6 +222,52 @@ class TestVersion(unittest.TestCase):
 
     def test_nothing(self):
         self.assertEqual(version.get(self.tmp)['version'], u'dev')
+
+    def test_button_folder_is_found_wherever_it_sits(self):
+        tab = os.path.join(self.tmp, 'PEER.tab')
+        os.makedirs(os.path.join(tab, 'Library.panel', 'LibraryMain.stack', 'Library.smartbutton'))
+        os.makedirs(os.path.join(tab, 'Walls.panel', 'WallRebar2D.pushbutton'))
+        self.assertTrue(version.bundle_dir('Library.smartbutton', self.tmp).endswith(
+            os.path.join('LibraryMain.stack', 'Library.smartbutton')))
+        self.assertTrue(version.bundle_dir('WallRebar2D.pushbutton', self.tmp).endswith(
+            os.path.join('Walls.panel', 'WallRebar2D.pushbutton')))
+        self.assertEqual(version.bundle_dir('Nope.pushbutton', self.tmp), os.path.join(tab, 'Nope.pushbutton'))
+
+    def test_real_windows_are_where_the_code_looks(self):
+        for name, xaml in (('Library.smartbutton', 'LoginWindow.xaml'), ('Library.smartbutton', 'LibraryWindow.xaml'),
+                           ('Library.smartbutton', 'EditInfoWindow.xaml'), ('Account.pushbutton', 'AccountWindow.xaml'),
+                           ('Publish.smartbutton', 'PublishWindow.xaml'), ('Propose.smartbutton', 'ProposeWindow.xaml'),
+                           ('Keys.smartbutton', 'KeysWindow.xaml'), ('Contact.pushbutton', 'ContactForm.xaml'),
+                           ('Contact.pushbutton', 'MyRequestsForm.xaml')):
+            self.assertTrue(os.path.isfile(os.path.join(version.bundle_dir(name), xaml)), name + '/' + xaml)
+
+    def test_ribbon_layout_lists_what_exists(self):
+        """Every name in the bundle.yaml layouts of the two left panels is a real folder;
+        stacks hold 2-3 buttons; the rarely used things sit in the slide-out."""
+        tab = version.tab_dir()
+
+        def layout(path):
+            with io.open(path, encoding='utf-8') as f:
+                return [l.strip()[2:].strip('"') for l in f if l.strip().startswith('- ')]
+
+        order = layout(os.path.join(tab, 'bundle.yaml'))
+        self.assertEqual(order[:2], ['Account', 'Library'])
+        for panel in order:
+            self.assertTrue(os.path.isdir(os.path.join(tab, panel + '.panel')), panel)
+        for panel, first, hidden in (('Account', 'AccountTools', 'NewProject'), ('Library', 'LibraryMain', 'LibraryAdmin')):
+            base = os.path.join(tab, panel + '.panel')
+            items = layout(os.path.join(base, 'bundle.yaml'))
+            self.assertEqual(items[0], first)
+            self.assertEqual(items[1], '>>>>>')                      # the slide-out starts here
+            self.assertIn(hidden, items[2:])
+            on_disk = sorted(d.split('.')[0] for d in os.listdir(base) if os.path.isdir(os.path.join(base, d)))
+            self.assertEqual(sorted(i for i in items if i != '>>>>>'), on_disk, panel)
+            for st in [d for d in os.listdir(base) if d.endswith('.stack')]:
+                sdir = os.path.join(base, st)
+                inside = layout(os.path.join(sdir, 'bundle.yaml'))
+                self.assertTrue(2 <= len(inside) <= 3, st)           # Revit stacks hold 2 or 3 buttons
+                have = sorted(d.split('.')[0] for d in os.listdir(sdir) if os.path.isdir(os.path.join(sdir, d)))
+                self.assertEqual(sorted(inside), have, st)
 
     def test_version_is_a_safe_header(self):
         import re

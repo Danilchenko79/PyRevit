@@ -9,7 +9,7 @@ execfile(os.path.join(os.path.dirname(__file__), 'stubs.py'))   # noqa: F821
 
 from peer_library import access, keystore, ui_account, version  # noqa: E402
 
-XAML = os.path.join(EXT, 'PEER.tab', 'Account.panel', 'Account.pushbutton', 'AccountWindow.xaml')  # noqa: F821
+XAML = os.path.join(B('Account.pushbutton'), 'AccountWindow.xaml')  # noqa: F821
 FAKE_KEY = u'peer_Ab3dE6gH9jK2mN5pQ8rS1tU4vW7xYz'
 LONG = u'Alexander-Konstantin Wolfeschlegelstein (structural engineering, remote office)'
 

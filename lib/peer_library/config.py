@@ -39,6 +39,7 @@ DEFAULTS = {
     'seen_until': u'',   # changelog time the user has seen (library window opened)
     'notify_checked': u'',  # last startup notification check (ISO, local)
     'access_lock': False,   # True: PEER buttons need a signed-in key (peer_library/access.py)
+    'wiki_url': u'',        # the company PEER site, opened by the Info button
     'channel': u'stable',   # update channel of the PEER package and the template: stable | beta
 }
 

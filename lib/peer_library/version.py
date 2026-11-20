@@ -76,6 +76,25 @@ def tab_dir(folder=None):
     return os.path.join(folder, u'PEER.tab')
 
 
+_BUNDLES = {}
+
+
+def bundle_dir(name, folder=None):
+    """Folder of a button of this extension by its name ('Library.smartbutton'),
+    wherever it sits in the tab (panel, stack, pulldown). The ribbon layout can
+    change without breaking the paths to the windows."""
+    tab = tab_dir(folder)
+    key = (tab, name)
+    if key not in _BUNDLES or not os.path.isdir(_BUNDLES[key]):
+        found = os.path.join(tab, name)
+        for root, dirs, files in os.walk(tab):
+            if name in dirs:
+                found = os.path.join(root, name)
+                break
+        _BUNDLES[key] = found
+    return _BUNDLES[key]
+
+
 def tab_name(folder=None):
     return os.path.basename(tab_dir(folder))[:-len('.tab')]
 

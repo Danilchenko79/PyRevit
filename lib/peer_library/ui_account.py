@@ -13,7 +13,7 @@ from pyrevit import forms
 from peer_library import access, config, keystore, log, session, strings, version
 from peer_library import ui_common as U
 
-XAML = os.path.join(version.tab_dir(), 'Account.panel', 'Account.pushbutton', 'AccountWindow.xaml')
+XAML = os.path.join(version.bundle_dir('Account.pushbutton'), 'AccountWindow.xaml')
 
 # status code -> (label, text colour, background) - never colour alone, always the label
 CHIPS = {
@@ -120,7 +120,8 @@ class AccountWindow(forms.WPFWindow):
         self._after_change()
 
     def on_signout(self, sender, args):
-        if not U.ask(strings.ACC_SIGNOUT_ASK, strings.ACC_TITLE):
+        admin = access.status().role == 'admin'
+        if not U.ask(strings.ACC_SIGNOUT_ADMIN if admin else strings.ACC_SIGNOUT_ASK, strings.ACC_TITLE):
             return
         session.sign_out()
         self.check = u''
