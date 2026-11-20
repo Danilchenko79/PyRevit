@@ -79,6 +79,21 @@ selected element or type in a project, or - with nothing selected - on a whole f
 
 **Publish** runs the same checks: another GUID blocks publishing, the rest are warnings.
 
+### Put a family in order
+
+In the family editor the check window has two more buttons (Save the family afterwards; Ctrl+Z
+undoes the changes):
+
+- **Fix automatically (N)** - shared parameters with old names (`ADSK_…`) get the company name
+  (same GUID, so projects keep their values); family parameters that the company file has as shared
+  ones become those shared parameters. Formulas, dimension labels and visibility links stay.
+- **Change a parameter…** - pick one: replace it with any company shared parameter of the same kind,
+  make a shared parameter a family one, rename or delete it.
+
+A folder: after the folder check press **Fix copies…** and choose another folder - fixed copies are
+saved there with the same sub-folders and a list of changes (`_family_fix.csv`); the checked files
+stay as they are. A family selected in a project is only checked - open it (Edit Family) to fix it.
+
 ## Admins (2–3 people)
 
 Admin buttons are visible only with an admin key: **Publish**, **Inbox**, **Keys**.

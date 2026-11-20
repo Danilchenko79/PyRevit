@@ -80,6 +80,16 @@ def load_check_windows():
                               [(D.INFO, 'param_new', u"New in the library: 'Chamfer'.")],
                               {'instances': 12, 'types': 3})
     run('check_clean.png', lambda: LoadCheckWindow(clean, None))
+    fam = load_check.Report(u'PR_Detail_Arrow', [
+        (D.WARNING, 'file_name', u"'ADSK_Revit Version' is called 'PR_Revit Version' in PR_FOPv4.txt (same GUID)."),
+        (D.WARNING, 'should_share', u"'Cap Thickness' is a family parameter, but PR_FOPv4.txt has a shared 'Cap Thickness' - tags and schedules cannot show this one."),
+        (D.WARNING, 'type_broken', u"Type '30/80' does not regenerate: Constraints are not satisfied"),
+        (D.INFO, 'unused', u"Not used by any dimension, element or formula: 'Diameter'.")],
+        kind='family', summary=u'Detail Items · 8 parameters (2 shared) · 1 types',
+        note=u'Shared parameters checked against: F:\...\PR_FOPv4.txt')
+    fam.fixes = [{'text': u"'ADSK_Revit Version' -> 'PR_Revit Version'"}, {'text': u"'Cap Thickness' -> shared"}]
+    fam.can_change = True
+    run('check_family.png', lambda: LoadCheckWindow(fam))
 
 
 load_check_windows()

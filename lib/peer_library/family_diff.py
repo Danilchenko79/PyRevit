@@ -331,6 +331,38 @@ def shared_file_self(shared, file_name=u'the company shared parameter file'):
     return res
 
 
+# ---- what Fix family can put right by itself -------------------------------------
+def fix_plan(sig, shared, remove_unused=False):
+    """Actions for family_fix.apply, each a dict with 'op', 'name', 'text':
+    rename_shared - shared parameter with an old name -> the company file's
+                    name (same GUID: projects keep their values);
+    to_shared     - family parameter whose name the company file has as one
+                    shared parameter -> that shared parameter (formulas and
+                    dimensions stay);
+    remove        - parameter nothing uses (only when asked).
+    A name with '?' in the company file is damaged - not used as a target."""
+    acts = []
+    if not sig:
+        return acts
+    by_guid = (shared or {}).get('by_guid') or {}
+    by_name = (shared or {}).get('by_name') or {}
+    names = set(p['name'] for p in sig.get('params') or [])
+    for p in sig.get('params') or []:
+        name, g = p['name'], (p.get('guid') or u'').lower()
+        if p.get('shared') and g in by_guid:
+            new = by_guid[g][0]
+            if new != name and u'?' not in new and new not in names and len(by_name.get(new, ())) == 1:
+                acts.append({'op': 'rename_shared', 'name': name, 'guid': g, 'new': new,
+                             'text': u"'{0}' -> '{1}' (same shared parameter)".format(name, new)})
+        elif not p.get('shared') and len(by_name.get(name, ())) == 1:
+            g2 = list(by_name[name])[0]
+            acts.append({'op': 'to_shared', 'name': name, 'guid': g2, 'new': name,
+                         'text': u"'{0}' -> the company shared parameter '{0}'".format(name)})
+        elif remove_unused and p.get('unused'):
+            acts.append({'op': 'remove', 'name': name, 'text': u"remove '{0}' (nothing uses it)".format(name)})
+    return acts
+
+
 def types_findings(broken):
     """broken = [(type name, Revit's error text)] from switching to each type."""
     res = []

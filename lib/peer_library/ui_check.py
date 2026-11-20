@@ -81,8 +81,21 @@ class LoadCheckWindow(forms.WPFWindow):
         self.list_label.Text = strings.FCHECK_LIST
         for f in report.findings or [(D.INFO, 'clean', strings.FCHECK_NOTHING)]:
             self.findings.Children.Add(self._row(f))
-        self.update_btn.Visibility = Visibility.Collapsed
-        self.aside_btn.Visibility = Visibility.Collapsed
+        fixes = len(getattr(report, 'fixes', None) or [])
+        folder_fix = getattr(report, 'fix_count', 0) or 0
+        if fixes:
+            self.update_btn.Content = strings.FIX_BTN.format(fixes)
+            self.update_btn.ToolTip = u'\n'.join(a['text'] for a in report.fixes[:20])
+        elif folder_fix:
+            self.update_btn.Content = strings.FIX_FOLDER_BTN.format(folder_fix)
+            self.update_btn.ToolTip = strings.FIX_FOLDER_TIP
+        else:
+            self.update_btn.Visibility = Visibility.Collapsed
+        if getattr(report, 'can_change', False):
+            self.aside_btn.Content = strings.FIX_CHANGE_BTN
+            self.aside_btn.ToolTip = strings.FIX_CHANGE_TIP
+        else:
+            self.aside_btn.Visibility = Visibility.Collapsed
         self.cancel_btn.Content = strings.FCHECK_CLOSE
         self.hint.Text = report.note
         self.hint.Visibility = Visibility.Visible if report.note else Visibility.Collapsed
@@ -130,13 +143,17 @@ class LoadCheckWindow(forms.WPFWindow):
             self.Close()
 
     def on_update(self, sender, args):
+        if self.report.kind == 'family':
+            self.choice = 'fix'
+            self.Close()
+            return
         if self.report.blocking and not U.ask(strings.CHECK_ANYWAY_ASK, strings.CHECK_TITLE):
             return
         self.choice = 'update'
         self.Close()
 
     def on_aside(self, sender, args):
-        self.choice = 'aside'
+        self.choice = 'change' if self.report.kind == 'family' else 'aside'
         self.Close()
 
     def on_cancel(self, sender, args):

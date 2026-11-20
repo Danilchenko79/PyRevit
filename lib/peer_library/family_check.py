@@ -185,8 +185,12 @@ def document_report(fd, cfg, app, name=None):
     note = (strings.FCHECK_SHARED_NOTE.format(spath) if shared
             else strings.FCHECK_NO_SHARED.format(spath or u'-'))
     found = D.ordered(found + D.shared_file_self(shared, os.path.basename(spath)))
-    return load_check.Report(name or sig.get('name') or fd.Title, found, kind='family',
-                             summary=summary, note=note)
+    rep = load_check.Report(name or sig.get('name') or fd.Title, found, kind='family',
+                            summary=summary, note=note)
+    rep.fixes = D.fix_plan(sig, shared)           # what Fix family can do by itself
+    rep.sig = sig
+    rep.shared_path = spath if shared else u''
+    return rep
 
 
 def report_folder():
@@ -208,11 +212,14 @@ def folder_report(app, folder, cfg, progress=None):
     files = family_files(folder)
     rows, summary_rows = [], []
     counts = {D.ERROR: 0, D.WARNING: 0, 'ok': 0}
+    fixable = 0
     for i, path in enumerate(files):
         if progress is not None and progress(i, len(files)) is False:
             break
         found = check_file(app, path, shared, sname, names)
         rel = os.path.relpath(path, folder)
+        if any(f[1] in FIXABLE for f in found):
+            fixable += 1
         for lv, code, text in found:
             rows.append((rel, lv, code, text))
         worst = D.worst([f for f in found if f[0] != D.INFO])
@@ -230,12 +237,19 @@ def folder_report(app, folder, cfg, progress=None):
         os.path.basename(os.path.normpath(folder)) or u'folder', stamp)), rows)
     note = (strings.FCHECK_SHARED_NOTE.format(spath) if shared
             else strings.FCHECK_NO_SHARED.format(spath or u'-'))
-    return load_check.Report(
+    rep = load_check.Report(
         strings.FCHECK_FOLDER_HEAD.format(len(files), folder),
         D.shared_file_self(shared, sname) + summary_rows, kind='family',
         summary=strings.FCHECK_FOLDER_SUMMARY.format(counts[D.ERROR], counts[D.WARNING],
                                                      counts['ok'], csv),
         note=note)
+    rep.folder = folder
+    rep.fix_count = fixable if shared else 0
+    return rep
+
+
+# findings Fix family can put right by itself (family_diff.fix_plan)
+FIXABLE = ('file_name', 'should_share')
 
 
 def write_csv(path, rows):

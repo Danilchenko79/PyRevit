@@ -169,6 +169,24 @@ class TestOneFamily(unittest.TestCase):
         c = codes(D.shared_file_self(shared, u'PR_FOPv4.txt'))
         self.assertEqual(sorted(c), ['file_lost_chars', 'file_twins'])
 
+    def test_fix_plan(self):
+        shared = {'by_guid': {u'g1': (u'PR_Revit Version', u'TEXT'), u'g2': (u'PR_?_Angle', u'ANGLE'),
+                              u'g3': (u'Cap Thickness', u'LENGTH'), u'g4': (u'PR_Name', u'TEXT'),
+                              u'g5': (u'PR_Name', u'TEXT')},
+                  'by_name': {u'PR_Revit Version': {u'g1'}, u'PR_?_Angle': {u'g2'},
+                              u'Cap Thickness': {u'g3'}, u'PR_Name': {u'g4', u'g5'}}}
+        u = par(u'Unused')
+        u['unused'] = True
+        s = sig([par(u'ADSK_Version', True, u'G1'), par(u'ADSK_Angle', True, u'g2'),
+                 par(u'Cap Thickness'), par(u'PR_Name'), u])
+        acts = D.fix_plan(s, shared)
+        self.assertEqual([(a['op'], a['name']) for a in acts],
+                         [('rename_shared', u'ADSK_Version'), ('to_shared', u'Cap Thickness')])
+        self.assertEqual(acts[0]['new'], u'PR_Revit Version')
+        self.assertEqual(acts[1]['guid'], u'g3')
+        self.assertEqual(D.fix_plan(s, shared, remove_unused=True)[-1]['op'], 'remove')
+        self.assertEqual(D.fix_plan(s, None), [])
+
     def test_types(self):
         f = D.types_findings([(u'600x600', u'Constraints are not satisfied')])
         self.assertEqual(codes(f), ['type_broken'])
