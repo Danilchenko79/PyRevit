@@ -30,6 +30,25 @@ Updating keeps the parameter values changed in the project (catalog types too), 
 **Overwrite parameter values in the project** - then the library values come back, also for a
 family that is already up to date.
 
+### Before a family in the project is replaced
+
+A family with the same name may already be in the project - an older library version, or somebody's
+own family that only has the same name. Before **Update** replaces it, the library checks what the
+update would do **in this project** (a trial load that is undone at once):
+
+- parameters of the project family that the library family does not have, or has as another shared
+  parameter (other GUID), another unit, type ↔ instance - with how many elements lose their values;
+- dimensions and tags Revit would delete, shared parameters whose name the project already uses with
+  another GUID, nested shared families that would be replaced in the whole project.
+
+Nothing breaks → it updates at once. Otherwise a window shows the two pictures and the list:
+**Update** / **Update anyway** (replaces and loses what is marked *Breaks*; Ctrl+Z undoes it),
+**Load next to it** (the project family keeps its elements and values under the name
+`<name> (project)`, the library one is added beside it) or **Cancel**. A family that did not come
+from the library always gets this window. Right click on a tile → **Check against this project…**
+shows it without loading. **Update all**, **Load collection** and **Update selected** leave such
+families alone and list them at the end.
+
 ## Keep a project up to date
 
 - **Need update** group → **Update all outdated**.
@@ -45,6 +64,20 @@ family that is already up to date.
 - **Propose family**: send a family file (from disk, the selected element, or the family editor).
   Automatic checks are shown but do not block sending.
 - Answers come in **Library → My proposals**.
+
+## Check a family (making or fixing one)
+
+**Check family** changes nothing and works on the open family (family editor), on the family of the
+selected element or type in a project, or - with nothing selected - on a whole folder of `.rfa`
+(list saved as CSV in `%LOCALAPPDATA%\PEER\checks`). It reports:
+
+- shared parameters against the company shared parameter file (`PR_FOPv4.txt` - the file set in
+  Revit, or `shared_params` in the library settings): the same name with another GUID breaks
+  schedules, tags and filters in projects; family parameters that should be the company's shared ones;
+- types that do not regenerate; names that differ only in case or spaces; parameters nothing uses;
+  nested shared families named like library families.
+
+**Publish** runs the same checks: another GUID blocks publishing, the rest are warnings.
 
 ## Admins (2–3 people)
 

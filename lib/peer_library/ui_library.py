@@ -18,7 +18,8 @@ from System.Windows.Threading import DispatcherTimer  # noqa: E402
 
 import threading  # noqa: E402
 
-from peer_library import catalog, groups, index, loader, log, search, strings, userprefs  # noqa: E402
+from peer_library import catalog, groups, index, load_check, loader, log, search, strings, \
+    userprefs  # noqa: E402
 from peer_library import ui_common as U  # noqa: E402
 from peer_library.cache import Cache  # noqa: E402
 
@@ -93,6 +94,7 @@ class LibraryWindow(forms.WPFWindow):
             self.menu[key] = mi
         add('load', lambda: self._do_load(place=False))
         add('place', lambda: self._do_load(place=True))
+        add('check', self.on_check)
         m.Items.Add(Separator())
         add('fav', lambda: self.on_fav(None, None))
         add('copy', lambda: Clipboard.SetText(self.current.card['id']))
@@ -102,6 +104,8 @@ class LibraryWindow(forms.WPFWindow):
             add('edit', lambda: self.on_edit_info(None, None))
             add('newver', lambda: self.on_new_version(None, None))
         self.menu['copy'].Header = strings.MENU_COPY_ID
+        self.menu['check'].Header = strings.MENU_CHECK
+        self.menu['check'].ToolTip = strings.MENU_CHECK_TIP
         self.menu['issue'].Header = strings.BTN_ISSUE
         if self.is_admin:
             self.menu['edit'].Header = strings.BTN_EDIT_INFO
@@ -117,6 +121,8 @@ class LibraryWindow(forms.WPFWindow):
         self.menu['load'].Header = self.load_btn.Content
         self.menu['place'].Header = self.place_btn.Content
         self.menu['fav'].Header = self.fav_btn.Content
+        self.menu['check'].Visibility = (Visibility.Visible if it.code != loader.MISSING
+                                         else Visibility.Collapsed)
 
     def _menu_do(self, action):
         if self.current is None:
@@ -718,7 +724,7 @@ class LibraryWindow(forms.WPFWindow):
         U.error(strings.OLD_REVIT.format(checks_file.LIBRARY_REVIT, self.doc.Application.VersionNumber))
         return True
 
-    def _do_load(self, place):
+    def _do_load(self, place, always_show=False):
         it = self.current
         if it is None or self._refuse_old_revit():
             return
@@ -734,13 +740,22 @@ class LibraryWindow(forms.WPFWindow):
             return
         card = it.card
         self.Cursor = Cursors.Wait
+        aside = None
         try:
             self.status_text.Text = strings.DOWNLOADING.format(card['id'])
             path = self.cache.get(card, '.rfa')
             if types:
                 # LoadFamilySymbol needs the catalog next to the file
                 self.cache.get(card, '.txt')
-            fam = loader.load_family(self.doc, path, card['id'], overwrite, types or None)
+            choice = self._check_before(it, path, types, overwrite, always_show)
+            if choice is None:
+                self.Cursor = None
+                self.status_text.Text = strings.CHECK_CANCELLED
+                return
+            if choice == 'aside':
+                aside = load_check.rename_aside(self.doc, card['id'])
+            fam = loader.load_family(self.doc, path, card['id'], overwrite, types or None,
+                                     delete_broken=(choice == 'anyway'))
         except Exception as ex:
             self.Cursor = None
             self.status_text.Text = u'{0}'.format(ex)
@@ -750,13 +765,17 @@ class LibraryWindow(forms.WPFWindow):
         if self.all_docs_box.IsChecked:
             for d in self._other_projects():
                 try:
+                    problem = self._quiet_check(d, it, path, types, overwrite)
+                    if problem:
+                        other_failed.append(u'{0}: {1}'.format(d.Title, problem))
+                        continue
                     loader.load_family(d, path, card['id'], overwrite, types or None)
                 except Exception as ex:
                     other_failed.append(u'{0}: {1}'.format(d.Title, ex))
         self.Cursor = None
         if other_failed:
             U.error(strings.OTHER_DOCS_FAILED + u'\n\n' + u'\n'.join(other_failed))
-        was = it.code
+        was = loader.MISSING if aside else it.code
         in_project = loader.project_families(self.doc)
         for x in self.items:
             if x.card['id'].lower() == card['id'].lower():
@@ -764,6 +783,8 @@ class LibraryWindow(forms.WPFWindow):
                 x.chip_host.Child = U.chip(x.label, x.code)
         msg = (strings.UPDATED.format(card['id'], card.get('version')) if was != loader.MISSING
                else strings.LOADED.format(card['id']))
+        if aside:
+            msg = strings.CHECK_ASIDE_DONE.format(aside, card['id'])
         userprefs.add_recent(card['id'])
         self.prefs = userprefs.load()
         self.status_text.Text = msg
@@ -789,36 +810,57 @@ class LibraryWindow(forms.WPFWindow):
             return
         if not U.ask(strings.UPDATE_ALL_ASK.format(len(todo))):
             return
-        done, failed = [], []
-        self.Cursor = Cursors.Wait
+        done, failed, skipped = self._load_many(todo, keep_types=True)
+        U.info(_batch_text(strings.UPDATE_ALL_DONE.format(len(done)), failed, skipped))
+
+    # ---- check before a family that is in the project is replaced ---------
+    def _check_before(self, it, path, types, overwrite, always_show=False):
+        """'load' (not in the project / nothing breaks / the person said Update),
+        'anyway' (Update anyway: Revit may delete what breaks), 'aside' (keep the
+        project family under another name) or None (cancelled)."""
+        card = it.card
+        if loader.find_family(self.doc, card['id']) is None:
+            return 'load'
+        self.status_text.Text = strings.CHECKING.format(card['id'])
+        U.refresh(self)
         try:
-            for x in todo:
-                card = x.card
-                self.status_text.Text = strings.DOWNLOADING.format(card['id'])
-                try:
-                    path = self.cache.get(card, '.rfa')
-                    types = None
-                    if card.get('type_catalog'):
-                        self.cache.get(card, '.txt')
-                        types = loader.family_type_names(
-                            self.doc, loader.find_family(self.doc, card['id'])) or None
-                    loader.load_family(self.doc, path, card['id'], False, types)
-                    done.append(card['id'])
-                except Exception as ex:
-                    log.write(u'update all {0}'.format(card['id']), exc=True)
-                    failed.append(u'{0}: {1}'.format(card['id'], ex))
-        finally:
+            rep = load_check.check(self.doc, path, card['id'], types or None, overwrite,
+                                   not_library=(it.code == loader.UNKNOWN),
+                                   previews_to=load_check.preview_folder())
+        except Exception as ex:
+            log.write(u'load check {0}'.format(card['id']), exc=True)
             self.Cursor = None
-        in_project = loader.project_families(self.doc)
-        for x in self.items:
-            self._set_status(x, in_project)
-            x.chip_host.Child = U.chip(x.label, x.code)
-        self._fill_groups()
-        self._apply_filter()
-        text = strings.UPDATE_ALL_DONE.format(len(done))
-        if failed:
-            text += u'\n\n' + u'\n'.join(failed[:10])
-        U.info(text)
+            ok = U.ask(strings.CHECK_FAILED_ASK.format(ex))
+            self.Cursor = Cursors.Wait
+            return 'load' if ok else None
+        if rep is None or (not rep.needs_look and not always_show):
+            self.status_text.Text = strings.CHECK_OK_STATUS
+            return 'load'
+        from peer_library.ui_check import LoadCheckWindow
+        self.Cursor = None
+        w = LoadCheckWindow(rep, self._preview_path(card), owner=self)
+        w.ShowDialog()
+        self.Cursor = Cursors.Wait
+        if w.choice == 'update':
+            return 'anyway' if rep.blocking else 'load'
+        return w.choice
+
+    def _quiet_check(self, doc, card, path, types, overwrite=False):
+        """For loads without a window (collections, Update all, other projects):
+        None = go ahead, else the reason to leave this family alone."""
+        in_project = loader.project_families(doc)
+        if card['id'].lower() not in in_project:
+            return None
+        if loader.status(card, in_project)[0] == loader.UNKNOWN:
+            return strings.CHECK_NOT_FROM_LIBRARY
+        rep = load_check.check(doc, path, card['id'], types or None, overwrite)
+        if rep is not None and rep.blocking:
+            return rep.first_problem()
+        return None
+
+    def on_check(self):
+        """Right click -> Check against this project: the window always opens."""
+        self._do_load(place=False, always_show=True)
 
     def _other_projects(self):
         """Other open, editable project documents (not families, not links)."""
@@ -1033,22 +1075,24 @@ class LibraryWindow(forms.WPFWindow):
             return
         if not U.ask(strings.COLL_LOAD_ASK.format(len(todo))):
             return
-        done, failed = self._load_many(todo)
+        done, failed, not_replaced = self._load_many(todo)
         text = strings.COLL_DONE.format(len(done))
         if skipped:
             text += u'\n\n' + strings.COLL_CATALOGS.format(u', '.join(skipped))
-        if failed:
-            text += u'\n\n' + u'\n'.join(failed[:10])
-        U.info(text)
+        U.info(_batch_text(text, failed, not_replaced))
 
     def _load_many(self, todo, keep_types=False):
-        """Load / update several families; returns (done ids, failure texts)."""
-        done, failed = [], []
+        """Load / update several families. A family that is in the project is
+        checked first and left alone when the update would break something or
+        when it is not from the library. Returns (done ids, failure texts,
+        texts of the families left alone)."""
+        done, failed, skipped = [], [], []
         self.Cursor = Cursors.Wait
         try:
             for x in todo:
                 card = x.card
                 self.status_text.Text = strings.DOWNLOADING.format(card['id'])
+                U.refresh(self)
                 try:
                     path = self.cache.get(card, '.rfa')
                     types = None
@@ -1056,6 +1100,12 @@ class LibraryWindow(forms.WPFWindow):
                         self.cache.get(card, '.txt')
                         types = loader.family_type_names(
                             self.doc, loader.find_family(self.doc, card['id'])) or None
+                    self.status_text.Text = strings.CHECKING.format(card['id'])
+                    U.refresh(self)
+                    problem = self._quiet_check(self.doc, card, path, types)
+                    if problem:
+                        skipped.append(u'{0}: {1}'.format(card['id'], problem))
+                        continue
                     loader.load_family(self.doc, path, card['id'], False, types)
                     userprefs.add_recent(card['id'])
                     done.append(card['id'])
@@ -1066,7 +1116,7 @@ class LibraryWindow(forms.WPFWindow):
             self.Cursor = None
         self.prefs = userprefs.load()
         self._refresh_statuses()
-        return done, failed
+        return done, failed, skipped
 
     def _refresh_statuses(self):
         in_project = loader.project_families(self.doc)
@@ -1147,12 +1197,9 @@ class LibraryWindow(forms.WPFWindow):
             return
         if not U.ask(strings.UPDATE_ALL_ASK.format(len(sel))):
             return
-        done, failed = self._load_many([r['item'] for r in sel], keep_types=True)
+        done, failed, skipped = self._load_many([r['item'] for r in sel], keep_types=True)
         self._fill_project()
-        text = strings.UPDATE_ALL_DONE.format(len(done))
-        if failed:
-            text += u'\n\n' + u'\n'.join(failed[:10])
-        U.info(text)
+        U.info(_batch_text(strings.UPDATE_ALL_DONE.format(len(done)), failed, skipped))
 
     def on_proj_propose(self, sender, args):
         sel = [r for r in self._proj_selected() if r['item'] is None]
@@ -1229,3 +1276,14 @@ class LibraryWindow(forms.WPFWindow):
                                    (u' · ' + p['comment']) if p.get('comment') else u'')
             self.mine_list.Items.Add(self._line(p.get('name') or p['id'], sub,
                                                 labels.get(p.get('status'), labels['pending'])))
+
+
+def _batch_text(text, failed, skipped):
+    """Result message of a load of several families."""
+    if skipped:
+        text += u'\n\n' + strings.CHECK_SKIPPED + u'\n' + u'\n'.join(u'- ' + s for s in skipped[:12])
+        if len(skipped) > 12:
+            text += u'\n... (+{0})'.format(len(skipped) - 12)
+    if failed:
+        text += u'\n\n' + u'\n'.join(failed[:10])
+    return text

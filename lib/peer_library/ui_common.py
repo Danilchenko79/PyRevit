@@ -111,6 +111,16 @@ def file_size(n):
     return u'{0:.0f} KB'.format(max(n / 1024.0, 1)) if n < 1024 * 1024 else u'{0:.1f} MB'.format(n / 1048576.0)
 
 
+def refresh(window):
+    """Let WPF draw pending changes (status text) during a long loop on the UI thread."""
+    try:
+        from System import Action
+        from System.Windows.Threading import DispatcherPriority
+        window.Dispatcher.Invoke(Action(lambda: None), DispatcherPriority.Background)
+    except Exception:
+        pass
+
+
 def info(text, title=strings.APP):
     MessageBox.Show(text, title, MessageBoxButton.OK, MessageBoxImage.Information)
 

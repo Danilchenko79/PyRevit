@@ -47,4 +47,40 @@ run('request.png', lambda: TextWindow(strings.TITLE_REQUEST, strings.REQUEST_HEA
                                       strings.REQUEST_L1, strings.REQUEST_L2, strings.BTN_SEND,
                                       lambda a, b: None))
 run('edit_info.png', lambda: EditInfoWindow(be.get_index()['families'][0]))
+
+
+def load_check_windows():
+    """The check before an update: a family that breaks things, and a clean one.
+    Data like the Revit test of 20.11.2026 (an old corner family with the
+    library name); pictures from the cache when they are there."""
+    from peer_library import family_diff as D, load_check
+    from peer_library.ui_check import LoadCheckWindow
+    LEN, INT, TXT = u'autodesk.spec.aec:length-2.0.0', u'autodesk.spec:int-2.0.0', u'autodesk.spec:string-2.0.0'
+
+    def p(name, shared=False, guid=u'', spec=LEN):
+        return {'name': name, 'shared': shared, 'guid': guid, 'instance': True, 'spec': spec,
+                'formula': u'', 'reporting': False}
+    old = {'category': u'Detail Items', 'types': [u'Corner'], 'nested': [],
+           'params': [p(u'A'), p(u'Note', spec=TXT), p(u'Rebar_Number', True, u'ea1e3542-018b-4ec2-ad9a-ff2d969c3897', INT)]}
+    new = {'category': u'Detail Items', 'types': [u'Corner v2'], 'nested': [],
+           'params': [p(u'Rebar_Number', True, u'3daaa3a8-42d9-4e71-86e3-9541a415b23b', INT),
+                      p(u'Active_WallBot'), p(u'Active_WallTop'), p(u'Corner_Quantity b', spec=INT)]}
+    trial = {'failed': [], 'warnings': [], 'resolved': [u'One or more dimension references are or have become invalid.'],
+             'deleted': {'dimensions': 1}, 'lost': {u'A': [4, 0], u'Note': [4, 0], u'Rebar_Number': [4, 0]},
+             'changed': {}, 'instances': 4, 'types': 1}
+    fid = u'PR_Reinforcement in corner v2'
+    findings = D.soften(D.compare(old, new), trial) + D.trial_findings(trial)
+    findings.append((D.WARNING, 'not_library', strings.CHECK_NOT_LIBRARY))
+    rep = load_check.Report(fid, findings, trial, not_library=True)
+    scratch = os.environ.get('PEER_PREVIEW_PICTURES', u'')
+    rep.project_png = os.path.join(scratch, u'project_real_corner.png') if scratch else None
+    lib_png = os.path.join(os.environ['LOCALAPPDATA'], u'PEER', u'Library', u'03_Rebar_2D', fid + u'.png')
+    run('check_breaks.png', lambda: LoadCheckWindow(rep, lib_png))
+    clean = load_check.Report(u'PEER-Concrete-Column-Rectangular',
+                              [(D.INFO, 'param_new', u"New in the library: 'Chamfer'.")],
+                              {'instances': 12, 'types': 3})
+    run('check_clean.png', lambda: LoadCheckWindow(clean, None))
+
+
+load_check_windows()
 print('message boxes:', MSGS or 'none')

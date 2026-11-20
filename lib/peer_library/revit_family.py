@@ -21,15 +21,37 @@ PREVIEW_PX = 256
 
 
 class Guard(DB.IFailuresPreprocessor):
-    """Warnings are dropped, errors roll the transaction back silently."""
+    """Warnings are dropped, errors roll the transaction back silently.
+
+    delete_broken=True: an error Revit can fix by deleting elements (e.g.
+    "dimension references are or have become invalid" after a family is
+    replaced) is fixed that way instead - only when the person chose it."""
 
     last_errors = []
+    last_warnings = []           # texts of the dropped warnings (load check reads them)
+    last_resolved = []           # texts of errors fixed by deleting elements
+
+    def __init__(self, delete_broken=False):
+        self.delete_broken = delete_broken
 
     def PreprocessFailures(self, fa):
-        err = False
+        err = resolved = False
         for f in fa.GetFailureMessages():
             if f.GetSeverity() == DB.FailureSeverity.Warning:
+                try:
+                    Guard.last_warnings.append(f.GetDescriptionText())
+                except Exception:
+                    pass
                 fa.DeleteWarning(f)
+            elif (self.delete_broken
+                  and f.HasResolutionOfType(DB.FailureResolutionType.DeleteElements)):
+                try:
+                    Guard.last_resolved.append(f.GetDescriptionText())
+                except Exception:
+                    pass
+                f.SetCurrentResolutionType(DB.FailureResolutionType.DeleteElements)
+                fa.ResolveFailure(f)
+                resolved = True
             else:
                 err = True
                 try:
@@ -38,7 +60,52 @@ class Guard(DB.IFailuresPreprocessor):
                     pass
         if err:
             return DB.FailureProcessingResult.ProceedWithRollBack
+        if resolved:
+            return DB.FailureProcessingResult.ProceedWithCommit
         return DB.FailureProcessingResult.Continue
+
+
+class QuietOpen(object):
+    """with QuietOpen(app): fd = app.OpenDocumentFile(path)
+
+    A family with warnings, opened in the background, makes Revit show its
+    modal "Warnings" dialog - a script (and the connector) then waits until
+    someone presses OK (seen 20.11.2026, PEER-Library-Source). While this is
+    active, warnings are dismissed; errors are left to Revit."""
+
+    def __init__(self, app):
+        self.app = app
+        self.dismissed = []
+        self._h = self._on_failures
+
+    def _on_failures(self, sender, args):
+        try:
+            fa = args.GetFailuresAccessor()
+            for f in fa.GetFailureMessages():
+                if f.GetSeverity() == DB.FailureSeverity.Warning:
+                    try:
+                        self.dismissed.append(f.GetDescriptionText())
+                    except Exception:
+                        pass
+                    fa.DeleteWarning(f)
+        except Exception:
+            pass
+
+    def __enter__(self):
+        self.app.FailuresProcessing += self._h
+        return self
+
+    def __exit__(self, *exc):
+        try:
+            self.app.FailuresProcessing -= self._h
+        except Exception:
+            pass
+        return False
+
+
+def open_quiet(app, path):
+    with QuietOpen(app):
+        return app.OpenDocumentFile(path)
 
 
 def _transaction(doc, name):
@@ -252,7 +319,9 @@ def _square_png(src, dst, size):
     from System.Drawing.Imaging import ImageFormat
     img = Bitmap(src)
     try:
-        box = _content_box(img) or (0, 0, img.Width, img.Height)
+        box = _content_box(img)
+        if box is None:
+            raise Exception(u'the picture is empty (nothing drawn in the view)')
         bw, bh = max(1, min(box[2], img.Width - box[0])), max(1, min(box[3], img.Height - box[1]))
         canvas = Bitmap(size, size)
         g = Graphics.FromImage(canvas)
@@ -316,6 +385,36 @@ def export_preview(fd, view, png_path):
     return png_path
 
 
+def make_preview(fd, png_path, family_id, category=None):
+    """(png path or None, problem text or None). The family's views are put
+    back as they were (the family may be saved afterwards)."""
+    png, restore = None, None
+    if category is None:
+        cat = fd.OwnerFamily.FamilyCategory if fd.OwnerFamily else None
+        category = cat.Name if cat else u''
+    if category == u'Rebar Shape':
+        try:
+            png = image_type_preview(fd, png_path)
+        except Exception:
+            log.write(u'rebar shape image {0}'.format(family_id), exc=True)
+    try:
+        if png:
+            return png, None
+        view, restore = _setup_view(fd, family_id)
+        if view is None:
+            return None, u'No view for a preview'
+        return export_preview(fd, view, png_path), None
+    except Exception as ex:
+        log.write(u'preview {0}'.format(family_id), exc=True)
+        return None, u'Preview not made: {0}'.format(ex)
+    finally:
+        if restore is not None:
+            try:
+                restore()
+            except Exception:
+                log.write(u'restore view {0}'.format(family_id), exc=True)
+
+
 # ---- whole preparation -----------------------------------------------------
 def prepare_family(app, source, family_id, version, workdir):
     """-> dict(results, rfa, png, catalog, category, revit).
@@ -349,7 +448,7 @@ def prepare_family(app, source, family_id, version, workdir):
     fd = None
     try:
         try:
-            fd = app.OpenDocumentFile(copy)
+            fd = open_quiet(app, copy)
         except Exception as ex:
             log.write(u'open {0}: {1}'.format(source, ex), exc=True)
             res.append(('error', 'open', u'Revit could not open the family: {0}'.format(ex)))
@@ -359,6 +458,14 @@ def prepare_family(app, source, family_id, version, workdir):
             return out
         doc_res, out['category'] = family_checks(fd)
         res.extend(doc_res)
+        try:
+            # company shared parameters (another GUID = error), types that do not
+            # regenerate, name twins, nested library names - the Check Family rules
+            from peer_library import config, family_check
+            res.extend(family_check.publish_checks(app, fd, config.load()))
+        except Exception as ex:
+            log.write(u'family check {0}'.format(family_id), exc=True)
+            res.append(('warning', 'family_check', u'Family check not run: {0}'.format(ex)))
         try:
             out['types'] = [t.Name for t in fd.FamilyManager.Types if t.Name and t.Name.strip()]
         except Exception:
@@ -373,31 +480,10 @@ def prepare_family(app, source, family_id, version, workdir):
         if problem:
             res.append(('warning', 'version', u'{0} not written: {1} - the version in projects '
                                               u'will show as unknown'.format(VERSION_PARAM, problem)))
-        restore = None
-        png_path = os.path.join(out_dir, family_id + '.png')
-        if out['category'] == u'Rebar Shape':
-            try:
-                out['png'] = image_type_preview(fd, png_path)
-            except Exception:
-                log.write(u'rebar shape image {0}'.format(family_id), exc=True)
-        try:
-            if out['png']:
-                view = None
-            else:
-                view, restore = _setup_view(fd, family_id)
-            if view is not None:
-                out['png'] = export_preview(fd, view, png_path)
-            elif not out['png']:
-                res.append(('warning', 'preview', u'No view for a preview'))
-        except Exception as ex:
-            log.write(u'preview {0}'.format(family_id), exc=True)
-            res.append(('warning', 'preview', u'Preview not made: {0}'.format(ex)))
-        finally:
-            if restore is not None:
-                try:
-                    restore()
-                except Exception:
-                    log.write(u'restore view {0}'.format(family_id), exc=True)
+        out['png'], problem = make_preview(fd, os.path.join(out_dir, family_id + '.png'),
+                                           family_id, out['category'])
+        if problem:
+            res.append(('warning', 'preview', problem))
         so = DB.SaveAsOptions()
         so.OverwriteExistingFile = True
         so.Compact = True

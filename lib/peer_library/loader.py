@@ -120,10 +120,10 @@ class LoadOptions(DB.IFamilyLoadOptions):
         return True, DB.FamilySource.Family, self.overwrite
 
 
-def _tx(doc, name):
+def _tx(doc, name, delete_broken=False):
     tx = DB.Transaction(doc, name)
     o = tx.GetFailureHandlingOptions()
-    o.SetFailuresPreprocessor(Guard())
+    o.SetFailuresPreprocessor(Guard(delete_broken))
     o.SetClearAfterRollback(True)
     tx.SetFailureHandlingOptions(o)
     return tx
@@ -145,7 +145,7 @@ def find_family(doc, family_id):
     return None
 
 
-def load_family(doc, path, family_id, overwrite=False, type_names=None):
+def load_family(doc, path, family_id, overwrite=False, type_names=None, delete_broken=False):
     """Load / reload the whole family, or only type_names from its catalog.
     Returns the Family (or None for rebar shapes). Raises with a short text.
 
@@ -155,7 +155,11 @@ def load_family(doc, path, family_id, overwrite=False, type_names=None):
       a copy with an empty edit is loaded instead, which Revit takes as new;
     - catalog types (LoadFamilySymbol) always get the catalog values, whatever
       overwrite says - without overwrite the project values are read before
-      and written back after (same transaction, one Undo)."""
+      and written back after (same transaction, one Undo);
+    - a dimension to a reference the new family does not have is an error -
+      the load is rolled back, unless delete_broken (the person chose
+      "Update anyway") lets Revit delete such dimensions."""
+    Guard.last_errors, Guard.last_warnings, Guard.last_resolved = [], [], []
     existing = find_family(doc, family_id)
     touched = None
     if overwrite and existing is not None and not type_names:
@@ -164,7 +168,7 @@ def load_family(doc, path, family_id, overwrite=False, type_names=None):
     if type_names and existing is not None and not overwrite:
         kept = _type_values(doc, existing, type_names)
     opts = LoadOptions(overwrite, family_id)
-    tx = _tx(doc, u'PEER Library: load {0}'.format(family_id))
+    tx = _tx(doc, u'PEER Library: load {0}'.format(family_id), delete_broken)
     tx.Start()
     try:
         if type_names:
@@ -185,7 +189,7 @@ def load_family(doc, path, family_id, overwrite=False, type_names=None):
         if touched:
             _remove(touched)
     if tx.GetStatus() != DB.TransactionStatus.Committed:
-        raise Exception(u'Revit rolled the load back (see the warnings in the log).')
+        raise Exception(strings.LOAD_REFUSED.format(u'; '.join(Guard.last_errors[:2]) or u'?'))
     global LAST_OPTIONS
     LAST_OPTIONS = opts
     return find_family(doc, family_id)
@@ -211,7 +215,8 @@ def _touched_copy(app, path, family_id):
     shutil.copyfile(path, copy)
     fd = None
     try:
-        fd = app.OpenDocumentFile(copy)
+        from peer_library.revit_family import open_quiet
+        fd = open_quiet(app, copy)
         tx = _tx(fd, u'PEER Library: reset values')
         tx.Start()
         try:

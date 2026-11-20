@@ -12,6 +12,8 @@ Keys:
     cache    local copy, default %LOCALAPPDATA%/PEER/Library
     role     'user' | 'admin' - local backend only; the service decides itself
     user     name shown on proposals, default = Windows user name
+    shared_params  company shared parameter file for the family checks;
+             empty = the file set in Revit (Manage > Shared Parameters)
 """
 
 import os
@@ -26,6 +28,7 @@ DEFAULTS = {
     'role': u'user',
     'user': u'',
     'overwrite_params': False,
+    'shared_params': u'',
     'last_ok': u'',      # http: last successful key check (ISO), 14 days offline grace
     'seen_until': u'',   # changelog time the user has seen (library window opened)
     'notify_checked': u'',  # last startup notification check (ISO, local)
