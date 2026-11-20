@@ -301,14 +301,14 @@ def hygiene_findings(sig, library_names=None):
 
 
 def _real_twins(names):
-    """'b' / 'B', 'Washer d' / 'Washer D' are a drawing convention (two
-    dimensions), not a typo: case differences in one-letter words do not count."""
+    """'b' / 'B', 'r1' / 'R1', 'Washer d' / 'Washer D' are a drawing convention (two
+    dimensions), not a typo: case differences in 1-2 letter words do not count."""
     first = names[0]
     for other in names[1:]:
         if first.strip() != u' '.join(first.split()) or other.strip() != u' '.join(other.split()):
             return True                                    # doubled spaces inside
         a, b = first.split(), other.split()
-        if any(x != y and len(x) > 1 for x, y in zip(a, b)):
+        if any(x != y and len(x) > 2 for x, y in zip(a, b)):
             return True
     return False
 

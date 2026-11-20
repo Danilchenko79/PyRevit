@@ -158,7 +158,8 @@ class TestOneFamily(unittest.TestCase):
         self.assertIn('no_version', codes(D.hygiene_findings(sig([par(u'A')]))))
 
     def test_one_letter_case_is_a_convention(self):
-        s = sig([par(u'b'), par(u'B'), par(u'Washer d'), par(u'Washer D'), par(u'PEER_Version')])
+        s = sig([par(u'b'), par(u'B'), par(u'r1'), par(u'R1'), par(u'Washer d'), par(u'Washer D'),
+                 par(u'PEER_Version')])
         self.assertNotIn('twins', codes(D.hygiene_findings(s)))
         s = sig([par(u'Cover Top'), par(u'cover top'), par(u'PEER_Version')])
         self.assertIn('twins', codes(D.hygiene_findings(s)))
