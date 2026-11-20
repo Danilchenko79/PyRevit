@@ -22,6 +22,7 @@ RULES OF USE
   link visibility in the template is set to Custom / By linked view.
 """
 
+import peer_access; peer_access.require_key()  # one PEER key (lib/peer_library/access.py)
 import re
 
 from pyrevit import forms, script

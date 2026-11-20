@@ -23,17 +23,15 @@ try:
 except Exception:
     pass
 
-# Панель Library видна только там, где библиотека настроена (адрес сервиса в
-# lib/peer_library/settings.json или на этом компьютере): без настройки её кнопки не работают.
+# Панели Library и Account видны только там, где настроен сервис (адрес в
+# lib/peer_library/settings.json или на этом компьютере). Если в настройках включён замок
+# (access_lock) и на компьютере нет действующего ключа - остальные панели PEER скрыты, остаются
+# Account и Feedback. Затем в фоне ключ сверяется с сервисом (отозванный ключ забывается,
+# без сети действует последняя проверка, 14 дней). Логика - lib/peer_library/access.py.
 try:
-    from peer_library import config as _peer_library_config
-    if not _peer_library_config.panel_visible():
-        from pyrevit.coreutils import ribbon as _peer_ribbon
-        for _tab in _peer_ribbon.get_current_ui().get_pyrevit_tabs():
-            if _tab.name == 'PEER':
-                _panel = _tab.find_child('Library')
-                if _panel is not None:
-                    _panel.visible = False
+    from peer_library import access as _peer_access
+    _peer_access.apply_ribbon()
+    _peer_access.refresh_async()
 except Exception:
     pass
 

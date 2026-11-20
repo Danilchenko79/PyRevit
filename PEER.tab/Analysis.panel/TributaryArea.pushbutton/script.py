@@ -19,6 +19,7 @@ How-To:
     Shift+click - starting settings (zones, cover, bars, fck).
     Files go to Documents\\PEER_Tributary.
 """
+import peer_access; peer_access.require_key()  # one PEER key (lib/peer_library/access.py)
 import os
 import sys
 # lib/ is on sys.path only after a pyRevit reload; make the button self-sufficient

@@ -17,6 +17,7 @@ How-To:
     2. Choose the floor mode.
 '''
 
+import peer_access; peer_access.require_key()  # one PEER key (lib/peer_library/access.py)
 import os as _os, sys as _sys
 _ext = _os.path.dirname(_os.path.abspath(__file__))
 while _ext and not _ext.endswith('.extension'):

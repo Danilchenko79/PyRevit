@@ -9,7 +9,8 @@ CREATE TABLE IF NOT EXISTS keys (
     active     INTEGER NOT NULL DEFAULT 1,
     created    TEXT NOT NULL,
     created_by TEXT,
-    last_used  TEXT
+    last_used  TEXT,
+    version    TEXT NOT NULL DEFAULT ''   -- PEER version this key last checked in with
 );
 
 CREATE TABLE IF NOT EXISTS proposals (

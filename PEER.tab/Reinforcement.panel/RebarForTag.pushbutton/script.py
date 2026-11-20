@@ -11,6 +11,7 @@ Includes grouped output, error highlighting, and View Type checks (ignores Secti
 __title__ = "Check\nRebar Links"
 __author__ = "BIM Specialist"
 
+import peer_access; peer_access.require_key()  # one PEER key (lib/peer_library/access.py)
 import clr
 
 clr.AddReference('RevitAPI')

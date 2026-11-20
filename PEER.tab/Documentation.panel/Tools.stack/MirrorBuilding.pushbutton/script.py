@@ -17,6 +17,7 @@ Description:
     source view), so overwrite never touches manual elements.
 '''
 
+import peer_access; peer_access.require_key()  # one PEER key (lib/peer_library/access.py)
 from Autodesk.Revit.DB import (
     Transaction, Reference, ReferenceArray, Line, Arc, XYZ, ElementId, Plane,
     ElementTransformUtils, RevitLinkInstance, IndependentTag, TagOrientation, Dimension,

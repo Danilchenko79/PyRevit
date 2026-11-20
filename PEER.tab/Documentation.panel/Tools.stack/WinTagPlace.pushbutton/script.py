@@ -31,6 +31,7 @@ How-To:
    3. Read the report: added / already tagged / removed.
 '''
 
+import peer_access; peer_access.require_key()  # one PEER key (lib/peer_library/access.py)
 import re
 from Autodesk.Revit.DB import (
     FilteredElementCollector, BuiltInCategory, BuiltInParameter, StorageType,

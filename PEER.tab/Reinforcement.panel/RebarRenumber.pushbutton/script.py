@@ -3,6 +3,7 @@ __title__ = "Rebar Renumber v.3"
 __doc__ = "Renumbering + Smart Tag Update + QA Report"
 __author__ = "BIM Specialist"
 
+import peer_access; peer_access.require_key()  # one PEER key (lib/peer_library/access.py)
 from pyrevit import revit, DB, forms, script
 from Autodesk.Revit.DB import *
 import re

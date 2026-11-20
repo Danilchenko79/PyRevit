@@ -12,6 +12,7 @@ How-To:
     3. Click Copy
 '''
 
+import peer_access; peer_access.require_key()  # one PEER key (lib/peer_library/access.py)
 from Autodesk.Revit.DB import (
     FilteredElementCollector, Viewport, ElementTransformUtils,
     CopyPasteOptions, Transform, ElementId, Transaction, View, XYZ

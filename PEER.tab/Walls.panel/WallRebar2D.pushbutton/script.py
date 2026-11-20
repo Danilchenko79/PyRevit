@@ -31,6 +31,7 @@ How-To:
     Report:   %TEMP%/peer_revit_logs/wallrebar2d_report.json
 '''
 
+import peer_access; peer_access.require_key()  # one PEER key (lib/peer_library/access.py)
 import os as _os
 import sys as _sys
 

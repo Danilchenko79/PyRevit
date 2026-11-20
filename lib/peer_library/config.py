@@ -14,6 +14,9 @@ Keys:
     user     name shown on proposals, default = Windows user name
     shared_params  company shared parameter file for the family checks;
              empty = the file set in Revit (Manage > Shared Parameters)
+    access_lock    True = every PEER button needs a signed-in key (set in the repo file
+             once everybody has a key)
+    channel  'stable' | 'beta' - which PEER package / template this computer follows
 """
 
 import os
@@ -32,6 +35,8 @@ DEFAULTS = {
     'last_ok': u'',      # http: last successful key check (ISO), 14 days offline grace
     'seen_until': u'',   # changelog time the user has seen (library window opened)
     'notify_checked': u'',  # last startup notification check (ISO, local)
+    'access_lock': False,   # True: PEER buttons need a signed-in key (peer_library/access.py)
+    'channel': u'stable',   # update channel of the PEER package and the template: stable | beta
 }
 
 OFFLINE_DAYS = 14

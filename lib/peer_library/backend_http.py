@@ -272,7 +272,12 @@ class HttpBackend(Backend):
 
     # ---- read -----------------------------------------------------------------
     def auth(self):
-        data = self._get_json('/auth')
+        try:
+            from peer_library import version
+            head = {'X-PEER-Version': version.text().encode('ascii', 'replace').decode('ascii')}
+        except Exception:
+            head = None
+        data = json.loads(self._call('GET', '/auth', headers=head))
         self.user, self.role = data.get('name') or u'', data.get('role') or u'user'
         try:
             self.cfg = config.save_local(user=self.user, role=self.role,

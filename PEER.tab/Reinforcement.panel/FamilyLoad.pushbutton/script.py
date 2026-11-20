@@ -6,6 +6,7 @@ Date    = 02.06.2025
 Loads all families from a folder"""
 
 
+import peer_access; peer_access.require_key()  # one PEER key (lib/peer_library/access.py)
 from pyrevit import revit, DB, forms
 import os
 import re  # модуль для работы с регулярными выражениями

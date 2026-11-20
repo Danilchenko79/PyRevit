@@ -6,6 +6,7 @@ __author__ = "Dmitry D"
 # (уровень не выбирается, кнопки молчат).
 __persistentengine__ = True
 
+import peer_access; peer_access.require_key()  # one PEER key (lib/peer_library/access.py)
 from pyrevit import revit, forms, script
 from Autodesk.Revit.DB import (
     Transaction,

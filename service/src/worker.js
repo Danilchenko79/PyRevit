@@ -77,14 +77,24 @@ async function authenticate(request, env) {
   const h = (request.headers.get('authorization') || '').trim();
   const m = /^Bearer\s+(peer_[A-Za-z0-9_-]{20,})$/.exec(h);
   if (!m) throw new HttpError(401, 'No library key - sign in with your PEER key.');
-  const row = await env.DB.prepare('SELECT id, name, role, active, last_used FROM keys WHERE hash = ?')
+  const row = await env.DB.prepare('SELECT id, name, role, active, last_used, version FROM keys WHERE hash = ?')
     .bind(await digestHex('SHA-256', m[1])).first();
   if (!row || !row.active) throw new HttpError(401, 'This library key is not valid any more - ask an admin.');
   const now = Date.now();
-  if (!row.last_used || now - Date.parse(row.last_used + 'Z') > LAST_USED_EVERY_MS) {
+  // which PEER this person runs (sent with the key check) - the admin sees who is on which version
+  const ver = clientVersion(request);
+  if (ver && ver !== (row.version || '')) {
+    await env.DB.prepare('UPDATE keys SET version = ?, last_used = ? WHERE id = ?').bind(ver, nowIso(), row.id).run();
+    row.version = ver;
+  } else if (!row.last_used || now - Date.parse(row.last_used + 'Z') > LAST_USED_EVERY_MS) {
     await env.DB.prepare('UPDATE keys SET last_used = ? WHERE id = ?').bind(nowIso(), row.id).run();
   }
   return row;
+}
+
+function clientVersion(request) {
+  const v = (request.headers.get('x-peer-version') || '').trim();
+  return /^[A-Za-z0-9 ._()-]{1,40}$/.test(v) ? v : '';
 }
 
 function needAdmin(who) {
@@ -587,7 +597,7 @@ async function route(request, env) {
 
   if (method === 'GET' && path === '/keys') {
     needAdmin(who);
-    const r = await env.DB.prepare('SELECT id, name, role, active, created, created_by, last_used FROM keys ORDER BY active DESC, name').all();
+    const r = await env.DB.prepare('SELECT id, name, role, active, created, created_by, last_used, version FROM keys ORDER BY active DESC, name').all();
     return json(r.results || []);
   }
   if (method === 'POST' && path === '/keys') return addKey(request, env, who);

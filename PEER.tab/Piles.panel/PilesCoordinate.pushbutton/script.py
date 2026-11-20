@@ -13,6 +13,7 @@ How-To:
     2. Click the button - all piles in the model are processed
 '''
 
+import peer_access; peer_access.require_key()  # one PEER key (lib/peer_library/access.py)
 import clr
 
 clr.AddReference('RevitAPI')

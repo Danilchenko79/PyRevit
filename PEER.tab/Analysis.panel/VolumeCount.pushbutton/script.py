@@ -15,6 +15,7 @@ How-To:
     2) Read the report in the pyRevit window; "Select" links select elements.
 '''
 
+import peer_access; peer_access.require_key()  # one PEER key (lib/peer_library/access.py)
 import os
 import sys
 import codecs

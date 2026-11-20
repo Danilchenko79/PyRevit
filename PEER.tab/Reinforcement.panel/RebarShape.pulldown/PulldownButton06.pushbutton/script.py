@@ -6,6 +6,7 @@ __doc__     = """Version = 1.0"""
 # ║║║║╠═╝║ ║╠╦╝ ║ ╚═╗
 # ╩╩ ╩╩  ╚═╝╩╚═ ╩ ╚═╝
 #==================================================
+import peer_access; peer_access.require_key()  # one PEER key (lib/peer_library/access.py)
 from Autodesk.Revit.DB import *
 
 #.NET Imports

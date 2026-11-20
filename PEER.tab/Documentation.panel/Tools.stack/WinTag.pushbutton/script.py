@@ -37,6 +37,7 @@ How-To:
       run). When nothing changes, no question is asked.
 '''
 
+import peer_access; peer_access.require_key()  # one PEER key (lib/peer_library/access.py)
 import sys
 from collections import Counter
 from Autodesk.Revit.DB import (

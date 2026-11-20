@@ -2,6 +2,7 @@
 __title__ = "Rebar Tag"
 __doc__ = "Places a tag on Sections, Elevations, and Plans. Automatically sets up the Work Plane and transfers parameters."
 
+import peer_access; peer_access.require_key()  # one PEER key (lib/peer_library/access.py)
 import traceback
 from pyrevit import revit, DB, forms
 from Autodesk.Revit.DB import *

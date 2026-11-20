@@ -65,11 +65,12 @@
         <ListView x:Name="keys_list" Grid.Row="3" BorderBrush="#D6D3D1" Foreground="#111827">
             <ListView.View>
                 <GridView>
-                    <GridViewColumn Header="Name" Width="200" DisplayMemberBinding="{Binding name}"/>
+                    <GridViewColumn Header="Name" Width="180" DisplayMemberBinding="{Binding name}"/>
                     <GridViewColumn Header="Role" Width="70" DisplayMemberBinding="{Binding role}"/>
                     <GridViewColumn Header="State" Width="80" DisplayMemberBinding="{Binding state}"/>
-                    <GridViewColumn Header="Last used" Width="140" DisplayMemberBinding="{Binding last_used}"/>
-                    <GridViewColumn Header="Given" Width="140" DisplayMemberBinding="{Binding created}"/>
+                    <GridViewColumn Header="PEER version" Width="110" DisplayMemberBinding="{Binding version}"/>
+                    <GridViewColumn Header="Last used" Width="130" DisplayMemberBinding="{Binding last_used}"/>
+                    <GridViewColumn Header="Given" Width="130" DisplayMemberBinding="{Binding created}"/>
                 </GridView>
             </ListView.View>
         </ListView>

@@ -19,7 +19,7 @@ foreach ($n in 'pyRevitLabs.IronPython.dll', 'pyRevitLabs.IronPython.Modules.dll
   [void][Reflection.Assembly]::LoadFrom((Join-Path $eng $n))
 }
 Get-ChildItem $eng -Filter 'pyRevitLabs.Microsoft.*.dll' | ForEach-Object { [void][Reflection.Assembly]::LoadFrom($_.FullName) }
-$scripts = if ($Script -eq 'all') { 'library', 'windows' } else { @($Script) }
+$scripts = if ($Script -eq 'all') { 'library', 'windows', 'account' } else { @($Script) }
 foreach ($name in $scripts) {
   $file = Join-Path $here ($name + '.py')
   $py = [IronPython.Hosting.Python]::CreateEngine()

@@ -11,6 +11,7 @@ __doc__ = ("Level sheets + their structural plans, in one run.\n\n"
            "crop region hidden.\n\n"
            "Shift+click: edit the custom elevation text used in sheet names.")
 
+import peer_access; peer_access.require_key()  # one PEER key (lib/peer_library/access.py)
 from pyrevit import revit, DB, script
 from pyrevit.forms import alert
 

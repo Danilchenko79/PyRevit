@@ -282,3 +282,34 @@ INBOX_EMPTY = (u'Nothing waiting for review.\n\n'
                u'New proposals, requests and problem reports from colleagues appear here.')
 INBOX_SELECT = u'Select a proposal on the left.'
 NOT_ADMIN = u'Only library admins can do this.'
+
+# ---- account (one key for the whole PEER tab) --------------------------------
+ACC_TITLE = u'PEER - Account'
+ACC_DASH = u'-'
+ACC_ST_OK = u'Signed in'
+ACC_ST_STALE = u'Key not checked for 14 days'
+ACC_ST_NONE = u'Not signed in'
+ACC_ST_REQUESTED = u'Access request waiting'
+ACC_ST_REVOKED = u'Key not valid'
+ACC_ST_OFF = u'Not set up'
+ACC_OK = u'This key opens the PEER buttons and the family library on this computer.'
+ACC_OFFLINE = (u'No connection to the PEER service - working from the last check. '
+               u'PEER keeps working offline for {0} more day(s).')
+ACC_STALE = u'Connect to the internet and press Check now.'
+ACC_STALE_LOCKED = (u'The key was last checked more than 14 days ago - the PEER buttons are off. '
+                    u'Connect to the internet and press Check now.')
+ACC_NONE = u'Sign in with the key from a PEER admin, or request access.'
+ACC_NONE_LOCKED = (u'The PEER buttons are off until you sign in. Paste the key from a PEER admin, '
+                   u'or request access.')
+ACC_REQUESTED = (u'Your access request is waiting for an admin. Press Sign in after it is approved - '
+                 u'you are signed in automatically.')
+ACC_REVOKED = u'This key is not valid any more. Ask a PEER admin for a new one, or request access.'
+ACC_OFF = u'The PEER service address is not set on this computer - nothing to sign in to.'
+ACC_ROLE_ADMIN = u'Admin'
+ACC_ROLE_USER = u'User'
+ACC_BTN_SIGNIN = u'Sign in / request access…'
+ACC_BTN_CHANGE = u'Change key…'
+ACC_SIGNOUT_ASK = (u'Sign out on this computer?\n\nThe key is removed from this computer. '
+                   u'To sign in again you need the key or a new access request.')
+ACC_NEED_KEY = (u'PEER works with a personal key.\n\nSign in now? (PEER tab → Account: paste the key '
+                u'from a PEER admin, or request access.)')

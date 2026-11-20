@@ -23,6 +23,7 @@ of that view's filters (View Filters). First matching filter wins.
 __title__ = "ColorTag"
 __author__ = "BIM Specialist"
 
+import peer_access; peer_access.require_key()  # one PEER key (lib/peer_library/access.py)
 import os, sys, math, datetime, time                                    # Regular Imports
 from Autodesk.Revit.DB import *                                         # Import everything from DB (Very good for beginners)
 from Autodesk.Revit.DB import (

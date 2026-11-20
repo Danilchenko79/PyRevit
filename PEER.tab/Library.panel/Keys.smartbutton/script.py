@@ -20,7 +20,7 @@ from System.Data import DataTable  # noqa: E402
 from System.Windows import Visibility  # noqa: E402
 
 XAML = os.path.join(os.path.dirname(__file__), 'KeysWindow.xaml')
-COLUMNS = ('id', 'name', 'role', 'state', 'last_used', 'created')
+COLUMNS = ('id', 'name', 'role', 'state', 'version', 'last_used', 'created')
 
 
 def __selfinit__(script_cmp, ui_button_cmp, __rvt__):
@@ -62,6 +62,7 @@ class KeysWindow(forms.WPFWindow):
             table.Columns.Add(c)
         for r in self.rows:
             table.Rows.Add(r['id'], r['name'], r['role'], u'active' if r['active'] else u'revoked',
+                           r.get('version') or u'-',
                            U.local_time(r.get('last_used')) or u'never',
                            U.local_time(r.get('created')))
         self.keys_list.ItemsSource = table.DefaultView

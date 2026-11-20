@@ -46,6 +46,23 @@ test('auth returns name and role', async () => {
   assert.deepEqual([r.status, r.data.name, r.data.role], [200, 'Anna', 'user']);
 });
 
+test('the key check remembers which PEER the person runs; admins see it', async () => {
+  const withVersion = (v) => worker.fetch(new Request('https://lib.test/auth', {
+    headers: { authorization: 'Bearer ' + USER, 'x-peer-version': v } }), env);
+  assert.equal((await withVersion('2026.11.20.1 (beta)')).status, 200);
+  let keys = (await call('GET', '/keys', ADMIN)).data;
+  assert.equal(keys.find(k => k.id === 'usr1').version, '2026.11.20.1 (beta)');
+  assert.equal(keys.find(k => k.id === 'adm1').version, '');
+  assert.equal((await withVersion('<script>alert(1)</script>')).status, 200);    // junk is ignored, not stored
+  assert.equal((await withVersion('x'.repeat(200))).status, 200);
+  keys = (await call('GET', '/keys', ADMIN)).data;
+  assert.equal(keys.find(k => k.id === 'usr1').version, '2026.11.20.1 (beta)');
+  assert.equal((await withVersion('git 0123456')).status, 200);
+  keys = (await call('GET', '/keys', ADMIN)).data;
+  assert.equal(keys.find(k => k.id === 'usr1').version, 'git 0123456');
+  assert.equal((await call('GET', '/keys', USER)).status, 403);
+});
+
 test('user cannot publish, admin can; files and index', async () => {
   assert.equal((await call('POST', '/publish', USER, publishForm('PEER_Beam', 1))).status, 403);
   const r = await call('POST', '/publish', ADMIN, publishForm('PEER_Beam', 1));
