@@ -12,3 +12,22 @@ binding = "DB"
 database_name = "peer-library"
 # id printed by:  npx wrangler d1 create peer-library
 database_id = "4360aba6-8791-487b-bb47-4bb0a4eed768"
+
+# ---- production: the real office service, separate from the trial one above ----------
+# Own worker, bucket and database - nothing is shared with the trial service.
+#   npx wrangler r2 bucket create peer-prod
+#   npx wrangler d1 create peer-prod                 -> paste database_id below
+#   npx wrangler d1 execute peer-prod --remote --env production --file=schema.sql
+#   npx wrangler deploy --env production             -> https://peer.<account>.workers.dev
+#   node scripts/first_key.mjs "Name"                -> run the printed INSERT with --env production
+[env.production]
+name = "peer"
+
+[[env.production.r2_buckets]]
+binding = "BUCKET"
+bucket_name = "peer-prod"
+
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "peer-prod"
+database_id = "PASTE-PRODUCTION-DATABASE-ID"

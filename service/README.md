@@ -54,6 +54,20 @@ Workers 100 000 запросов в день. Workers Paid — 5 $ в месяц
    Ушёл человек — «Revoke selected key», ключ перестаёт работать сразу.
 3. Пока адреса сервиса в настройках нет, панель Library у коллег скрыта.
 
+## Проверочный и боевой сервис
+В `wrangler.toml` два окружения с отдельными Worker, R2 и D1 — данные не пересекаются:
+
+| | Worker | R2 | D1 | Команды |
+|---|---|---|---|---|
+| проверочный (песочница) | `peer-library` | `peer-library` | `peer-library` | `npx wrangler deploy` |
+| боевой (офис) | `peer` | `peer-prod` | `peer-prod` | `npx wrangler deploy --env production` |
+
+Боевой создаётся один раз (команды — в комментарии над `[env.production]`): bucket, база, `database_id` в
+`wrangler.toml`, схема, deploy, первый ключ админа. После этого адрес боевого сервиса кладётся в
+`lib/peer_library/settings.json` (`{"backend": "http", "url": "https://peer.<аккаунт>.workers.dev"}`) и в
+`installer/install.bat` (`PEER_URL`). Свой компьютер на проверочном сервисе — тот же адрес в
+`%APPDATA%\PEER\library.json` (он сильнее файла из репозитория). Ключи у двух сервисов разные.
+
 ## Раздача самого PEER и шаблона (`/release/...`)
 Пакет PEER (`ext`) и шаблон проекта (`template`) лежат в R2 под `PEER-Releases/<product>/`. Версия загружается
 один раз и не меняется; каналы `stable` и `beta` — указатели на версию, откат = перевести указатель на старую.
