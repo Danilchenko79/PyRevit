@@ -24,10 +24,10 @@ import math
 RECT, CIRCLE = 'RECT', 'CIRCLE'
 # Rounded shapes of the Create Column families (b = short side = diameter of
 # the rounded end, h = long side; the round ends are at y = 0 / y = h):
-#   ROUND2  both ends half circles;  ROUND1  top end half circle, bottom end flat
+#   ROUND2  both ends half circles;  ROUND1  bottom end half circle, top end flat
 # Bars as in the families' legend: nb = bars on each rounded / flat end WITHOUT
 # the side bars, nh = bars on each long side WITH the end bars of the side.
-ROUND1, ROUND2 = 'ROUND1', 'ROUND2'
+ROUND1, ROUND2 = 'ROUND1', 'ROUND2'       # ROUND1: round end at the BOTTOM (as the family)
 ROUNDED = (ROUND1, ROUND2)
 RED, YELLOW = 'red', 'yellow'
 VERTICAL, HORIZONTAL = 'vertical', 'horizontal'
@@ -417,6 +417,23 @@ def _rounded(out, shape, b, h, cover, dw, dl, ne, ns, mode):
     for i in singles:
         out['ties'].append({'kind': 'straight', 'direction': HORIZONTAL, 'at': ys[i], 'dia': dw,
                             'length': tie_cut_length(xr - xl, dw)})
+    if not two:
+        _mirror_y(out, h)
+
+
+def _mirror_y(out, h):
+    """ROUND1 is worked out with the round end on top; the family has it at the
+    bottom (flat end on top) - mirror every y."""
+    out['bars'] = [(x, h - y) for x, y in out['bars']]
+    for t in out['ties']:
+        if t.get('kind') == 'v':
+            t['points'] = [(x, h - y) for x, y in t['points']]
+        elif t['direction'] == HORIZONTAL:
+            t['at'] = h - t['at']
+    for hp in out['hoops']:
+        if hp['kind'] == 'rect':
+            x0, y0, x1, y1 = hp['box']
+            hp['box'] = (x0, h - y1, x1, h - y0)
 
 
 def design(shape, b, h, cover, bar_dia, nb, nh=None, stirrup_dia=None,

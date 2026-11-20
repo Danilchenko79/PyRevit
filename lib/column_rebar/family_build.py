@@ -147,6 +147,22 @@ class Builder(object):
         dd.FamilyLabel = radius_param
         return el
 
+    def arc(self, centre, r_mm, a0, a1, px, py, radius_param):
+        """Arc a0..a1 (rad) at centre (mm); centre aligned to px / py,
+        radius driven by radius_param (radial dimension)."""
+        cx, cy = centre[0] / FT, centre[1] / FT
+        arc = Arc.Create(XYZ(cx, cy, 0), r_mm / FT, a0, a1, XYZ.BasisX, XYZ.BasisY)
+        el = self.fc.NewDetailCurve(self.view, arc)
+        self._style(el)
+        self.fd.Regenerate()
+        for p in (px, py):
+            self.fc.NewAlignment(self.view, p.GetReference(), el.CenterPointReference)
+        mid = (a0 + a1) / 2.0
+        pt = XYZ(cx + 0.5 * r_mm / FT * math.cos(mid), cy + 0.5 * r_mm / FT * math.sin(mid), 0)
+        d = self.fc.NewRadialDimension(self.view, el.GeometryCurve.Reference, pt)
+        d.FamilyLabel = radius_param
+        return el
+
     def _style(self, el):
         if not LINE_STYLE:
             return
@@ -254,6 +270,47 @@ def build_vtie(app, folder):
         res = run(b.fd, 'PEER_Col_VTie', go)
         if res[1] == 'Committed':
             b.save(os.path.join(folder, 'PEER_Col_VTie.rfa'))
+        return res
+    finally:
+        b.close()
+
+
+def build_round_hoop(app, folder, both_ends):
+    """Perimeter stirrup of a rounded column, origin = centre of the bottom half
+    circle. A - between the bar axes across, O - bar axis to hoop axis, L - from
+    the bottom arc centre to the top arc centre (both_ends, PEER_Col_Hoop_R2) or
+    to the axis of the flat top leg (PEER_Col_Hoop_R1). Rr = A / 2 + O."""
+    b = Builder(app)
+    name = 'PEER_Col_Hoop_R2' if both_ends else 'PEER_Col_Hoop_R1'
+    try:
+        def go():
+            b.ensure_type('Hoop')
+            A, L, O = b.param('A'), b.param('L'), b.param('O')
+            Rr = b.param('Rr')
+            W = b.param('Wo')
+            a, ll, o = 400.0, 600.0, 14.0
+            b.fm.Set(A, a / FT)
+            b.fm.Set(O, o / FT)
+            b.fm.Set(L, ll / FT)
+            b.fm.SetFormula(Rr, 'A / 2 + O')
+            b.fm.SetFormula(W, 'A + 2 * O')
+            r = a / 2 + o
+            xl = b.plane('Left', True, -r)
+            xr = b.plane('Right', True, r)
+            yt = b.plane('Top', False, ll)
+            b.dim([xl.GetReference(), b.cx.GetReference(), xr.GetReference()], True, -r - 150, None, equal=True)
+            b.dim([xl.GetReference(), xr.GetReference()], True, -r - 250, W)
+            b.dim([b.cy.GetReference(), yt.GetReference()], False, r + 150, L)
+            b.arc((0, 0), r, math.pi, 2 * math.pi, b.cx, b.cy, Rr)
+            if both_ends:
+                b.arc((0, ll), r, 0.0, math.pi, b.cx, yt, Rr)
+            else:
+                b.line((-r, ll), (r, ll), [xl, yt], [xr, yt])
+            b.line((-r, 0), (-r, ll), [xl, b.cy], [xl, yt])
+            b.line((r, 0), (r, ll), [xr, b.cy], [xr, yt])
+        res = run(b.fd, name, go)
+        if res[1] == 'Committed':
+            b.save(os.path.join(folder, name + '.rfa'))
         return res
     finally:
         b.close()

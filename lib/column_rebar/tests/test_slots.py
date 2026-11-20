@@ -47,7 +47,7 @@ class Slots(unittest.TestCase):
         self.assertEqual([k for k, v in p.items() if k.endswith('_Vis') and v], [])
 
     def test_too_many(self):
-        r = {'stirrup': {'dia': 8.0}, 'ties': [{'kind': 'straight', 'direction': 'vertical', 'at': 100.0}] * 9,
+        r = {'stirrup': {'dia': 8.0}, 'ties': [{'kind': 'straight', 'direction': 'vertical', 'at': 100.0}] * 13,
              'hoops': []}
         with self.assertRaises(ValueError):
             slots.params(r, 2000, 400, 25, 20, 11, 2)

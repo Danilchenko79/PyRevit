@@ -41,7 +41,10 @@ def svg(result, b, h=None, cover=25.0, bar_dia=16.0, size=260.0, margin=56.0):
             return ('M %s %s ' % (_n(X(o)), _n(Y(b / 2.0))) + top +
                     'L %s %s A %s %s 0 0 1 %s %s Z' % (_n(X(b - o)), _n(Y(b / 2.0)), _n(R * k), _n(R * k),
                                                        _n(X(o)), _n(Y(b / 2.0))))
-        return ('M %s %s ' % (_n(X(o)), _n(Y(o))) + top + 'L %s %s Z' % (_n(X(b - o)), _n(Y(o))))
+        # ROUND1: round end at the bottom, flat end on top (as the family)
+        return ('M %s %s L %s %s L %s %s L %s %s A %s %s 0 0 1 %s %s Z'
+                % (_n(X(o)), _n(Y(b / 2.0)), _n(X(o)), _n(Y(h - o)), _n(X(b - o)), _n(Y(h - o)),
+                   _n(X(b - o)), _n(Y(b / 2.0)), _n(R * k), _n(R * k), _n(X(o)), _n(Y(b / 2.0))))
 
     # concrete
     if rounded:
