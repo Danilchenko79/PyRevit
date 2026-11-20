@@ -210,12 +210,17 @@ def run(ext_dir=None):
             status, det = 'error', u'{0}'.format(ex)
         lines += [u'PEER update (git): ' + status, det]
     _log(lines)
-    if was_loader and status == 'updated':
+    if status == 'updated':
         try:
-            from peer_library import strings, version as _v
-            if not _v.is_loader(ext_dir):
-                from pyrevit.forms import toaster
+            from peer_library import jsonio, releases, strings, version as _v
+            from pyrevit.forms import toaster
+            if was_loader and not _v.is_loader(ext_dir):
                 toaster.send_toast(strings.UPD_FULL_TEXT, title=strings.UPD_FULL_TITLE)
+            elif os.path.isfile(os.path.join(ext_dir, 'version.json')) and not _v.is_loader(ext_dir):
+                ver = _v.get(ext_dir)['version']
+                entry = releases.entry(jsonio.read(os.path.join(_work_dir(), 'ext_manifest.json')), ver) or {}
+                note = (entry.get('note') or u'').strip().split(u'\n')[0][:160]
+                toaster.send_toast(strings.UPD_DONE_TEXT.format(note), title=strings.UPD_DONE_TITLE.format(ver))
         except Exception:
             pass
     return status, det

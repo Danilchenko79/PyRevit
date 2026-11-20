@@ -247,6 +247,27 @@ class TestHttp(unittest.TestCase):
         m, _ = user.release_manifest(releases.EXT)
         self.assertEqual(m['versions'], [])                        # the PEER package is another product
 
+    def test_access_request_is_picked_up_without_a_window(self):
+        from peer_library import access
+        admin, nobody = self.backend(self.admin_key), self.backend(None)
+        self.assertEqual(access.pick_up(nobody), 'none')
+        r = nobody.request_access(u'Boris', u'remote office')
+        keystore.save_request(r['id'], r['token'], u'Boris')
+        self.assertEqual(access.pick_up(nobody), 'waiting')
+        self.assertIsNone(keystore.load())
+        admin.approve_access(r['id'], 'user')
+        self.assertEqual(access.pick_up(nobody), 'signed')
+        self.assertTrue(keystore.load().startswith('peer_'))
+        self.assertIsNone(keystore.load_request())
+        self.assertEqual(self.backend(keystore.load()).auth()['name'], u'Boris')
+        # a declined request is forgotten
+        keystore.forget()
+        r = nobody.request_access(u'Chen', u'')
+        keystore.save_request(r['id'], r['token'], u'Chen')
+        admin.reject_access(r['id'])
+        self.assertEqual(access.pick_up(self.backend(None)), 'rejected')
+        self.assertIsNone(keystore.load_request())
+
     def test_auth_tells_the_service_the_peer_version(self):
         admin, user = self.backend(self.admin_key), self.backend(self.user_key)
         user.auth()

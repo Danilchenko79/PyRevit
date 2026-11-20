@@ -40,7 +40,15 @@ def main():
     count, digest, size = pack.build(raw, out, a.version, a.channel)
     boot = os.path.join(a.out, 'PEER-loader-{0}.zip'.format(a.version))
     bcount, bdigest, bsize = pack.build(raw, boot, a.version, a.channel, flavor='boot')
+    # the installer of the same commit: one .bat, placeholders filled in by the service
+    import zipfile
+    with zipfile.ZipFile(raw) as z:
+        ps1 = z.read('installer/install.ps1').decode('utf-8')
+    inst = os.path.join(a.out, 'PEER_install.bat')
+    with open(inst, 'wb') as f:
+        f.write(pack.installer_bat(ps1).encode('ascii'))
     os.remove(raw)
+    print('INSTALLER', inst)
     print('PACKAGE', out)
     print('SHA1', digest)
     print('SIZE', size)

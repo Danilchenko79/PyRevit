@@ -94,14 +94,8 @@ class AccountWindow(forms.WPFWindow):
         the full PEER now; the window closes and pyRevit reloads with every panel."""
         self.status_text.Text = strings.ACC_DOWNLOADING
         U.refresh(self)
-        try:
-            import peer_update
-            status, det = peer_update.sync_package(version.ext_dir())
-        except Exception as ex:
-            log.write(u'account: full PEER', exc=True)
-            status, det = 'error', u'{0}'.format(ex)
-        log.write(u'account: full PEER {0} {1}'.format(status, det))
-        if not version.is_loader():
+        ok, det = get_full()
+        if ok:
             self.reload_after = True
             self.Close()
             return
@@ -117,20 +111,7 @@ class AccountWindow(forms.WPFWindow):
         self.Close()
 
     def on_signin(self, sender, args):
-        backend = config.make_backend()
-        if not backend.has_key():
-            try:
-                ok, msg = session.pick_up_request(backend)
-            except Exception as ex:
-                log.write(u'account: pick up', exc=True)
-                ok, msg = False, u'{0}'.format(ex)
-            if ok:
-                self.check = 'ok'
-                self._after_change()
-                return
-        else:
-            msg = u''
-        if session.login(backend, msg):
+        if sign_in_flow():
             self.check = 'ok'
         self._after_change()
 
@@ -146,6 +127,34 @@ class AccountWindow(forms.WPFWindow):
         self._after_change()
 
 
+def sign_in_flow():
+    """An approved access request is picked up, else the sign-in window
+    (paste a key / request access). True = signed in now."""
+    backend = config.make_backend()
+    msg = u''
+    if not backend.has_key():
+        try:
+            ok, msg = session.pick_up_request(backend)
+        except Exception as ex:
+            log.write(u'account: pick up', exc=True)
+            ok, msg = False, u'{0}'.format(ex)
+        if ok:
+            return True
+    return bool(session.login(backend, msg))
+
+
+def get_full():
+    """Loader -> the full PEER (the person is signed in). (ok, details)"""
+    try:
+        import peer_update
+        status, det = peer_update.sync_package(version.ext_dir())
+    except Exception as ex:
+        log.write(u'account: full PEER', exc=True)
+        status, det = 'error', u'{0}'.format(ex)
+    log.write(u'account: full PEER {0} {1}'.format(status, det))
+    return (not version.is_loader()), det
+
+
 def reload_pyrevit():
     """pyRevit's own Reload: the ribbon is built again with the new buttons."""
     from pyrevit.loader import sessionmgr
@@ -153,6 +162,27 @@ def reload_pyrevit():
 
 
 def show(check=True):
+    """Account button. Not signed in -> straight to signing in (one window);
+    on a loader the full PEER downloads right after and pyRevit reloads.
+    Signed in -> the account window."""
+    st = access.status()
+    if st.code in (access.NONE, access.REQUESTED):
+        ok = sign_in_flow()
+        try:
+            access.apply_ribbon()
+        except Exception:
+            log.write(u'account: ribbon', exc=True)
+        if not ok:
+            return False
+        if version.is_loader():
+            forms.alert(strings.ACC_DOWNLOADING_NOW, title=strings.ACC_TITLE)
+            done, det = get_full()
+            if done:
+                forms.alert(strings.ACC_RELOADING, title=strings.ACC_TITLE)
+                reload_pyrevit()
+            else:
+                forms.alert(strings.ACC_DOWNLOAD_FAILED.format(det), title=strings.ACC_TITLE)
+        return True
     win = AccountWindow(check=check)
     win.ShowDialog()
     if win.reload_after:

@@ -340,3 +340,8 @@ ACC_RELOADING = (u'PEER is downloaded. pyRevit reloads now - all PEER panels app
                  u'in a few seconds.')
 UPD_FULL_TITLE = u'PEER is downloaded'
 UPD_FULL_TEXT = u'Press pyRevit -> Reload (or restart Revit) to see all PEER panels.'
+ACC_DOWNLOADING_NOW = u'You are signed in. PEER downloads its tools now (a few seconds) - press OK and wait.'
+ACC_APPROVED = u'Access approved. Welcome, {0}!'
+ACC_REQUESTS_WAIT = u'{0} person(s) ask for access to PEER - open PEER -> Keys.'
+UPD_DONE_TITLE = u'PEER updated to {0}'
+UPD_DONE_TEXT = u'{0}\nNew buttons appear after pyRevit -> Reload or the next Revit start.'

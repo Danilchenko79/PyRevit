@@ -398,3 +398,25 @@ test('loader: public to read, admin to release; nothing else is public', async (
   assert.equal((await call('GET', '/release/ext/manifest')).status, 401);
   assert.equal(new TextDecoder().decode((await call('GET', '/release/ext/file/1', USER)).data), 'full-1');
 });
+
+test('installer: public download with this service address inside; only admins upload', async () => {
+  assert.equal((await call('GET', '/install')).status, 404);
+  const put = (key, text) => worker.fetch(new Request('https://lib.test/install', {
+    method: 'PUT', body: text, headers: key ? { authorization: 'Bearer ' + key } : {} }), env);
+  const bat = '@echo off\r\nset "PEER_URL=__PEER_SERVICE_URL__"\r\nset "PEER_CHANNEL=__PEER_CHANNEL__"\r\n';
+  assert.equal((await put(null, bat)).status, 401);
+  assert.equal((await put(USER, bat)).status, 403);
+  assert.equal((await put(ADMIN, 'echo something else')).status, 400);
+  assert.equal((await put(ADMIN, bat)).status, 200);
+  const res = await worker.fetch(new Request('https://peer.example.workers.dev/install'), env);
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get('content-disposition'), /PEER_install\.bat/);
+  const text = await res.text();
+  assert.ok(text.includes('set "PEER_URL=https://peer.example.workers.dev"'));
+  assert.ok(text.includes('set "PEER_CHANNEL=stable"'));
+  assert.ok(text.includes('\r\n'));
+  const beta = await (await worker.fetch(new Request('https://peer.example.workers.dev/install?channel=beta'), env)).text();
+  assert.ok(beta.includes('set "PEER_CHANNEL=beta"'));
+  const odd = await (await worker.fetch(new Request('https://peer.example.workers.dev/install?channel=%22%26calc'), env)).text();
+  assert.ok(odd.includes('set "PEER_CHANNEL=stable"'));
+});

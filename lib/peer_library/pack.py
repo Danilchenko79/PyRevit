@@ -93,3 +93,38 @@ def build(source_zip, out_zip, version, channel=u'stable', built=None, flavor=u'
         data = f.read()
     h.update(data)
     return len(files), h.hexdigest(), len(data)
+
+
+# ---- the installer: one .bat file (a short cmd header + install.ps1 inside) -----------------
+INSTALLER_MARK = u'#PEER_INSTALLER_PS1#'
+INSTALLER_HEAD = u"""@echo off
+rem PEER for pyRevit - install / repair. Just run it: no key, no questions.
+rem Then start Revit -> PEER tab -> Account: paste your key or request access.
+rem This file holds no PEER tools and no keys.
+setlocal
+set "PEER_SELF=%~f0"
+set "PEER_URL=__PEER_SERVICE_URL__"
+set "PEER_CHANNEL=__PEER_CHANNEL__"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$s=[IO.File]::ReadAllText($env:PEER_SELF); $m='#PEER'+'_INSTALLER_PS1#'; $c=$s.Substring($s.LastIndexOf($m)); & ([scriptblock]::Create($c)) -Url $env:PEER_URL -Channel $env:PEER_CHANNEL"
+set "PEER_RC=%errorlevel%"
+echo.
+pause
+exit /b %PEER_RC%
+"""
+
+
+def installer_bat(ps1_text, url=None, channel=None):
+    """PEER_install.bat from installer/install.ps1. Without url / channel the
+    placeholders stay - the service fills them in when the file is downloaded."""
+    try:
+        ps1_text.encode('ascii')
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        raise Exception(u'install.ps1 must be plain ASCII (cmd reads the file too).')
+    if INSTALLER_MARK in ps1_text:
+        raise Exception(u'install.ps1 must not contain the marker itself.')
+    text = INSTALLER_HEAD + INSTALLER_MARK + u'\n' + ps1_text
+    if url:
+        text = text.replace(u'__PEER_SERVICE_URL__', url)
+    if channel:
+        text = text.replace(u'__PEER_CHANNEL__', channel)
+    return text.replace(u'\r\n', u'\n').replace(u'\n', u'\r\n')

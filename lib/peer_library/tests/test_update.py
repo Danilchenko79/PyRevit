@@ -176,6 +176,24 @@ class TestPack(unittest.TestCase):
         for rel in no:
             self.assertFalse(pack.in_loader(rel), rel)
 
+    def test_installer_is_one_bat_file(self):
+        from peer_library import pack
+        here = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+        with io.open(os.path.join(here, 'installer', 'install.ps1'), encoding='utf-8') as f:
+            ps1 = f.read()
+        bat = pack.installer_bat(ps1)
+        self.assertTrue(bat.startswith(u'@echo off\r\n'))
+        self.assertNotIn(u'\n', bat.replace(u'\r\n', u''))            # CRLF only: cmd needs it
+        self.assertEqual(bat.count(pack.INSTALLER_MARK), 1)             # the header builds the marker from two halves
+        self.assertIn(u'set "PEER_URL=__PEER_SERVICE_URL__"', bat)
+        self.assertIn(u'param(', bat.split(pack.INSTALLER_MARK)[1][:40])
+        self.assertNotIn(u'Read-Host', bat)                             # no questions
+        ready = pack.installer_bat(ps1, u'https://x.example', u'stable')
+        self.assertIn(u'set "PEER_URL=https://x.example"', ready)
+        self.assertNotIn(u'__PEER_', ready)
+        with self.assertRaises(Exception):
+            pack.installer_bat(u'Say "\u043f\u0440\u0438\u0432\u0435\u0442"')
+
     def test_build_is_repeatable_and_complete(self):
         from peer_library import pack
         tmp = tempfile.mkdtemp(prefix='peerpack_')

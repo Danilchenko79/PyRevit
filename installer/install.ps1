@@ -89,15 +89,11 @@ if (-not [Uri]::TryCreate($Url, 'Absolute', [ref]$u) -or -not ($u.Scheme -eq 'ht
 
 $pyrevit = @((Join-Path $env:APPDATA 'pyRevit-Master'), (Join-Path $env:ProgramFiles 'pyRevit-Master'),
              (Join-Path $env:ProgramData 'pyRevit-Master')) | Where-Object { Test-Path $_ } | Select-Object -First 1
-if (-not $pyrevit -and -not $Quiet) {
+if (-not $pyrevit -and -not $Quiet) {       # -Quiet = automatic tests on a computer without pyRevit
   Stop-Install ('pyRevit is not installed on this computer. Install pyRevit 5.2 first ' +
                 '(https://github.com/pyrevitlabs/pyRevit/releases), then run this file again.')
 }
-if (-not $Quiet -and (Get-Process Revit -ErrorAction SilentlyContinue)) {
-  Say ''
-  Say 'Revit is running. Close Revit before installing (its files may be in use).'
-  if ((Read-Host 'Revit is closed now? (yes / no)') -ne 'yes') { Stop-Install 'Close Revit and run this file again.' }
-}
+$revitRuns = [bool](Get-Process Revit -ErrorAction SilentlyContinue)
 
 # ---- 1. a key already on this computer? (re-install / repair) -------------------------
 # Nobody is asked for a key here: without one the public loader is installed and the person
@@ -157,7 +153,7 @@ $backup = $null
 if (Test-Path $ExtDir) {
   $backup = $ExtDir + '.old-' + (Get-Date).ToString('yyyyMMdd-HHmmss')
   try { Move-Item -LiteralPath $ExtDir -Destination $backup }
-  catch { Stop-Install ('The PEER folder is in use (is Revit closed?): ' + $ExtDir) }
+  catch { Stop-Install ('The PEER folder is in use. Close Revit and run this file again: ' + $ExtDir) }
 }
 New-Item -ItemType Directory -Force (Split-Path $ExtDir) | Out-Null
 Move-Item -LiteralPath $stage -Destination $ExtDir
@@ -173,8 +169,9 @@ if ($key) {
   Say ('[OK] PEER ' + $want + ' is installed for ' + $who.name + '.')
   Say 'Start Revit - the PEER tab appears. Updates come by themselves when Revit starts.'
 } else {
-  Say ('[OK] The PEER loader ' + $want + ' is installed.')
-  Say 'Start Revit, open the PEER tab and press Account: paste your key or request access.'
+  Say ('[OK] PEER ' + $want + ' is installed.')
+  Say 'Start Revit, open the PEER tab and press Account: paste your key, or request access.'
   Say 'After you sign in, PEER downloads all its tools by itself.'
 }
+if ($revitRuns) { Say 'Revit is running now: restart Revit to see the PEER tab.' }
 exit 0

@@ -6,6 +6,7 @@ param(
   [string]$Version = '',
   [string]$Note = '',
   [string]$File = '',                    # -Do template: the .rte saved from Revit
+  [ValidateSet('this', 'production')] [string]$Target = 'this',   # 'this' = the service of this computer (trial)
   [string]$Engine = (Join-Path $env:APPDATA 'pyRevit-Master\bin\engines\IPY2711PR'),
   [switch]$Yes
 )
@@ -15,12 +16,14 @@ param(
 #   release.ps1 -Do ext -Note "what changed"           package of HEAD (+ the public loader) -> beta
 #   release.ps1 -Do ext -Ref dev -Channel stable -Note "..."
 #   release.ps1 -Do promote -Version 2026.11.20.1 -Channel stable     beta -> everybody / roll back
+#   ... -Target production                             the office service instead of this computer's one
 #   release.ps1 -Do template -File "D:\work\PR_Template Concrete.rte" -Note "what changed"     template -> beta
 #   release.ps1 -Product template                      template versions
 #   release.ps1 -Do promote -Product template -Version 14 -Channel stable
 #
 # Only committed files are packed (git archive). Publishing asks before it sends, unless -Yes.
 $ErrorActionPreference = 'Stop'
+$env:PEER_RELEASE_TARGET = $Target
 $here = Split-Path $MyInvocation.MyCommand.Path
 $ext = (Resolve-Path (Join-Path $here '..\..\..\..')).Path
 $eng = $Engine          # pyRevit's IronPython (.NET HTTPS + DPAPI, as inside Revit)
@@ -105,11 +108,14 @@ $build = & py -3 (Join-Path $here 'build_ext.py') $Version --ref $Ref --channel 
 $build
 $package = (($build | Where-Object { $_ -match '^PACKAGE ' }) -replace '^PACKAGE\s+', '').Trim()
 $loader = (($build | Where-Object { $_ -match '^LOADER ' }) -replace '^LOADER\s+', '').Trim()
-if (-not (Test-Path $package) -or -not (Test-Path $loader)) { throw 'The package was not built.' }
+$installer = (($build | Where-Object { $_ -match '^INSTALLER ' }) -replace '^INSTALLER\s+', '').Trim()
+if (-not (Test-Path $package) -or -not (Test-Path $loader) -or -not (Test-Path $installer)) { throw 'The package was not built.' }
 if (-not $Yes) {
-  $a = Read-Host "Publish PEER $Version (from $Ref) to '$Channel'? (yes/no)"
+  $a = Read-Host "Publish PEER $Version (from $Ref) to '$Channel' on the $Target service? (yes/no)"
   if ($a -ne 'yes') { "Cancelled. The package stays here: $package"; return }
 }
 Invoke-Service @('publish', 'ext', $Version, $package, $Channel, $Note)
 # the public loader (Account + updater) of the same version - what install.bat puts on a new computer
 Invoke-Service @('publish', 'boot', $Version, $loader, $Channel, $Note)
+# the installer people download: <service>/install
+Invoke-Service @('installer', '-', $installer)

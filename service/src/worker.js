@@ -29,6 +29,8 @@
 //   GET    /access               waiting access requests             admin
 //   POST   /access/approve       {id, role}                          admin
 //   POST   /access/reject        {id}                                admin
+//   GET    /install[?channel=beta]         PEER_install.bat            no key (public)
+//   PUT    /install                        upload the installer        admin
 //   GET    /boot/manifest, /boot/file/<v>  the PEER loader             no key (public)
 //   GET    /release/<p>/manifest           channels + versions (ETag)  any key   p = ext | boot | template
 //   GET    /release/<p>/file/<version>     the package / the template  any key
@@ -672,6 +674,18 @@ async function route(request, env) {
   if (method === 'GET' && path === '/boot/manifest') {
     return storedJson(request, env, REL + 'boot/manifest.json', emptyManifest('boot'));
   }
+  // One file anybody downloads and runs: https://<service>/install. The address of THIS
+  // service is written into it here, so the file works wherever the service lives.
+  if (method === 'GET' && path === '/install') {
+    const obj = await env.BUCKET.get(REL + 'installer/install.bat');
+    if (!obj) throw new HttpError(404, 'The PEER installer is not published yet.');
+    const channel = url.searchParams.get('channel') === 'beta' ? 'beta' : 'stable';
+    const text = (await obj.text()).split('__PEER_SERVICE_URL__').join(url.origin)
+      .split('__PEER_CHANNEL__').join(channel);
+    return new Response(text, { headers: {
+      'content-type': 'application/octet-stream', 'cache-control': 'no-store',
+      'content-disposition': 'attachment; filename="PEER_install.bat"' } });
+  }
   let b;
   if (method === 'GET' && (b = /^\/boot\/file\/([0-9.]+)$/.exec(path))) {
     const obj = await env.BUCKET.get(REL + 'boot/' + versionOf(b[1]));
@@ -704,6 +718,16 @@ async function route(request, env) {
     if (!obj) throw new HttpError(404, 'Not in the library: ' + p);
     if (p.endsWith('.rfa')) await audit(env, who, 'download', p, '');
     return fileResponse(obj);
+  }
+  if (method === 'PUT' && path === '/install') {              // admin: the installer file (text, small)
+    needAdmin(who);
+    const text = await request.text();
+    if (text.length > 200 * 1024 || !text.includes('__PEER_SERVICE_URL__')) {
+      throw new HttpError(400, 'Not a PEER installer (no address placeholder, or too large).');
+    }
+    await env.BUCKET.put(REL + 'installer/install.bat', text, { httpMetadata: { contentType: 'text/plain' } });
+    await audit(env, who, 'installer_upload', '', String(text.length));
+    return json({ size: text.length });
   }
   if (path.startsWith('/release/')) {
     const r = await releaseRoute(request, env, who, method, path);

@@ -81,8 +81,8 @@ class LoginWindow(forms.WPFWindow):
             self.status_text.Text = u'{0}'.format(ex)
             return
         keystore.save_request(r['id'], r['token'], name)
-        self.status_text.Text = (u'Request sent. When an admin approves it, press Library again - '
-                                 u'you will be signed in automatically.')
+        self.status_text.Text = (u'Request sent. When an admin approves it you are signed in by itself: '
+                                 u'at the next Revit start, or press Account.')
         self.request_btn.IsEnabled = False
 
 
@@ -94,28 +94,24 @@ def login(backend, message=u''):
 
 def pick_up_request(backend):
     """(signed_in, message) for a request sent earlier from this computer."""
+    from peer_library import access
     req = keystore.load_request()
     if not req:
         return False, u''
     try:
-        st = backend.access_status(req[0], req[1])
-    except OfflineError:
-        return False, u'No connection - your access request is still waiting.'
-    except (AccessError, LibraryError):
-        keystore.forget_request()
-        return False, u'Your access request expired - send a new one.'
-    if st.get('status') == 'delivered' and st.get('key'):
-        try:
-            backend.sign_in(st['key'])
-        except Exception:
-            log.write(u'pick up key', exc=True)
-            return False, u'The key could not be saved - ask an admin.'
-        keystore.forget_request()
-        forms.alert(u'Access approved. Welcome, {0}!'.format(st.get('name')), title=strings.APP)
+        got = access.pick_up(backend)
+    except Exception:
+        log.write(u'pick up key', exc=True)
+        return False, u'The key could not be saved - ask an admin.'
+    if got == 'signed':
+        forms.alert(u'Access approved. Welcome, {0}!'.format(config.load().get('user') or u''), title=strings.APP)
         return True, u''
-    if st.get('status') == 'rejected':
-        keystore.forget_request()
-        return False, u'Your access request was declined. Ask a library admin.'
+    if got == 'offline':
+        return False, u'No connection - your access request is still waiting.'
+    if got == 'expired':
+        return False, u'Your access request expired - send a new one.'
+    if got == 'rejected':
+        return False, u'Your access request was declined. Ask a PEER admin.'
     return False, u'Your access request ({0}) is waiting for an admin.'.format(req[2] or u'sent')
 
 

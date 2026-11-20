@@ -110,8 +110,10 @@ def require_key():
 
 
 # ---- ribbon ------------------------------------------------------------------------
-def panel_plan(names, locked, library):
-    """Pure: {panel name: visible} for the panels this module decides about."""
+def panel_plan(names, locked, library, library_ready=True):
+    """Pure: {panel name: visible} for the panels this module decides about.
+    library = the service is set up; library_ready = it has families to show
+    (or the person is an admin who fills it)."""
     out = {}
     for name in names:
         if name == 'Account':
@@ -119,10 +121,22 @@ def panel_plan(names, locked, library):
         elif name in KEEP_PANELS:
             continue
         elif name == 'Library':
-            out[name] = bool(library) and not locked
+            out[name] = bool(library) and bool(library_ready) and not locked
         else:
             out[name] = not locked
     return out
+
+
+def library_ready(cfg=None):
+    """Admins always; everybody else once the library has at least one family
+    (the copy of the index saved on this computer says so)."""
+    import os
+    from peer_library import jsonio
+    cfg = cfg or config.load()
+    if cfg.get('role') == 'admin' or cfg.get('backend') != 'http':
+        return True
+    idx = jsonio.read(os.path.join(cfg['cache'], 'index.json'))
+    return bool(isinstance(idx, dict) and idx.get('families'))
 
 
 def apply_ribbon(st=None):
@@ -131,27 +145,63 @@ def apply_ribbon(st=None):
     from pyrevit.coreutils import ribbon
     st = st or status()
     library = config.panel_visible()
+    try:
+        ready = library_ready()
+    except Exception:
+        ready = True
     for tab in ribbon.get_current_ui().get_pyrevit_tabs():
         if tab.name != TAB:
             continue
         panels = dict((p.name, p) for p in list(tab))
-        for name, visible in panel_plan(panels.keys(), st.locked, library).items():
+        for name, visible in panel_plan(panels.keys(), st.locked, library, ready).items():
             panels[name].visible = visible
     return st
 
 
 # ---- key check -----------------------------------------------------------------------
+def pick_up(backend):
+    """The access request sent from this computer, no window: when an admin has
+    approved it the key arrives and is saved. Returns 'signed' / 'waiting' /
+    'rejected' / 'expired' / 'offline' / 'none' (no request was sent)."""
+    from peer_library.backend_base import AccessError, LibraryError, OfflineError
+    req = keystore.load_request()
+    if not req:
+        return 'none'
+    try:
+        st = backend.access_status(req[0], req[1])
+    except OfflineError:
+        return 'offline'
+    except (AccessError, LibraryError):
+        keystore.forget_request()
+        return 'expired'
+    if st.get('status') == 'delivered' and st.get('key'):
+        backend.sign_in(st['key'])
+        keystore.forget_request()
+        return 'signed'
+    if st.get('status') == 'rejected':
+        keystore.forget_request()
+        return 'rejected'
+    return 'waiting'
+
+
 def check_now(cfg=None, quick=False):
     """Asks the service about the key. Returns (status, 'ok' | 'revoked' |
     'offline' | 'no key' | 'off' | error text). A revoked key is forgotten;
-    no connection keeps the last good check."""
+    no connection keeps the last good check. Without a key an approved access
+    request is picked up first."""
     from peer_library.backend_base import AccessError, LibraryError, OfflineError
     cfg = cfg or config.load()
     if evaluate(cfg, True).code == OFF:
         return status(cfg), 'off'
     backend = config.make_backend(cfg)
     if not backend.has_key():
-        return status(cfg), 'no key'
+        try:
+            got = pick_up(backend)
+        except Exception:
+            got = 'none'
+        if got != 'signed':
+            return status(cfg), 'no key'
+        return status(), 'ok'
     msg = 'ok'
     try:
         backend.auth(quick=quick)
@@ -187,12 +237,52 @@ def startup():
     return st
 
 
+def _toast(title, text):
+    try:
+        from pyrevit.forms import toaster
+        toaster.send_toast(text, title=title)
+    except Exception:
+        pass
+
+
+def background_work():
+    """Revit start, background thread: key check; an approved access request
+    signs the person in and (on a loader) downloads the full PEER; the copy of
+    the library index is refreshed; an admin hears about waiting requests."""
+    from peer_library import log, strings, version
+    had_key = bool(keystore.load())
+    st, msg = check_now()
+    if not st.signed_in:
+        return msg
+    cfg = config.load()
+    if not had_key:                                    # the request was approved since the last start
+        text = strings.ACC_APPROVED.format(st.name)
+        if version.is_loader():
+            try:
+                import peer_update
+                peer_update.sync_package(version.ext_dir())
+            except Exception:
+                log.write(u'access: full PEER after approval', exc=True)
+        _toast(strings.ACC_TITLE, text + u' ' + strings.UPD_FULL_TEXT)
+    try:
+        from peer_library.cache import Cache
+        backend = config.make_backend(cfg)
+        Cache(cfg['cache'], backend).index()          # keeps the saved copy current (ETag: cheap)
+        if cfg.get('role') == 'admin':
+            n = len(backend.list_access_requests())
+            if n:
+                _toast(strings.ACC_TITLE, strings.ACC_REQUESTS_WAIT.format(n))
+    except Exception as ex:
+        log.write(u'access background: {0}'.format(ex))
+    return msg
+
+
 def refresh_async():
     import threading
 
     def work():
         try:
-            check_now()
+            background_work()
         except Exception:
             from peer_library import log
             log.write(u'access check', exc=True)

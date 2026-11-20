@@ -134,9 +134,32 @@ class TestRibbonPlan(unittest.TestCase):
         self.assertEqual(plan, {'Sheets': False, 'Reinforcement': False, 'Library': False, 'Account': True})
         self.assertNotIn('Feedback', plan)          # never touched
 
+    def test_library_waits_for_families(self):
+        plan = A.panel_plan(self.NAMES, False, True, False)
+        self.assertEqual(plan, {'Sheets': True, 'Reinforcement': True, 'Library': False, 'Account': True})
+
     def test_no_service_hides_library_and_account_only(self):
         plan = A.panel_plan(self.NAMES, False, False)
         self.assertEqual(plan, {'Sheets': True, 'Reinforcement': True, 'Library': False, 'Account': False})
+
+
+class TestLibraryReady(unittest.TestCase):
+
+    def test_admin_always_users_when_there_are_families(self):
+        tmp = tempfile.mkdtemp(prefix='peerready_')
+        try:
+            c = {'backend': 'http', 'role': 'user', 'cache': tmp}
+            self.assertFalse(A.library_ready(c))
+            self.assertTrue(A.library_ready(dict(c, role='admin')))
+            with io.open(os.path.join(tmp, 'index.json'), 'w', encoding='utf-8') as f:
+                f.write(u'{"families": []}')
+            self.assertFalse(A.library_ready(c))
+            with io.open(os.path.join(tmp, 'index.json'), 'w', encoding='utf-8') as f:
+                f.write(u'{"families": [{"id": "X"}]}')
+            self.assertTrue(A.library_ready(c))
+            self.assertTrue(A.library_ready({'backend': 'local', 'role': 'user', 'cache': tmp}))
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
 
 
 class TestDescribe(unittest.TestCase):
