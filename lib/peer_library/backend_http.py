@@ -245,7 +245,7 @@ class HttpBackend(Backend):
 
     def _call(self, method, path, json_body=None, parts=None, target=None, timeout=TIMEOUT_S,
               auth=True, headers=None, meta=None, raw=None, tries=2):
-        if not self.url.startswith('https://') and not self.url.startswith('http://127.0.0.1'):
+        if not config.service_url_ok(self.url):
             raise LibraryError(u'The library address is not set (https://...).')
         if auth and not self.key:
             raise AccessError(u'Sign in with your PEER library key.')
@@ -321,12 +321,12 @@ class HttpBackend(Backend):
     def get_changelog(self):
         return self._get_json('/changelog')
 
-    def get_json_if_changed(self, path, etag=None, timeout=TIMEOUT_S, tries=2):
+    def get_json_if_changed(self, path, etag=None, timeout=TIMEOUT_S, tries=2, auth=True):
         """(data, etag); data None = the copy with this etag is still current."""
         meta = {}
         try:
             raw = self._call('GET', path, headers={'If-None-Match': etag} if etag else None,
-                             meta=meta, timeout=timeout, tries=tries)
+                             meta=meta, timeout=timeout, tries=tries, auth=auth)
         except NotModified:
             return None, etag
         return json.loads(raw), meta.get('etag')
@@ -403,8 +403,8 @@ class HttpBackend(Backend):
                 pass
         return rfa
 
-    def download_to(self, path, target):
-        tmp = self._call('GET', path, target=target, timeout=DOWNLOAD_TIMEOUT_S)
+    def download_to(self, path, target, auth=True):
+        tmp = self._call('GET', path, target=target, timeout=DOWNLOAD_TIMEOUT_S, auth=auth)
         if os.path.exists(target):
             os.remove(target)
         os.rename(tmp, target)
@@ -413,15 +413,18 @@ class HttpBackend(Backend):
     # ---- releases: the PEER package ('ext') and the project template ('template') ----
     def release_manifest(self, product, etag=None, quick=False):
         """(manifest, etag); manifest None = unchanged. quick: one short try
-        (Revit start must not wait for a dead network)."""
-        return self.get_json_if_changed('/release/{0}/manifest'.format(product), etag,
-                                        timeout=QUICK_TIMEOUT_S if quick else TIMEOUT_S,
-                                        tries=1 if quick else 2)
+        (Revit start must not wait for a dead network). The loader ('boot') is
+        public - read without a key."""
+        path = '/boot/manifest' if product == 'boot' else '/release/{0}/manifest'.format(product)
+        return self.get_json_if_changed(path, etag, timeout=QUICK_TIMEOUT_S if quick else TIMEOUT_S,
+                                        tries=1 if quick else 2, auth=product != 'boot')
 
     def release_download(self, product, version, target):
         folder = os.path.dirname(target)
         if folder and not os.path.isdir(folder):
             os.makedirs(folder)
+        if product == 'boot':
+            return self.download_to('/boot/file/{0}'.format(version), target, auth=False)
         return self.download_to('/release/{0}/file/{1}'.format(product, version), target)
 
     def release_upload(self, product, version, path, sha1):

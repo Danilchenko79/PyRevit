@@ -114,8 +114,10 @@ office turns the lock on - the PEER buttons themselves.
 - **Check now**: asks the service whether the key is still valid. **Sign out** removes the key from
   this computer.
 - Without internet PEER keeps working for 14 days after the last check.
-- Install on a new computer: run `install.bat` from the PEER site - it asks for the key (or sends the
-  access request) and downloads PEER. After that PEER updates itself when Revit starts.
+- Install on a new computer: run `install.bat` from the PEER site - no key needed. It installs the
+  PEER loader: the PEER tab with **Account**. Start Revit, press **Account** and sign in (paste the
+  key or request access) - PEER downloads all its tools at once and pyRevit reloads. After that PEER
+  updates itself when Revit starts.
 
 ## New project from the company template
 

@@ -171,7 +171,13 @@ def sync_package(ext_dir, any_path=False):
     if was_git and os.path.isfile(os.path.join(ext_dir, '.git', 'HEAD')) and git_branch(ext_dir) != BRANCH:
         return 'skip', u'git clone on branch "{0}" - left as it is'.format(git_branch(ext_dir) or u'?')
     old = _git_tracked(ext_dir) if was_git and not ext_update.installed_files(ext_dir) else None
-    status, det = ext_update.sync(ext_dir, backend, cfg.get('channel') or 'stable', _work_dir(), old)
+    channel = cfg.get('channel') or 'stable'
+    status, det = ext_update.sync(ext_dir, backend, channel, _work_dir(), old)
+    if status == 'nokey':
+        from peer_library import releases, version
+        if version.is_loader(ext_dir):           # not signed in yet: keep the loader itself current
+            st2, det2 = ext_update.sync(ext_dir, backend, channel, _work_dir(), None, releases.BOOT)
+            det += u'; loader: {0} {1}'.format(st2, det2)
     if was_git and status in ('updated', 'clean'):
         note = _drop_git(ext_dir)
         if note:
@@ -184,6 +190,11 @@ def run(ext_dir=None):
     if ext_dir is None:
         ext_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     lines = []
+    try:
+        from peer_library import version as _v
+        was_loader = _v.is_loader(ext_dir)
+    except Exception:
+        was_loader = False
     try:
         status, det = sync_package(ext_dir)
     except Exception as ex:
@@ -199,4 +210,12 @@ def run(ext_dir=None):
             status, det = 'error', u'{0}'.format(ex)
         lines += [u'PEER update (git): ' + status, det]
     _log(lines)
+    if was_loader and status == 'updated':
+        try:
+            from peer_library import strings, version as _v
+            if not _v.is_loader(ext_dir):
+                from pyrevit.forms import toaster
+                toaster.send_toast(strings.UPD_FULL_TEXT, title=strings.UPD_FULL_TITLE)
+        except Exception:
+            pass
     return status, det

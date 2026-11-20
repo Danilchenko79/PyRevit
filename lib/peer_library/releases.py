@@ -10,7 +10,7 @@ older version, and every computer follows it (so the test is "differs", not
 "newer").
 """
 
-EXT, TEMPLATE = 'ext', 'template'
+EXT, BOOT, TEMPLATE = 'ext', 'boot', 'template'      # boot = the public loader
 STABLE, BETA = 'stable', 'beta'
 
 

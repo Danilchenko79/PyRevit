@@ -114,10 +114,16 @@ def save_local(**values):
     return load()
 
 
+def service_url_ok(url):
+    """https, or this computer itself (a local copy of the service for tests)."""
+    url = url or u''
+    return url.startswith('https://') or url.startswith('http://127.0.0.1:') or url == 'http://127.0.0.1'
+
+
 def is_configured(cfg=None):
     cfg = cfg or load()
     if cfg['backend'] == 'http':
-        return cfg['url'].startswith('https://')
+        return service_url_ok(cfg['url'])
     return bool(cfg['root']) and os.path.isdir(cfg['root'])
 
 

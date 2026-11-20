@@ -38,11 +38,15 @@ def main():
     sha = subprocess.check_output(['git', '-C', EXT, 'rev-parse', '--short', a.ref]).decode('ascii').strip()
     out = os.path.join(a.out, 'PEER-{0}.zip'.format(a.version))
     count, digest, size = pack.build(raw, out, a.version, a.channel)
+    boot = os.path.join(a.out, 'PEER-loader-{0}.zip'.format(a.version))
+    bcount, bdigest, bsize = pack.build(raw, boot, a.version, a.channel, flavor='boot')
     os.remove(raw)
     print('PACKAGE', out)
     print('SHA1', digest)
     print('SIZE', size)
     print('FILES', count)
+    print('LOADER', boot)
+    print('LOADERFILES', bcount, bsize)
     print('COMMIT', sha)
 
 

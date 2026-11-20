@@ -331,3 +331,12 @@ TPL_NOT_READY = (u'The company template is not on this computer yet and could no
                  u'Check the internet and PEER -> Account, then try again.')
 TPL_SAVE_AS = u'New project from PR_Template Concrete v{0} - save as'
 TPL_NOT_OVER = u'Choose another name: this is the template file itself.'
+
+# ---- loader (installed without a key; the full PEER comes after signing in) -------------
+ACC_LOADER_SIGNED = u'Only the PEER loader is installed on this computer - press Check now to download PEER.'
+ACC_DOWNLOADING = u'Downloading PEER... (one time, about 3 MB)'
+ACC_DOWNLOAD_FAILED = u'PEER could not be downloaded yet: {0}\nCheck the internet and press Check now.'
+ACC_RELOADING = (u'PEER is downloaded. pyRevit reloads now - all PEER panels appear on the PEER tab '
+                 u'in a few seconds.')
+UPD_FULL_TITLE = u'PEER is downloaded'
+UPD_FULL_TEXT = u'Press pyRevit -> Reload (or restart Revit) to see all PEER panels.'

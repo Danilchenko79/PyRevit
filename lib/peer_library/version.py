@@ -39,11 +39,18 @@ def get(folder=None):
     data = jsonio.read(os.path.join(folder, FILE))
     if isinstance(data, dict) and data.get('version'):
         return {'version': u'{0}'.format(data['version']), 'channel': data.get('channel') or u'stable',
-                'built': data.get('built') or u'', 'kind': 'package'}
+                'built': data.get('built') or u'', 'kind': 'package',
+                'flavor': u'boot' if data.get('flavor') == 'boot' else u'full'}
     sha = _git_sha(folder)
     if sha:
-        return {'version': u'git {0}'.format(sha), 'channel': u'', 'built': u'', 'kind': 'git'}
-    return {'version': u'dev', 'channel': u'', 'built': u'', 'kind': 'dev'}
+        return {'version': u'git {0}'.format(sha), 'channel': u'', 'built': u'', 'kind': 'git', 'flavor': u'full'}
+    return {'version': u'dev', 'channel': u'', 'built': u'', 'kind': 'dev', 'flavor': u'full'}
+
+
+def is_loader(folder=None):
+    """True on an installation that holds only the loader (Account + updater):
+    the full PEER comes after signing in."""
+    return get(folder)['flavor'] == 'boot'
 
 
 def text(folder=None, channel=None):
@@ -57,6 +64,7 @@ def text(folder=None, channel=None):
             channel = config.load().get('channel')
         except Exception:
             channel = u''
+    text = v['version'] + (u' loader' if v['flavor'] == 'boot' else u'')
     if v['kind'] == 'package' and channel == 'beta':
-        return u'{0} (beta)'.format(v['version'])
-    return v['version']
+        return u'{0} (beta)'.format(text)
+    return text

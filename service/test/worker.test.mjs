@@ -381,3 +381,20 @@ test('release manifest: ETag and 304 when unchanged', async () => {
     headers: { authorization: 'Bearer ' + USER, 'if-none-match': tag } }), env);
   assert.equal(again.status, 304);
 });
+
+test('loader: public to read, admin to release; nothing else is public', async () => {
+  let m = await call('GET', '/boot/manifest');
+  assert.deepEqual([m.status, m.data.channels], [200, { stable: '', beta: '' }]);
+  assert.equal((await upload('boot', '1', 'loader', USER)).status, 403);
+  await release('boot', '1', 'stable', 'loader-1');
+  m = await call('GET', '/boot/manifest');
+  assert.equal(m.data.channels.stable, '1');
+  const f = await call('GET', '/boot/file/1');
+  assert.equal(new TextDecoder().decode(f.data), 'loader-1');
+  assert.equal((await call('GET', '/boot/file/2')).status, 404);
+  assert.equal((await call('GET', '/boot/file/..%2Fext%2F1')).status, 401);       // not a loader path: needs a key
+  await release('ext', '1', 'stable', 'full-1');
+  assert.equal((await call('GET', '/release/ext/file/1')).status, 401);           // the full PEER is not public
+  assert.equal((await call('GET', '/release/ext/manifest')).status, 401);
+  assert.equal(new TextDecoder().decode((await call('GET', '/release/ext/file/1', USER)).data), 'full-1');
+});

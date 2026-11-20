@@ -32,6 +32,7 @@ class AccountWindow(forms.WPFWindow):
         forms.WPFWindow.__init__(self, xaml or XAML)
         self.check = u''
         self.changed = False
+        self.reload_after = False      # the full PEER was just downloaded: reload pyRevit after closing
         if check:
             self._check()
         st = self.render()
@@ -60,6 +61,8 @@ class AccountWindow(forms.WPFWindow):
         self.chip.Background = U.brush(bg)
         self.chip.BorderBrush = U.brush(fg)
         self.status_text.Text = access.describe(st, self.check)
+        if st.signed_in and version.is_loader():
+            self.status_text.Text += u'\n\n' + strings.ACC_LOADER_SIGNED
         key = keystore.load()
         self.name_text.Text = st.name if st.signed_in else strings.ACC_DASH
         self.role_text.Text = (strings.ACC_ROLE_ADMIN if st.role == 'admin' else strings.ACC_ROLE_USER) \
@@ -83,6 +86,26 @@ class AccountWindow(forms.WPFWindow):
             access.apply_ribbon(st)
         except Exception:
             log.write(u'account: ribbon', exc=True)
+        if st.signed_in and version.is_loader():
+            self._get_full()
+
+    def _get_full(self):
+        """Only the loader is installed and the person has just signed in: download
+        the full PEER now; the window closes and pyRevit reloads with every panel."""
+        self.status_text.Text = strings.ACC_DOWNLOADING
+        U.refresh(self)
+        try:
+            import peer_update
+            status, det = peer_update.sync_package(version.ext_dir())
+        except Exception as ex:
+            log.write(u'account: full PEER', exc=True)
+            status, det = 'error', u'{0}'.format(ex)
+        log.write(u'account: full PEER {0} {1}'.format(status, det))
+        if not version.is_loader():
+            self.reload_after = True
+            self.Close()
+            return
+        self.status_text.Text = strings.ACC_DOWNLOAD_FAILED.format(det)
 
     # ---- buttons -------------------------------------------------------------
     def on_key(self, sender, args):
@@ -123,7 +146,16 @@ class AccountWindow(forms.WPFWindow):
         self._after_change()
 
 
+def reload_pyrevit():
+    """pyRevit's own Reload: the ribbon is built again with the new buttons."""
+    from pyrevit.loader import sessionmgr
+    sessionmgr.reload_pyrevit()
+
+
 def show(check=True):
     win = AccountWindow(check=check)
     win.ShowDialog()
+    if win.reload_after:
+        forms.alert(strings.ACC_RELOADING, title=strings.ACC_TITLE)
+        reload_pyrevit()
     return win.changed

@@ -125,7 +125,7 @@ def changed(ext_dir, files):
     return sorted(out)
 
 
-def stage(zip_path, folder):
+def stage(zip_path, folder, flavor=None):
     """Unpack and verify the package. Returns its file list {rel: sha1}."""
     _rmtree(folder)
     os.makedirs(folder)
@@ -136,6 +136,8 @@ def stage(zip_path, folder):
         raise UpdateError(u'The package has no file list.')
     if not version.get(folder).get('version') or version.get(folder)['kind'] != 'package':
         raise UpdateError(u'The package has no version.')
+    if flavor is not None and version.get(folder)['flavor'] != flavor:
+        raise UpdateError(u'This is not the package that was asked for ({0}).'.format(version.get(folder)['flavor']))
     check_core(folder, files)
     for rel, sha in files.items():
         p = os.path.join(folder, _safe(rel))
@@ -186,14 +188,15 @@ def apply(staged, ext_dir, files, old_files):
     return copied, removed, failed
 
 
-def _zip_name(v):
-    return u'ext-{0}.zip'.format(v)
+def _zip_name(v, product=releases.EXT):
+    return u'{0}-{1}.zip'.format(product, v)
 
 
-def _tidy(work_dir, keep):
+def _tidy(work_dir, keep, product=releases.EXT):
+    head = product + '-'
     try:
-        zips = sorted((f for f in os.listdir(work_dir) if f.startswith('ext-') and f.endswith('.zip')),
-                      key=lambda f: releases.vkey(f[4:-4]))
+        zips = sorted((f for f in os.listdir(work_dir) if f.startswith(head) and f.endswith('.zip')),
+                      key=lambda f: releases.vkey(f[len(head):-4]))
     except OSError:
         return
     keep = set(keep)
@@ -205,9 +208,9 @@ def _tidy(work_dir, keep):
                 pass
 
 
-def read_manifest(backend, work_dir, quick=True):
+def read_manifest(backend, work_dir, quick=True, product=releases.EXT):
     """Manifest from the service (ETag copy in work_dir). Raises OfflineError."""
-    copy = os.path.join(work_dir, 'ext_manifest.json')
+    copy = os.path.join(work_dir, '{0}_manifest.json'.format(product))
     tag_file = copy + '.etag'
     old = None
     if os.path.isfile(copy) and os.path.isfile(tag_file):
@@ -216,11 +219,11 @@ def read_manifest(backend, work_dir, quick=True):
                 old = f.read().strip() or None
         except (IOError, OSError):
             old = None
-    data, tag = backend.release_manifest(releases.EXT, old, quick)
+    data, tag = backend.release_manifest(product, old, quick)
     if data is None:
         data = jsonio.read(copy)
         if data is None:
-            data, tag = backend.release_manifest(releases.EXT, None, quick)
+            data, tag = backend.release_manifest(product, None, quick)
     if not os.path.isdir(work_dir):
         os.makedirs(work_dir)
     jsonio.write(copy, data)
@@ -232,14 +235,19 @@ def read_manifest(backend, work_dir, quick=True):
     return data
 
 
-def sync(ext_dir, backend, channel, work_dir, old_files=None):
+def sync(ext_dir, backend, channel, work_dir, old_files=None, product=releases.EXT):
     """-> (status, details). status: clean / updated / partial / none / nokey /
     offline / error. old_files: tracked files of an installation that has no
-    files.json yet (a git clone being converted)."""
-    if not backend.has_key():
+    files.json yet (a git clone being converted).
+    product 'ext' = the full PEER (needs a key); 'boot' = the public loader,
+    only for an installation that is a loader itself (never replaces a full one)."""
+    boot = product == releases.BOOT
+    if not boot and not backend.has_key():
         return 'nokey', u'no PEER key on this computer - sign in (PEER -> Account)'
+    if boot and not version.is_loader(ext_dir) and installed_files(ext_dir):
+        return 'clean', u'the full PEER is installed - the loader is not needed'
     try:
-        manifest = read_manifest(backend, work_dir)
+        manifest = read_manifest(backend, work_dir, product=product)
     except OfflineError as ex:
         return 'offline', u'{0}'.format(ex)
     except AccessError as ex:
@@ -252,24 +260,26 @@ def sync(ext_dir, backend, channel, work_dir, old_files=None):
     want = goal['version']
     have = version.get(ext_dir)
     mine = installed_files(ext_dir)
-    if have['kind'] == 'package' and have['version'] == want and mine and not changed(ext_dir, mine):
+    same_flavor = (have['flavor'] == 'boot') == boot       # a loader always takes the full PEER
+    if have['kind'] == 'package' and have['version'] == want and same_flavor and mine and \
+            not changed(ext_dir, mine):
         return 'clean', want
-    zip_path = os.path.join(work_dir, _zip_name(want))
+    zip_path = os.path.join(work_dir, _zip_name(want, product))
     try:
         if not os.path.isfile(zip_path) or rfa_info.sha1(zip_path) != goal.get('sha1'):
-            backend.release_download(releases.EXT, want, zip_path)
+            backend.release_download(product, want, zip_path)
             if rfa_info.sha1(zip_path) != goal.get('sha1'):
                 os.remove(zip_path)
                 return 'error', u'the downloaded package {0} is damaged - will try again'.format(want)
         staged = os.path.join(work_dir, 'stage')
-        files = stage(zip_path, staged)
+        files = stage(zip_path, staged, u'boot' if boot else u'full')
         copied, removed, failed = apply(staged, ext_dir, files, mine or old_files or {})
         _rmtree(staged)
     except OfflineError as ex:
         return 'offline', u'{0}'.format(ex)
     except (LibraryError, UpdateError, IOError, OSError) as ex:
         return 'error', u'{0}'.format(ex)
-    _tidy(work_dir, [_zip_name(want), _zip_name(have['version'])])
+    _tidy(work_dir, [_zip_name(want, product), _zip_name(have['version'], product)], product)
     det = u'{0} -> {1}: {2} file(s) written, {3} removed'.format(have['version'], want, len(copied), len(removed))
     if failed:
         return 'partial', det + u'; could not write (next start tries again): ' + u'; '.join(failed[:10])

@@ -4,9 +4,10 @@ param(
   [string]$ExtDir = '',                 # default: %APPDATA%\pyRevit\Extensions\PEER.extension
   [switch]$Quiet                        # no questions (tests): key from $env:PEER_INSTALL_KEY
 )
-# PEER for pyRevit - install / repair. Needs a personal PEER key (or sends an access request).
-# The key is checked on the PEER service, saved encrypted for this Windows user (DPAPI) and
-# never shown. PEER is downloaded from the service with that key; later Revit keeps it up to date.
+# PEER for pyRevit - install / repair. No key needed here: the public loader is installed
+# (PEER tab with the Account button and the updater); the person signs in inside Revit and the
+# full PEER downloads right after that. A computer that already has a valid key gets the full
+# PEER at once. Later Revit keeps it up to date.
 # This file contains no PEER code and no keys.
 $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
@@ -98,69 +99,34 @@ if (-not $Quiet -and (Get-Process Revit -ErrorAction SilentlyContinue)) {
   if ((Read-Host 'Revit is closed now? (yes / no)') -ne 'yes') { Stop-Install 'Close Revit and run this file again.' }
 }
 
-# ---- 1. the key ----------------------------------------------------------------------
+# ---- 1. a key already on this computer? (re-install / repair) -------------------------
+# Nobody is asked for a key here: without one the public loader is installed and the person
+# signs in inside Revit (PEER -> Account); the full PEER downloads right after that.
 New-Item -ItemType Directory -Force $peerDir | Out-Null
-$key = $null
-if (Test-Path $keyFile) {
-  $key = Unprotect-File $keyFile
-  if ($key) {
-    $r = Invoke-Peer 'GET' '/auth' $key $null $null
-    if ($r.status -eq 200) { Say ('Signed in as ' + $r.data.name + ' (key already on this computer).') }
-    elseif ($r.status -eq 0) { Stop-Install ('No connection to the PEER service: ' + $r.error) }
-    else { $key = $null; Say 'The key saved on this computer is not valid any more.' }
-  }
+$key = $null; $who = $null
+if ($Quiet -and $env:PEER_INSTALL_KEY) { $key = $env:PEER_INSTALL_KEY }
+elseif (Test-Path $keyFile) { $key = Unprotect-File $keyFile }
+if ($key) {
+  $r = Invoke-Peer 'GET' '/auth' $key $null $null
+  if ($r.status -eq 200) {
+    $who = $r.data
+    if ($Quiet -and $env:PEER_INSTALL_KEY) { [IO.File]::WriteAllBytes($keyFile, (Protect-Text $key)) }
+    Say ('Signed in as ' + $who.name + ' - the full PEER is installed.')
+  } elseif ($r.status -eq 0) { Stop-Install ('No connection to the PEER service: ' + $r.error) }
+  else { $key = $null; Say 'The key saved on this computer is not valid any more - the loader is installed, sign in in Revit.' }
 }
-if (-not $key -and (Test-Path $reqFile)) {             # an access request sent earlier
-  $parts = (Unprotect-File $reqFile); if ($parts) { $parts = $parts.Split("`n") }
-  if ($parts -and $parts.Count -ge 2) {
-    $r = Invoke-Peer 'POST' '/access/status' $null @{ id = $parts[0]; token = $parts[1] } $null
-    if ($r.status -eq 200 -and $r.data.status -eq 'delivered' -and $r.data.key) {
-      $key = $r.data.key; Remove-Item $reqFile -Force
-      Say ('Your access request was approved. Welcome, ' + $r.data.name + '!')
-    } elseif ($r.status -eq 200 -and $r.data.status -eq 'pending') {
-      Stop-Install 'Your access request is still waiting for a PEER admin. Run this file again after it is approved.'
-    } else { Remove-Item $reqFile -Force -ErrorAction SilentlyContinue }
-  }
-}
-if (-not $key -and $Quiet) { $key = $env:PEER_INSTALL_KEY }
-if (-not $key) {
-  Say ''
-  Say 'PEER works with a personal key.'
-  Say '  1 - I have a key (from a PEER admin)'
-  Say '  2 - I have no key: send an access request'
-  $choice = Read-Host 'Choose 1 or 2'
-  if ($choice -eq '2') {
-    $name = (Read-Host 'Your name (as colleagues know you)').Trim()
-    if ($name.Length -lt 2) { Stop-Install 'Write your name.' }
-    $note = (Read-Host 'Note for the admin (optional)').Trim()
-    $r = Invoke-Peer 'POST' '/access/request' $null @{ name = $name; note = $note } $null
-    if ($r.status -ne 200) { Stop-Install ('The request was not sent: ' + $r.error) }
-    [IO.File]::WriteAllBytes($reqFile, (Protect-Text ($r.data.id + "`n" + $r.data.token + "`n" + $name)))
-    Say ''
-    Say 'Request sent. A PEER admin approves it in Revit (PEER > Keys).'
-    Say 'Then run this file again - PEER installs without any key to copy.'
-    exit 0
-  }
-  $secure = Read-Host 'Paste the key (it is not shown) and press Enter' -AsSecureString
-  $key = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)).Trim()
-}
-if (-not $key.StartsWith('peer_')) { Stop-Install 'The key starts with peer_ - paste it as you got it.' }
-$r = Invoke-Peer 'GET' '/auth' $key $null $null
-if ($r.status -eq 0) { Stop-Install ('No connection to the PEER service: ' + $r.error) }
-if ($r.status -ne 200) { Stop-Install 'This key is not valid. Ask a PEER admin for a new one, or request access.' }
-[IO.File]::WriteAllBytes($keyFile, (Protect-Text $key))
-$who = $r.data
 
 # ---- 2. settings of this computer ----------------------------------------------------
 $cfg = @{}
 if (Test-Path $cfgFile) { try { (Get-Content $cfgFile -Raw -Encoding UTF8 | ConvertFrom-Json).PSObject.Properties | ForEach-Object { $cfg[$_.Name] = $_.Value } } catch { } }
-$cfg['backend'] = 'http'; $cfg['url'] = $Url.TrimEnd('/'); $cfg['user'] = $who.name; $cfg['role'] = $who.role
-$cfg['last_ok'] = (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss')
-$cfg['channel'] = $Channel
+$cfg['backend'] = 'http'; $cfg['url'] = $Url.TrimEnd('/'); $cfg['channel'] = $Channel
+if ($who) { $cfg['user'] = $who.name; $cfg['role'] = $who.role; $cfg['last_ok'] = (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss') }
 [IO.File]::WriteAllText($cfgFile, ($cfg | ConvertTo-Json), (New-Object Text.UTF8Encoding($false)))
 
-# ---- 3. the package ------------------------------------------------------------------
-$r = Invoke-Peer 'GET' '/release/ext/manifest' $key $null $null
+# ---- 3. the package: the full PEER with a key, the public loader without ---------------
+if ($key) { $manifest = '/release/ext/manifest'; $file = '/release/ext/file/'; $product = 'ext'; $flavor = 'full' }
+else { $manifest = '/boot/manifest'; $file = '/boot/file/'; $product = 'boot'; $flavor = 'boot' }
+$r = Invoke-Peer 'GET' $manifest $key $null $null
 if ($r.status -ne 200) { Stop-Install ('Could not read the list of PEER versions: ' + $r.error) }
 $m = $r.data
 $want = $m.channels.stable
@@ -169,10 +135,10 @@ if (-not $want) { Stop-Install 'No PEER package is published yet. Ask a PEER adm
 $entry = $m.versions | Where-Object { $_.version -eq $want } | Select-Object -First 1
 if (-not $entry) { Stop-Install ('Version ' + $want + ' is not on the service any more. Ask a PEER admin.') }
 New-Item -ItemType Directory -Force $work | Out-Null
-$zip = Join-Path $work ('ext-' + $want + '.zip')
+$zip = Join-Path $work ($product + '-' + $want + '.zip')
 if (-not (Test-Path $zip) -or (Get-Sha1 $zip) -ne $entry.sha1) {
   Say ('Downloading PEER ' + $want + ' ...')
-  $r = Invoke-Peer 'GET' ('/release/ext/file/' + $want) $key $null $zip
+  $r = Invoke-Peer 'GET' ($file + $want) $key $null $zip
   if ($r.status -ne 200) { Stop-Install ('Download failed: ' + $r.error) }
   if ((Get-Sha1 $zip) -ne $entry.sha1) { Remove-Item $zip -Force; Stop-Install 'The downloaded file is damaged. Run this file again.' }
 }
@@ -184,6 +150,9 @@ if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
 if (-not (Test-Path (Join-Path $stage 'version.json')) -or -not (Test-Path (Join-Path $stage 'startup.py'))) {
   Stop-Install 'The package is not a PEER package.'
 }
+$vj = Get-Content (Join-Path $stage 'version.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+$got = 'full'; if ($vj.flavor -eq 'boot') { $got = 'boot' }
+if ($got -ne $flavor) { Stop-Install 'The service sent another package than asked for. Ask a PEER admin.' }
 $backup = $null
 if (Test-Path $ExtDir) {
   $backup = $ExtDir + '.old-' + (Get-Date).ToString('yyyyMMdd-HHmmss')
@@ -200,6 +169,12 @@ if ($backup) {
 }
 
 Say ''
-Say ('[OK] PEER ' + $want + ' is installed for ' + $who.name + '.')
-Say 'Start Revit - the PEER tab appears. Updates come by themselves when Revit starts.'
+if ($key) {
+  Say ('[OK] PEER ' + $want + ' is installed for ' + $who.name + '.')
+  Say 'Start Revit - the PEER tab appears. Updates come by themselves when Revit starts.'
+} else {
+  Say ('[OK] The PEER loader ' + $want + ' is installed.')
+  Say 'Start Revit, open the PEER tab and press Account: paste your key or request access.'
+  Say 'After you sign in, PEER downloads all its tools by itself.'
+}
 exit 0

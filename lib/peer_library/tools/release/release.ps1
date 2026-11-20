@@ -12,7 +12,7 @@ param(
 # Release PEER through the PEER service (admin key of this Windows user, never printed).
 #
 #   release.ps1                                        what is published now (nothing changes)
-#   release.ps1 -Do ext -Note "what changed"           package of HEAD -> beta
+#   release.ps1 -Do ext -Note "what changed"           package of HEAD (+ the public loader) -> beta
 #   release.ps1 -Do ext -Ref dev -Channel stable -Note "..."
 #   release.ps1 -Do promote -Version 2026.11.20.1 -Channel stable     beta -> everybody / roll back
 #   release.ps1 -Do template -File "D:\work\PR_Template Concrete.rte" -Note "what changed"     template -> beta
@@ -63,7 +63,11 @@ if ($Do -eq 'promote') {
     $a = Read-Host "Point $Product '$Channel' at version $Version for everybody on that channel? (yes/no)"
     if ($a -ne 'yes') { 'Cancelled.'; return }
   }
-  Invoke-Service @('promote', $Product, $Version, $Channel); return
+  Invoke-Service @('promote', $Product, $Version, $Channel)
+  if ($Product -eq 'ext') {        # the loader of the same version follows the full PEER
+    try { Invoke-Service @('promote', 'boot', $Version, $Channel) } catch { 'No loader of this version - skipped.' }
+  }
+  return
 }
 
 # ---- the project template (a .rte saved from Revit; versions are 1, 2, 3 ...) ----
@@ -100,9 +104,12 @@ if (-not $Version) { throw 'Could not work out the next version.' }
 $build = & py -3 (Join-Path $here 'build_ext.py') $Version --ref $Ref --channel $Channel --out $work
 $build
 $package = (($build | Where-Object { $_ -match '^PACKAGE ' }) -replace '^PACKAGE\s+', '').Trim()
-if (-not (Test-Path $package)) { throw 'The package was not built.' }
+$loader = (($build | Where-Object { $_ -match '^LOADER ' }) -replace '^LOADER\s+', '').Trim()
+if (-not (Test-Path $package) -or -not (Test-Path $loader)) { throw 'The package was not built.' }
 if (-not $Yes) {
   $a = Read-Host "Publish PEER $Version (from $Ref) to '$Channel'? (yes/no)"
   if ($a -ne 'yes') { "Cancelled. The package stays here: $package"; return }
 }
 Invoke-Service @('publish', 'ext', $Version, $package, $Channel, $Note)
+# the public loader (Account + updater) of the same version - what install.bat puts on a new computer
+Invoke-Service @('publish', 'boot', $Version, $loader, $Channel, $Note)

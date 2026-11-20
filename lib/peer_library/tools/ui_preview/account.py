@@ -7,7 +7,7 @@ import traceback
 
 execfile(os.path.join(os.path.dirname(__file__), 'stubs.py'))   # noqa: F821
 
-from peer_library import access, keystore, ui_account  # noqa: E402
+from peer_library import access, keystore, ui_account, version  # noqa: E402
 
 XAML = os.path.join(EXT, 'PEER.tab', 'Account.panel', 'Account.pushbutton', 'AccountWindow.xaml')  # noqa: F821
 FAKE_KEY = u'peer_Ab3dE6gH9jK2mN5pQ8rS1tU4vW7xYz'
@@ -22,12 +22,14 @@ STATES = [
     ('account_requested.png', access.Status(access.REQUESTED, True), False, 'no key'),
     ('account_revoked.png', access.Status(access.NONE, True), False, 'revoked'),
     ('account_off.png', access.Status(access.OFF, False), False, 'off'),
+    ('account_loader_signed.png', access.Status(access.OK, True, 14, u'Anna', 'user', '2026-11-20T09:15:00'), True, 'ok'),
 ]
 
 for name, st, has_key, check in STATES:
     try:
         access.status = lambda cfg=None, _st=st: _st
         keystore.load = lambda _k=has_key: FAKE_KEY if _k else None
+        version.is_loader = lambda folder=None, _n=name: 'loader' in _n
         win = ui_account.AccountWindow(XAML, check=False)
         win.check = check
         win.render()

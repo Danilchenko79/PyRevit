@@ -29,7 +29,8 @@
 //   GET    /access               waiting access requests             admin
 //   POST   /access/approve       {id, role}                          admin
 //   POST   /access/reject        {id}                                admin
-//   GET    /release/<p>/manifest           channels + versions (ETag)  any key   p = ext | template
+//   GET    /boot/manifest, /boot/file/<v>  the PEER loader             no key (public)
+//   GET    /release/<p>/manifest           channels + versions (ETag)  any key   p = ext | boot | template
 //   GET    /release/<p>/file/<version>     the package / the template  any key
 //   PUT    /release/<p>/file/<version>     upload (raw body, x-sha1)   admin
 //   POST   /release/<p>/publish            {version, channel, note}    admin
@@ -532,6 +533,7 @@ async function resolveAccess(request, env, who, approve) {
 const REL = 'PEER-Releases/';
 const PRODUCTS = {
   ext: { max: 40 * 1024 * 1024, type: 'application/zip' },
+  boot: { max: 10 * 1024 * 1024, type: 'application/zip' },     // the loader: Account + updater, public
   template: { max: 95 * 1024 * 1024, type: 'application/octet-stream' },
 };
 const CHANNELS = ['stable', 'beta'];
@@ -665,6 +667,17 @@ async function route(request, env) {
   if (path === '/' && method === 'GET') return json({ service: 'peer-library', ok: true });
   if (path === '/access/request' && method === 'POST') return requestAccess(request, env);
   if (path === '/access/status' && method === 'POST') return accessStatus(request, env);
+  // The loader is public: anybody installs it, the rest of PEER comes after signing in.
+  // It holds no tools - only the Account button, the library client and the updater.
+  if (method === 'GET' && path === '/boot/manifest') {
+    return storedJson(request, env, REL + 'boot/manifest.json', emptyManifest('boot'));
+  }
+  let b;
+  if (method === 'GET' && (b = /^\/boot\/file\/([0-9.]+)$/.exec(path))) {
+    const obj = await env.BUCKET.get(REL + 'boot/' + versionOf(b[1]));
+    if (!obj) throw new HttpError(404, 'No such version of the PEER loader: ' + b[1]);
+    return fileResponse(obj);
+  }
 
   const who = await authenticate(request, env);
 

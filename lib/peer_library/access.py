@@ -45,7 +45,7 @@ class Status(object):
 def evaluate(cfg, has_key, has_request=False, now=None):
     """Pure: the status from the settings and what is stored on this computer."""
     lock = bool(cfg.get('access_lock'))
-    if cfg.get('backend') != 'http' or not (cfg.get('url') or u'').startswith('https://'):
+    if cfg.get('backend') != 'http' or not config.service_url_ok(cfg.get('url')):
         return Status(OFF, False)
     if not has_key:
         return Status(REQUESTED if has_request else NONE, lock)

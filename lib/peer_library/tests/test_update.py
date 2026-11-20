@@ -28,6 +28,7 @@ def sha(data):
 
 
 def make_zip(path, ver, files, channel=u'stable', listed=None, extra=None):
+    flavor = 'boot' if os.path.basename(path).startswith('boot-') else None
     """A package: files {rel: bytes} + files.json + version.json."""
     listed = dict((k, sha(v)) for k, v in files.items()) if listed is None else listed
     with zipfile.ZipFile(path, 'w', zipfile.ZIP_DEFLATED) as z:
@@ -36,7 +37,10 @@ def make_zip(path, ver, files, channel=u'stable', listed=None, extra=None):
         for rel, data in (extra or {}).items():
             z.writestr(rel, data)
         z.writestr('files.json', json.dumps({'version': ver, 'files': listed}))
-        z.writestr('version.json', json.dumps({'version': ver, 'channel': channel, 'built': u'now'}))
+        meta = {'version': ver, 'channel': channel, 'built': u'now'}
+        if flavor:
+            meta['flavor'] = flavor
+        z.writestr('version.json', json.dumps(meta))
     return path
 
 
@@ -61,7 +65,12 @@ class FakeService(object):
                                           'size': os.path.getsize(p), 'note': u'note ' + ver})
         self.manifest['channels'][channel] = ver
 
+    boot = None
+
     def release_manifest(self, product, etag=None, quick=False):
+        if product == 'boot':                           # public: no key needed
+            m = self.boot or {'channels': {'stable': u'', 'beta': u''}, 'versions': []}
+            return json.loads(json.dumps(m)), 'boot-tag'
         if self.revoked:
             raise AccessError(u'This library key is not valid any more - ask an admin.')
         if self.offline:
@@ -75,7 +84,9 @@ class FakeService(object):
         if self.offline:
             raise OfflineError(u'No connection to the library service (test).')
         self.downloads.append(ver)
-        shutil.copyfile(os.path.join(self.folder, ver + '.zip'), target)
+        name = ('boot-' + ver if product == 'boot' and os.path.isfile(os.path.join(self.folder, 'boot-' + ver + '.zip'))
+                else ver)
+        shutil.copyfile(os.path.join(self.folder, name + '.zip'), target)
         if self.damage:
             with open(target, 'ab') as f:
                 f.write(b'x')
@@ -150,6 +161,20 @@ class TestPack(unittest.TestCase):
             self.assertTrue(pack.wanted(rel), rel)
         for rel in no:
             self.assertFalse(pack.wanted(rel), rel)
+
+    def test_loader_holds_no_tools(self):
+        from peer_library import pack
+        yes = [u'startup.py', u'lib/peer_update.py', u'lib/peer_access.py', u'lib/peer_library/ui_account.py',
+               u'PEER.tab/Account.panel/Account.pushbutton/script.py', u'PEER.tab/bundle.yaml',
+               u'PEER.tab/Library.panel/Library.smartbutton/LoginWindow.xaml', u'lib/peer_feedback/client.py',
+               u'PEER.tab/Feedback.panel/Contact.pushbutton/script.py', u'hooks/doc-opened.py']
+        no = [u'PEER.tab/Walls.panel/WallRebar2D.pushbutton/script.py', u'lib/wallrebar2d/core.py',
+              u'lib/kz_dims.py', u'lib/tributary/engine.js', u'PEER.tab/Sheets.panel/bundle.yaml',
+              u'lib/peer_library/tests/test_core.py', u'lib/peer_feedback/tests/test_x.py', u'service/src/worker.js']
+        for rel in yes:
+            self.assertTrue(pack.in_loader(rel), rel)
+        for rel in no:
+            self.assertFalse(pack.in_loader(rel), rel)
 
     def test_build_is_repeatable_and_complete(self):
         from peer_library import pack
@@ -359,6 +384,40 @@ class TestUpdate(unittest.TestCase):
             U.jsonio.replace = real
         self.assertEqual(self.read('lib/a.py'), b'old')
         self.assertEqual(os.listdir(os.path.join(self.ext, 'lib')), ['a.py'])
+
+    def test_loader_then_full_peer(self):
+        loader = {'startup.py': b'one', 'lib/peer_update.py': b'u = 1\n'}
+        full = dict(loader, **{'lib/tools.py': b'tools'})
+        self.svc.add('1', full)
+        p = make_zip(os.path.join(self.svc.folder, 'boot-1.zip'), '1', loader, extra=None)
+        self.svc.boot = {'channels': {'stable': u'1', 'beta': u''},
+                         'versions': [{'version': '1', 'sha1': rfa_info.sha1(p)}]}
+        # no key: only the loader can be installed / kept current
+        self.svc.key = False
+        status, det = U.sync(self.ext, self.svc, 'stable', self.work, None, 'boot')
+        self.assertEqual(status, 'updated', det)
+        self.assertTrue(version.is_loader(self.ext))
+        self.assertEqual(version.text(self.ext, 'stable'), u'1 loader')
+        self.assertEqual(U.sync(self.ext, self.svc, 'stable', self.work, None, 'boot'), ('clean', '1'))
+        self.assertEqual(U.sync(self.ext, self.svc, 'stable', self.work)[0], 'nokey')
+        # signed in: the same version number, but the full PEER replaces the loader
+        self.svc.key = True
+        status, det = U.sync(self.ext, self.svc, 'stable', self.work)
+        self.assertEqual(status, 'updated', det)
+        self.assertFalse(version.is_loader(self.ext))
+        self.assertEqual(self.read('lib/tools.py'), b'tools')
+        self.assertEqual(U.sync(self.ext, self.svc, 'stable', self.work), ('clean', '1'))
+        # a full installation is never turned back into a loader
+        self.assertEqual(U.sync(self.ext, self.svc, 'stable', self.work, None, 'boot')[0], 'clean')
+        self.assertEqual(self.read('lib/tools.py'), b'tools')
+
+    def test_a_full_package_offered_as_loader_is_refused(self):
+        self.svc.add('1', self.V1)                      # full package
+        self.svc.boot = self.svc.manifest               # ... listed as the loader
+        self.svc.key = False
+        status, det = U.sync(self.ext, self.svc, 'stable', self.work, None, 'boot')
+        self.assertEqual(status, 'error')
+        self.assertEqual(os.listdir(self.ext), [])
 
     def test_interrupted_update_finishes_next_time(self):
         self.svc.add('1', self.V1)

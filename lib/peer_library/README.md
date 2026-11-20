@@ -123,12 +123,14 @@ sym = require.symbol(doc, u'PR_Wall2D_Edge', u'Type 1')   # затем sym.Activ
 | Какая версия нужна компьютеру (beta не отстаёт от stable) | `releases.py` |
 | Довести установку до пакета (скачать раз, SHA-1, заменить изменённое, убрать удалённое, чужое не трогать; `version.json` пишется последним) | `ext_update.py` |
 | Старт Revit: сначала пакет, иначе старый git-способ; git-клон сам становится пакетом | `lib/peer_update.py` |
-| Установщик по ключу / по заявке на доступ | `installer/install.bat` + `install.ps1` |
+| Установщик без ключа: ставит открытый загрузчик (`boot`), с ключом на компьютере — сразу полный PEER | `installer/install.bat` + `install.ps1` |
+| Загрузчик: Account, клиент библиотеки, Feedback, обновление — без инструментов (`pack.in_loader`); `version.json` с `"flavor": "boot"` | `pack.py`, `version.is_loader` |
+| После входа в Account — сразу полный пакет и Reload pyRevit; без ключа при старте Revit обновляется только загрузчик | `ui_account._get_full`, `peer_update.sync_package` |
 
 Выпуск (ключ админа этого пользователя Windows, не печатается; в пакет идут только закоммиченные файлы):
 ```
 powershell -ExecutionPolicy Bypass -File lib\peer_library\tools\release\release.ps1                      # что опубликовано
-... release.ps1 -Do ext -Note "что изменилось"                    # пакет HEAD -> beta
+... release.ps1 -Do ext -Note "что изменилось"                    # пакет HEAD + загрузчик той же версии -> beta
 ... release.ps1 -Do promote -Version 2026.11.20.1 -Channel stable  # beta -> всем; так же откат на старую версию
 ```
 Свой компьютер на beta: `"channel": "beta"` в `%APPDATA%\PEER\library.json`. Журнал обновления —
