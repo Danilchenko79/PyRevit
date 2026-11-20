@@ -82,7 +82,20 @@ def group_key(c):
     """Columns with the same key are one group. Sizes to 0.1 mm, so the
     float noise of a unit conversion does not split a group."""
     return (c['shape'], round(c['b'], 1), round(c['h'], 1),
-            int(round(c['qb'])), int(round(c['qh'])), round(c['dia'], 1))
+            int(round(c['qb'])), int(round(c['qh'])), round(c['dia'], 1)) + extra_key(c)
+
+
+# Item 9: what the 3D column carries besides the bars - a column with another
+# value is another row (decision A).
+EXTRA = ('cover', 'stirrup_dia', 'spacing', 'dense', 'transverse')
+
+
+def extra_key(c):
+    out = []
+    for k in EXTRA:
+        v = c.get(k)
+        out.append(round(v, 1) if isinstance(v, float) else v)
+    return tuple(out)
 
 
 def group_sort_key(g):
@@ -108,6 +121,8 @@ def make_groups(columns):
             g = by_key[k] = {'shape': c['shape'], 'b': c['b'], 'h': c['h'],
                              'qb': int(round(c['qb'])), 'qh': int(round(c['qh'])),
                              'dia': c['dia'], 'marks': [], 'ids': []}
+            for f_ in EXTRA:                 # not k: k is the group key here
+                g[f_] = c.get(f_)
             order.append(k)
         g['marks'].append(mark)
         g['ids'].append(c['id'])

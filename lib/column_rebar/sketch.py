@@ -94,35 +94,70 @@ def svg(result, b, h=None, cover=25.0, bar_dia=16.0, size=260.0, margin=56.0):
 
     # ties: along the tied bars, hooks drawn as rings round the end bars
     dl = bar_dia
+
+    def poly(pts, w, dash=''):
+        out.append(('<polyline points="%s" fill="none" stroke="%s" stroke-width="%s" '
+                    'stroke-linejoin="round"' + dash + '/>')
+                   % (' '.join('%s,%s' % (_n(X(px)), _n(Y(py))) for px, py in pts), TIE, _n(w)))
+
+    def arc(c, r, a0, a1, n=14):
+        return [(c[0] + r * math.cos(a0 + (a1 - a0) * i / float(n)),
+                 c[1] + r * math.sin(a0 + (a1 - a0) * i / float(n))) for i in range(n + 1)]
+
+    # ties as the family draws them (the user's Rebar_Shape 61): beside the bars,
+    # a half circle round each end bar and a straight return
     for t in result['ties']:
-        w = max(1.2, t['dia'] * k)
-        shift = dl / 2.0 + t['dia'] / 2.0
+        dw = t['dia']
+        w = max(1.2, dw * k)
+        R = dl / 2.0 + dw / 2.0
+        C = max(50.0 + 2 * dw, 7.0 * dw)
+        dash = ' stroke-dasharray="3 2"' if t.get('alt') else ''   # placed in turn with the mirror tie
         if t.get('kind') == 'v':
-            pts = ' '.join('%s,%s' % (_n(X(px)), _n(Y(py))) for px, py in t['points'])
-            out.append('<polyline points="%s" fill="none" stroke="%s" stroke-width="%s" '
-                       'stroke-linejoin="round"/>' % (pts, TIE, _n(w)))
-            for px, py in t['points']:
-                out.append('<circle cx="%s" cy="%s" r="%s" fill="none" stroke="%s" stroke-width="%s"/>'
-                           % (_n(X(px)), _n(Y(py)), _n(shift * k), TIE, _n(w)))
+            p1, A, p2 = t['points']
+            pts_all = []
+            legs = []
+            for E, other in ((p1, p2), (p2, p1)):
+                L = math.hypot(E[0] - A[0], E[1] - A[1])
+                u = ((E[0] - A[0]) / L, (E[1] - A[1]) / L)
+                n = (-u[1], u[0])
+                if n[0] * (other[0] - A[0]) + n[1] * (other[1] - A[1]) > 0:
+                    n = (u[1], -u[0])                      # the outside of the V
+                legs.append((E, u, n))
+            # apex: an arc round the middle bar between the two legs, on the outside
+            a1 = math.atan2(legs[0][2][1], legs[0][2][0])
+            a2 = math.atan2(legs[1][2][1], legs[1][2][0])
+            bis = (legs[0][1][0] + legs[1][1][0], legs[0][1][1] + legs[1][1][1])
+            far = math.atan2(-bis[1], -bis[0])
+            d = (a2 - a1 + math.pi) % (2 * math.pi) - math.pi
+            mid = a1 + d / 2.0
+            if math.cos(mid - far) < 0:
+                d = d - 2 * math.pi if d > 0 else d + 2 * math.pi
+            poly(arc(A, R, a1, a1 + d), w)
+            for E, u, n in legs:
+                st_ = (A[0] + R * n[0], A[1] + R * n[1])
+                en_ = (E[0] + R * n[0], E[1] + R * n[1])
+                an = math.atan2(n[1], n[0])
+                au = math.atan2(u[1], u[0])
+                dd = math.pi if math.cos(an + math.pi / 2 - au) > 0 else -math.pi
+                hook = arc(E, R, an, an + dd)
+                back = hook[-1]
+                ret = (back[0] - C * u[0], back[1] - C * u[1])
+                poly([st_, en_] + hook[1:] + [ret], w)
             continue
-        dash = ' stroke-dasharray="6 4"' if t.get('alt') else ''   # placed in turn with the mirror tie
         if t['direction'] == code466.VERTICAL:
             ends = [(x, y) for x, y in result['bars'] if abs(x - t['at']) < 0.5]
             if len(ends) < 2:
                 continue
             (x1, y1), (x2, y2) = min(ends, key=lambda p: p[1]), max(ends, key=lambda p: p[1])
-            out.append(('<line x1="%s" y1="%s" x2="%s" y2="%s" stroke="%s" stroke-width="%s"' + dash + '/>')
-                       % (_n(X(x1 - shift)), _n(Y(y1)), _n(X(x2 - shift)), _n(Y(y2)), TIE, _n(w)))
+            poly([(x1 - R, y1 + C)] + arc((x1, y1), R, math.pi, 2 * math.pi) +
+                 arc((x2, y2), R, 0.0, math.pi) + [(x2 - R, y2 - C)], w, dash)
         else:
             ends = [(x, y) for x, y in result['bars'] if abs(y - t['at']) < 0.5]
             if len(ends) < 2:
                 continue
             (x1, y1), (x2, y2) = min(ends), max(ends)
-            out.append(('<line x1="%s" y1="%s" x2="%s" y2="%s" stroke="%s" stroke-width="%s"' + dash + '/>')
-                       % (_n(X(x1)), _n(Y(y1 + shift)), _n(X(x2)), _n(Y(y2 + shift)), TIE, _n(w)))
-        for x, y in ((x1, y1), (x2, y2)):
-            out.append('<circle cx="%s" cy="%s" r="%s" fill="none" stroke="%s" stroke-width="%s"/>'
-                       % (_n(X(x)), _n(Y(y)), _n(shift * k), TIE, _n(w)))
+            poly([(x1 + C, y1 + R)] + arc((x1, y1), R, math.pi / 2, 3 * math.pi / 2) +
+                 arc((x2, y2), R, -math.pi / 2, math.pi / 2) + [(x2 - C, y2 + R)], w, dash)
 
     # inner hoops (rectangles round two bars of each face)
     for hp in result.get('hoops') or []:
