@@ -123,6 +123,7 @@ BTN_UPDATE_PLACE = u'Update and place'
 OVERWRITE = u'Overwrite parameter values in the project'
 OVERWRITE_WARN = (u'Values changed in the project (dimensions, materials, text) will be '
                   u'replaced by the library values. Continue?')
+RESET_FAILED = u'Could not reset the parameter values: {0}'
 TYPES_HEADER = u'Types from the type catalog ({0})'
 TYPES_HINT = u'Tick the types to load. Nothing ticked = choose before loading.'
 TYPES_NONE = u'Tick at least one type from the catalog.'

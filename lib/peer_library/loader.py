@@ -6,6 +6,11 @@ A family in the project = Family whose name equals the library ID
 of its types. Works no matter how the family got into the project.
 """
 
+import os
+import shutil
+import tempfile
+import uuid
+
 import clr
 from Autodesk.Revit import DB
 
@@ -91,6 +96,7 @@ class LoadOptions(DB.IFamilyLoadOptions):
     # .Value (as pyRevit's own revit.db.create does). Some IronPython builds
     # instead expect them as extra return values - then return a tuple.
     used = None              # 'value' / 'tuple' - which convention IronPython used
+    restored = 0             # catalog types: project values written back after the load
 
     def OnFamilyFound(self, familyInUse, overwriteParameterValues):
         if hasattr(overwriteParameterValues, 'Value'):
@@ -141,7 +147,22 @@ def find_family(doc, family_id):
 
 def load_family(doc, path, family_id, overwrite=False, type_names=None):
     """Load / reload the whole family, or only type_names from its catalog.
-    Returns the Family (or None for rebar shapes). Raises with a short text."""
+    Returns the Family (or None for rebar shapes). Raises with a short text.
+
+    Checked in Revit 2024 (20.11.2026):
+    - a file identical to the family in the project is skipped by Revit
+      (OnFamilyFound is not called), so "overwrite values" would do nothing -
+      a copy with an empty edit is loaded instead, which Revit takes as new;
+    - catalog types (LoadFamilySymbol) always get the catalog values, whatever
+      overwrite says - without overwrite the project values are read before
+      and written back after (same transaction, one Undo)."""
+    existing = find_family(doc, family_id)
+    touched = None
+    if overwrite and existing is not None and not type_names:
+        touched = _touched_copy(doc.Application, path, family_id)
+    kept = []
+    if type_names and existing is not None and not overwrite:
+        kept = _type_values(doc, existing, type_names)
     opts = LoadOptions(overwrite, family_id)
     tx = _tx(doc, u'PEER Library: load {0}'.format(family_id))
     tx.Start()
@@ -152,14 +173,17 @@ def load_family(doc, path, family_id, overwrite=False, type_names=None):
                 doc.LoadFamilySymbol(path, name, opts, ref)
         else:
             ref = clr.Reference[DB.Family]()
-            doc.LoadFamily(path, opts, ref)
+            doc.LoadFamily(touched or path, opts, ref)
+        opts.restored = _restore_values(kept)
         tx.Commit()
     except Exception as ex:
-        log.write(u'load {0} from {1}'.format(family_id, path), exc=True)
+        log.write(u'load {0} from {1}'.format(family_id, touched or path), exc=True)
         raise Exception(friendly_error(ex))
     finally:
         if tx.HasStarted() and not tx.HasEnded():
             tx.RollBack()
+        if touched:
+            _remove(touched)
     if tx.GetStatus() != DB.TransactionStatus.Committed:
         raise Exception(u'Revit rolled the load back (see the warnings in the log).')
     global LAST_OPTIONS
@@ -168,6 +192,128 @@ def load_family(doc, path, family_id, overwrite=False, type_names=None):
 
 
 LAST_OPTIONS = None          # options of the last load (diagnostics / tests)
+
+
+# ---- reload helpers ----------------------------------------------------------
+def _touch_dir():
+    base = os.environ.get('LOCALAPPDATA') or tempfile.gettempdir()
+    return os.path.join(base, 'Temp', 'peer_lib_touch')   # short: SaveAs fails past 260
+
+
+def _touched_copy(app, path, family_id):
+    """Copy of the library file with an empty edit (a parameter added and
+    removed in one transaction). Revit loads it although the content is the
+    same. The file keeps the name <ID>.rfa - Revit names the family by it."""
+    folder = _touch_dir()
+    if not os.path.isdir(folder):
+        os.makedirs(folder)
+    copy = os.path.join(folder, family_id + u'.rfa')
+    shutil.copyfile(path, copy)
+    fd = None
+    try:
+        fd = app.OpenDocumentFile(copy)
+        tx = _tx(fd, u'PEER Library: reset values')
+        tx.Start()
+        try:
+            fm = fd.FamilyManager
+            p = fm.AddParameter(u'PEER_touch_' + uuid.uuid4().hex[:8], DB.GroupTypeId.General,
+                                DB.SpecTypeId.String.Text, True)
+            fm.RemoveParameter(p)
+            tx.Commit()
+        finally:
+            if tx.HasStarted() and not tx.HasEnded():
+                tx.RollBack()
+        if tx.GetStatus() != DB.TransactionStatus.Committed:
+            raise Exception(u'Revit rejected the change in the family file.')
+        fd.Save()
+    except Exception as ex:
+        log.write(u'reset values {0}'.format(family_id), exc=True)
+        _remove(copy)
+        raise Exception(strings.RESET_FAILED.format(friendly_error(ex)))
+    finally:
+        if fd is not None:
+            try:
+                fd.Close(False)
+            except Exception:
+                log.write(u'close {0}'.format(copy), exc=True)
+    return copy
+
+
+def _remove(path):
+    for p in (path, os.path.splitext(path)[0] + u'.0001.rfa'):
+        try:
+            if os.path.isfile(p):
+                os.remove(p)
+        except Exception:
+            pass
+
+
+_NAME_PARAMS = (DB.BuiltInParameter.SYMBOL_NAME_PARAM, DB.BuiltInParameter.ALL_MODEL_TYPE_NAME)
+
+
+def _value(prm):
+    """(storage, value) of a writable parameter, or None."""
+    try:
+        if prm.IsReadOnly or not prm.HasValue:
+            return None
+        if getattr(prm.Definition, 'BuiltInParameter', None) in _NAME_PARAMS:
+            return None
+        st = prm.StorageType
+        if st == DB.StorageType.Double:
+            return st, prm.AsDouble()
+        if st == DB.StorageType.Integer:
+            return st, prm.AsInteger()
+        if st == DB.StorageType.String:
+            return st, prm.AsString()
+        if st == DB.StorageType.ElementId:
+            return st, prm.AsElementId()
+    except Exception:
+        pass
+    return None
+
+
+def _type_values(doc, fam, names):
+    """[(symbol, {parameter id: (storage, value)})] of the named types already
+    in the project. Read-only parameters (formulas, PEER_Version) are left out."""
+    want = set(names or [])
+    out = []
+    for sid in fam.GetFamilySymbolIds():
+        sym = doc.GetElement(sid)
+        if sym is None or symbol_name(sym) not in want:
+            continue
+        vals = {}
+        for prm in sym.Parameters:
+            v = _value(prm)
+            if v is not None:
+                vals[str(prm.Id)] = v
+        out.append((sym, vals))
+    return out
+
+
+def _restore_values(kept):
+    """Writes back the values _type_values read; returns how many changed."""
+    n = 0
+    for sym, vals in kept:
+        for prm in sym.Parameters:
+            old = vals.get(str(prm.Id))
+            if old is None or prm.IsReadOnly:
+                continue
+            now = _value(prm)
+            if now is not None and now[0] == old[0] and _same(now[1], old[1]):
+                continue
+            try:
+                if prm.Set(old[1]):
+                    n += 1
+            except Exception:
+                log.write(u'keep value {0} of {1}'.format(prm.Definition.Name, symbol_name(sym)),
+                          exc=True)
+    return n
+
+
+def _same(a, b):
+    if isinstance(a, float) and isinstance(b, float):
+        return abs(a - b) < 1e-9
+    return a == b
 
 
 def family_type_names(doc, fam):

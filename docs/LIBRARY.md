@@ -26,8 +26,9 @@ The **Library** panel on the **PEER** tab appears once the library is set up for
 
 Each tile shows the family's status in the open project: **Not in project**, **Up to date (vN)**,
 **Project vN → library vM** (an update is available), **In project, no version**.
-Updating keeps the parameter values changed in the project, unless you tick
-**Overwrite parameter values in the project**.
+Updating keeps the parameter values changed in the project (catalog types too), unless you tick
+**Overwrite parameter values in the project** - then the library values come back, also for a
+family that is already up to date.
 
 ## Keep a project up to date
 

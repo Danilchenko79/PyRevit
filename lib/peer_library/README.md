@@ -42,8 +42,8 @@ Revit **2024**, публиковать только из 2024. ID = имя фа�
 
 ## Проверки
 ```
-py -3 -m unittest discover -s lib/peer_library/tests     # 38 тестов, в т.ч. клиент ↔ сервис (node)
-node --test service/test                                  # 16 тестов сервиса
+py -3 -m unittest discover -s lib/peer_library/tests     # 39 тестов, в т.ч. клиент ↔ сервис (node)
+node --test service/test                                  # 17 тестов сервиса
 ```
 Синтаксис IronPython и XAML — `ipy`-компиляция и `XamlReader` (см. историю сессии 20.11.2026).
 
@@ -54,6 +54,16 @@ powershell -STA -ExecutionPolicy Bypass -File lib\peer_library\tools\ui_preview\
 ```
 `library.py` — библиотека (поиск, детали, каталог, «Need update», «This project», «What's new»), `windows.py` —
 Keys, Inbox, Publish, Propose, вход, запрос, правка карточки. Загрузку в проект так не проверить — только в Revit.
+
+Загрузка в проект — проверено в Revit 2024 через коннектор (временный проект, 20.11.2026), `loader.load_family`:
+- выходной параметр `IFamilyLoadOptions` — `.Value` (`LAST_OPTIONS.used == 'value'`);
+- файл, совпадающий с семейством в проекте, Revit пропускает (`OnFamilyFound` не зовётся, `SaveAs` без правки не
+  помогает) → «Overwrite» при той же версии загружает копию с пустой правкой (параметр добавлен и удалён) из
+  `%LOCALAPPDATA%\Temp\peer_lib_touch\<ID>.rfa`;
+- типы каталога (`LoadFamilySymbol`) всегда получают значения каталога → без «Overwrite» значения типов читаются
+  до загрузки и пишутся обратно в той же транзакции; целиком (`LoadFamily`) каталог грузит ВСЕ типы — окно так не делает;
+- обновление v1 → v2: значения проекта сохраняются, `PEER_Version` (формула) становится 2; `project_check` /
+  `on_doc_opened` находит устаревшее (уведомление в проверке заглушено).
 
 ## Инструменты (`tools/`)
 - `sort_source.py <сырые> <папка>` — раскладка по группам, журнал `_sort_log.csv`.
