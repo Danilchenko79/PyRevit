@@ -185,6 +185,15 @@ class LibraryWindow(forms.WPFWindow):
             self.Cursor = None
         self.search_box.Focus()
 
+    def _old_revit(self):
+        """This Revit is older than the library format: Revit cannot open the files."""
+        try:
+            from peer_library import checks_file
+            year = int(self.doc.Application.VersionNumber)
+            return 0 < year < checks_file.LIBRARY_REVIT
+        except Exception:
+            return False
+
     def _load(self):
         idx, self.online = self.cache.index()
         cards = [c for c in idx.get('families', []) if c.get('status') != 'deprecated']
@@ -214,6 +223,10 @@ class LibraryWindow(forms.WPFWindow):
                                                           self.cfg.get('root') or self.cfg.get('url'))
         else:
             self.status_text.Text = strings.OFFLINE.format(idx.get('built', u''))
+        if self._old_revit():
+            from peer_library import checks_file
+            self.status_text.Text = strings.OLD_REVIT.format(checks_file.LIBRARY_REVIT,
+                                                             self.doc.Application.VersionNumber)
         self._start_downloader()
         self.timer.Start()
         if self.online:
@@ -566,8 +579,8 @@ class LibraryWindow(forms.WPFWindow):
         has = it is not None
         self.details.Visibility = Visibility.Visible if has else Visibility.Hidden
         self.d_empty.Visibility = Visibility.Collapsed if has else Visibility.Visible
-        self.load_btn.IsEnabled = has
-        self.place_btn.IsEnabled = has
+        self.load_btn.IsEnabled = has and not self._old_revit()
+        self.place_btn.IsEnabled = has and not self._old_revit()
         self.overwrite_box.IsEnabled = has
         if not has:
             self.status_text.Text = self.status_text.Text or strings.NOTHING_SELECTED
@@ -585,7 +598,8 @@ class LibraryWindow(forms.WPFWindow):
         self.d_chips.Children.Add(ch)
         if it.is_new:
             self.d_chips.Children.Add(U.new_badge())
-        self.d_version.Text = strings.VERSION_LINE.format(c.get('version'), c.get('updated'))
+        self.d_version.Text = strings.VERSION_LINE.format(c.get('version'), c.get('updated')) + (
+            u' · ' + U.file_size(c['size']) if c.get('size') else u'')
         self.d_project.Text = strings.PROJECT_LINE.format(it.label)
         self.d_desc.Text = c.get('description') or u''
         self.d_tags.Text = u', '.join(c.get('tags') or [])
@@ -687,9 +701,16 @@ class LibraryWindow(forms.WPFWindow):
     def on_place(self, sender, args):
         self._do_load(place=True)
 
+    def _refuse_old_revit(self):
+        if not self._old_revit():
+            return False
+        from peer_library import checks_file
+        U.error(strings.OLD_REVIT.format(checks_file.LIBRARY_REVIT, self.doc.Application.VersionNumber))
+        return True
+
     def _do_load(self, place):
         it = self.current
-        if it is None:
+        if it is None or self._refuse_old_revit():
             return
         if self.doc.IsFamilyDocument:
             U.error(strings.FAMILY_DOC)
@@ -754,7 +775,7 @@ class LibraryWindow(forms.WPFWindow):
         Parameter values in the project are kept. Catalog families: the types
         already in the project are reloaded."""
         todo = [x for x in self.items if x.code == loader.OUTDATED]
-        if not todo or self.doc.IsFamilyDocument:
+        if not todo or self.doc.IsFamilyDocument or self._refuse_old_revit():
             return
         if not U.ask(strings.UPDATE_ALL_ASK.format(len(todo))):
             return
@@ -989,7 +1010,7 @@ class LibraryWindow(forms.WPFWindow):
         self._apply_filter()
 
     def on_coll_load(self, sender, args):
-        if self.doc.IsFamilyDocument:
+        if self.doc.IsFamilyDocument or self._refuse_old_revit():
             return
         shown = [x for x in self.items if x.lbi.Visibility == Visibility.Visible]
         todo = [x for x in shown if x.code in (loader.MISSING, loader.OUTDATED, loader.UNKNOWN)
@@ -1109,6 +1130,8 @@ class LibraryWindow(forms.WPFWindow):
 
     def on_proj_update(self, sender, args):
         sel = [r for r in self._proj_selected() if r['item'] is not None]
+        if sel and self._refuse_old_revit():
+            return
         if not sel:
             U.info(strings.PROJ_SELECT_LIBRARY)
             return

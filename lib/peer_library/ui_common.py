@@ -103,6 +103,14 @@ def local_time(iso, seconds=False):
     return t.strftime('%Y-%m-%d %H:%M:%S' if seconds else '%Y-%m-%d %H:%M')
 
 
+def file_size(n):
+    try:
+        n = float(n)
+    except (TypeError, ValueError):
+        return u''
+    return u'{0:.0f} KB'.format(max(n / 1024.0, 1)) if n < 1024 * 1024 else u'{0:.1f} MB'.format(n / 1048576.0)
+
+
 def info(text, title=strings.APP):
     MessageBox.Show(text, title, MessageBoxButton.OK, MessageBoxImage.Information)
 

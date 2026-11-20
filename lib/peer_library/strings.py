@@ -154,6 +154,8 @@ NEWS_DEPRECATED = u'deprecated'
 HISTORY = u'History'
 HELP = u'Instructions'
 VERSION_LINE = u'Library v{0} · {1}'
+OLD_REVIT = (u'The library families are saved in Revit {0} - Revit {1} cannot load them. '
+             u'Open the project in Revit {0} or newer.')
 PROJECT_LINE = u'In project: {0}'
 NO_PREVIEW = u'no preview'
 OWNED = u'The family is used by another user: {0}'
