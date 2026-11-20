@@ -50,6 +50,16 @@ class TestPlan(unittest.TestCase):
         self.assertEqual(R.plan([u'HE'], {}, CARDS, types={u'he': [u'HE200A']})[0][1], R.LIBRARY)
         self.assertEqual(R.plan([u'HE'], {}, CARDS, {'he': u'he.rfa'})[0][1], R.FOLDER)
 
+    def test_companions_come_along(self):
+        cards = {'pile': {'id': u'Pile', 'version': 1, 'companions': [u'Tag_Pile', u'HE', u'Old', u'Typo', u'pile']},
+                 'tag_pile': card(u'Tag_Pile'), 'he': card(u'HE', catalog=True),
+                 'old': dict(card(u'Old'), status='deprecated')}
+        self.assertEqual(R.with_companions([u'Pile'], cards, {}), [u'Pile', u'Tag_Pile'])
+        self.assertEqual(R.with_companions([u'Pile'], cards, {'tag_pile': 1}), [u'Pile'])     # never replaced
+        self.assertEqual(R.with_companions([u'Pile', u'Tag_Pile'], cards, {}), [u'Pile', u'Tag_Pile'])
+        self.assertEqual(R.with_companions([u'Own'], cards, {}), [u'Own'])
+        self.assertEqual(R.with_companions([u'Pile'], None, {}), [u'Pile'])
+
     def test_duplicates_and_blanks_dropped(self):
         steps = R.plan([u'PR_Edge', u'', u'pr_edge ', None], {}, CARDS)
         self.assertEqual(len(steps), 1)

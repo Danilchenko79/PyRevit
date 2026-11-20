@@ -57,6 +57,25 @@ if cat:
     win.tile_list.SelectedItem = cat[0].lbi
     pump(800)
     print('catalog:', cat[0].card['id'], '-', win.types_header.Text)
+    print('   first type shown as:', win.type_boxes[0].Content.Text if win.type_boxes else None)
+    win.types_search.Text = (win.type_boxes[0].Tag if win.type_boxes else u'')[:4]
+    pump(200)
+    print('   type search keeps:', sum(1 for cb in win.type_boxes if cb.Visibility == Visibility.Visible))
+    win.types_search.Text = u''
+    snap(win, OUT, 'library_8_catalog.png')   # noqa: F821
+# "Also load": a card that names companions (in memory only - nothing is saved to the library)
+if len(win.items) > 4:
+    host = [x for x in win.items if not x.card.get('type_catalog')][0]
+    others = [x.card for x in win.items if x is not host]
+    plain = [c for c in others if not c.get('type_catalog') and c['id'].lower() not in PROJECT][:2]
+    host.card['companions'] = [c['id'] for c in plain] + ['PEER-Concrete-Column-Rectangular',
+                                                         (cat[0].card['id'] if cat else 'x'), 'No_Such_Family']
+    win.tile_list.SelectedItem = host.lbi
+    pump(600)
+    print('also load:', [u'%s [%s%s]' % (cb.Content.Text, 'x' if cb.IsChecked else ' ', '' if cb.IsEnabled else ', off')
+                         for cb in win.comp_list.Children])
+    snap(win, OUT, 'library_7_also_load.png')   # noqa: F821
+    host.card['companions'] = []
 win.group_list.SelectedIndex = win.group_keys.index('outdated')
 pump(400)
 print('need update:', [lbi.Tag.card['id'] for lbi in win.tile_list.Items if lbi.Visibility == Visibility.Visible])

@@ -216,6 +216,20 @@ test('card info without a new version', async () => {
   assert.equal((await call('POST', '/card', ADMIN, { id: 'PEER_Beam', fields: { group: 'nope' } })).status, 400);
 });
 
+test('companions: families loaded together are card info, kept by a new version', async () => {
+  await call('POST', '/publish', ADMIN, publishForm('PEER_Pile', 1));
+  const bad = await call('POST', '/card', ADMIN, { id: 'PEER_Pile', fields: { companions: ['../x', 'PEER_Pile'] } });
+  assert.equal(bad.status, 400);
+  assert.equal((await call('POST', '/card', ADMIN, { id: 'PEER_Pile', fields: { companions: 'PEER_Tag' } })).status, 400);
+  assert.equal((await call('POST', '/card', USER, { id: 'PEER_Pile', fields: { companions: ['PEER_Tag'] } })).status, 403);
+  const ok = await call('POST', '/card', ADMIN, { id: 'PEER_Pile', fields: { companions: ['PEER_Tag Pile', ' PEER_Tag Pile ', 'PEER_Detail'] } });
+  assert.deepEqual(ok.data.companions, ['PEER_Tag Pile', 'PEER_Detail']);
+  await call('POST', '/publish', ADMIN, publishForm('PEER_Pile', 2));
+  const idx = await call('GET', '/index', USER);
+  assert.deepEqual(idx.data.families[0].companions, ['PEER_Tag Pile', 'PEER_Detail']);
+  assert.equal(idx.data.families[0].version, 2);
+});
+
 test('collections and popularity', async () => {
   assert.deepEqual((await call('GET', '/collections', USER)).data.collections, []);
   assert.equal((await call('PUT', '/collections', USER, { collections: [] })).status, 403);

@@ -621,6 +621,7 @@ class LibraryWindow(forms.WPFWindow):
         self.d_tags.Text = u', '.join(c.get('tags') or [])
         self._help_link(c.get('help_url'))
         self._fill_types(c)
+        self._fill_companions(c)
         self.d_history.Children.Clear()
         for h in reversed(c.get('history') or []):
             t = TextBlock()
@@ -689,16 +690,65 @@ class LibraryWindow(forms.WPFWindow):
         for name, values in rows:
             cb = CheckBox()
             extra = catalog.short_values(params, values)
-            cb.Content = u'{0}    {1}'.format(name, extra) if extra else name
+            cb.Content = U.label(u'{0}    {1}'.format(name, extra) if extra else name)
             cb.Tag = name
             cb.Margin = Thickness(2)
             self.type_boxes.append(cb)
             self.types_list.Items.Add(cb)
 
+    def _fill_companions(self, card):
+        """'Also load' boxes: what the card says goes with this family (a tag
+        for a pile). Ticked = loaded with it; what the project already has is
+        only named - it is never replaced from here."""
+        self.comp_boxes = []
+        self.comp_list.Children.Clear()
+        cards = dict((x.card['id'].lower(), x.card) for x in self.items)
+        try:
+            in_project = loader.project_families(self.doc) if not self.doc.IsFamilyDocument else {}
+        except Exception:
+            in_project = {}
+        rows = index.companions(card, cards, in_project)
+        if not self.is_admin:
+            rows = [r for r in rows if r[1] != 'unknown']
+        self.comp_panel.Visibility = Visibility.Visible if rows else Visibility.Collapsed
+        self.comp_header.Text = strings.COMP_HEADER
+        notes = {'present': strings.COMP_PRESENT, 'catalog': strings.COMP_CATALOG,
+                 'retired': strings.COMP_RETIRED, 'unknown': strings.COMP_MISSING}
+        for cid, state, c in rows:
+            cb = CheckBox()
+            name = (c or {}).get('name') or cid
+            label = cid if name == cid else u'{0}  ({1})'.format(name, cid)
+            cb.Content = U.label(label if state == 'load' else u'{0} - {1}'.format(label, notes[state]))
+            cb.IsChecked = state == 'load'
+            cb.IsEnabled = state == 'load'
+            cb.Tag = c
+            cb.Margin = Thickness(2)
+            if state == 'load':
+                self.comp_boxes.append(cb)
+            self.comp_list.Children.Add(cb)
+
+    def _load_companions(self):
+        """Loads the ticked companions (never over a family in the project).
+        Returns (loaded ids, [error texts])."""
+        done, failed = [], []
+        for cb in getattr(self, 'comp_boxes', []):
+            c = cb.Tag
+            if not cb.IsChecked or c is None:
+                continue
+            try:
+                if loader.find_family(self.doc, c['id']) is not None:
+                    continue
+                loader.load_family(self.doc, self.cache.get(c, '.rfa'), c['id'], False, None)
+                done.append(c['id'])
+            except Exception as ex:
+                log.write(u'companion {0}'.format(c['id']), exc=True)
+                failed.append(u'{0}: {1}'.format(c['id'], ex))
+        return done, failed
+
     def on_types_search(self, sender, args):
         words = (self.types_search.Text or u'').lower().split()
         for cb in self.type_boxes:
-            ok = all(w in (u'{0}'.format(cb.Content) or u'').lower() for w in words)
+            ok = all(w in U.label_text(cb).lower() for w in words)
             cb.Visibility = Visibility.Visible if ok else Visibility.Collapsed
 
     def on_types_all(self, sender, args):
@@ -775,6 +825,9 @@ class LibraryWindow(forms.WPFWindow):
         self.Cursor = None
         if other_failed:
             U.error(strings.OTHER_DOCS_FAILED + u'\n\n' + u'\n'.join(other_failed))
+        also, also_failed = self._load_companions()
+        if also_failed:
+            U.error(strings.COMP_FAILED + u'\n\n' + u'\n'.join(also_failed))
         was = loader.MISSING if aside else it.code
         in_project = loader.project_families(self.doc)
         for x in self.items:
@@ -785,6 +838,8 @@ class LibraryWindow(forms.WPFWindow):
                else strings.LOADED.format(card['id']))
         if aside:
             msg = strings.CHECK_ASIDE_DONE.format(aside, card['id'])
+        if also:
+            msg += u' ' + strings.COMP_LOADED.format(u', '.join(also))
         userprefs.add_recent(card['id'])
         self.prefs = userprefs.load()
         self.status_text.Text = msg
@@ -977,7 +1032,7 @@ class LibraryWindow(forms.WPFWindow):
         if it is None or not self.is_admin:
             return
         from peer_library.ui_dialogs import EditInfoWindow
-        win = EditInfoWindow(it.card, owner=self)
+        win = EditInfoWindow(it.card, owner=self, known_ids=[x.card['id'] for x in self.items])
         win.ShowDialog()
         if not win.fields:
             return

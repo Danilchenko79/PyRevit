@@ -22,6 +22,7 @@ The **Library** panel on the **PEER** tab appears once the library is set up for
 | Load | select a tile, **Load** (or **Enter**); **Load and place** (or double click, **Shift+Enter**) starts placing in the view |
 | Types from a catalog | tick the types you need (the list shows key sizes), then Load |
 | Several projects open | tick **Also load into the other open projects** |
+| What goes with it | **Also load** lists the families that belong with this one (a pile → its tag). Ticked ones are loaded with it; a family the project already has is only named and never replaced |
 | A whole kit | pick a collection (▦) on the left, **Load collection** |
 
 Each tile shows the family's status in the open project: **Not in project**, **Up to date (vN)**,
@@ -128,6 +129,7 @@ Admin buttons are visible only with an admin key: **Publish**, **Inbox**, **Keys
 | Import a sorted folder | Publish → **Publish a sorted folder…** (`<group>/<ID>.rfa`) |
 | Names, tags, descriptions of many families | Publish → **Info to Excel…**, edit, **Info from Excel…** (no new versions) |
 | One family's info | card → **Edit info…** |
+| What is loaded together | card → **Edit info…** → *Load together with this family* (IDs, comma separated) |
 | Collections (kits) | card → **Add to collection…**; in a collection → **Remove from this collection** |
 | Retire a family | card → **Deprecate…** (projects keep it, the window hides it) |
 | Proposals, requests, problems | **Inbox**: open in the editor, publish, mark done, reject with a comment |

@@ -205,6 +205,10 @@
                                 </StackPanel>
                             </ScrollViewer>
                             <StackPanel Grid.Row="1" Margin="14,8,14,14">
+                                <StackPanel x:Name="comp_panel" Margin="0,0,0,8" Visibility="Collapsed">
+                                    <TextBlock x:Name="comp_header" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,3"/>
+                                    <StackPanel x:Name="comp_list"/>
+                                </StackPanel>
                                 <CheckBox x:Name="overwrite_box" Margin="0,0,0,6"/>
                                 <CheckBox x:Name="all_docs_box" Margin="0,0,0,10" Visibility="Collapsed"/>
                                 <StackPanel Orientation="Horizontal">

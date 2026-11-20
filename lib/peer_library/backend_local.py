@@ -322,7 +322,8 @@ class LocalBackend(Backend):
         return data
 
     # ---- card info, collections -------------------------------------------------
-    INFO_FIELDS = ('name', 'tags', 'description', 'help_url', 'group', 'types', 'revit_category')
+    INFO_FIELDS = ('name', 'tags', 'description', 'help_url', 'group', 'types', 'revit_category',
+                   'companions')
 
     def update_card(self, family_id, fields):
         self._need_admin()

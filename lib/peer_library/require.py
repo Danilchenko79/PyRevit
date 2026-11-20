@@ -16,6 +16,8 @@ Rules (the script never breaks what is in the project):
   copy; offline the copy works 14 days), then from folder/<name>.rfa;
 - a family with a type catalog loads only the types asked for
   (types={name: [type, ...]}) - never the whole catalog;
+- what the library card says goes with a loaded family (a pile -> its tag)
+  is loaded with it, if the project does not have it yet;
 - each load is its own transaction: call it outside an open Transaction
   (inside a TransactionGroup is fine - one Undo with the script).
 
@@ -69,6 +71,28 @@ def plan(names, in_project, cards, folder_files=(), types=None, library_error=No
             out.append((name, MISSING, library_error or WHY_NO_LIBRARY))
         else:
             out.append((name, MISSING, WHY_NOT_IN_LIBRARY))
+    return out
+
+
+def with_companions(names, cards, in_project):
+    """names + what the library says goes with them (a pile -> its tag), each
+    once. Only companions that can load by themselves are added: not in the
+    project, not retired, no type catalog."""
+    from peer_library import index
+    out, seen = [], set()
+    for name in names:
+        k = _key(name)
+        if not k or k in seen:
+            continue
+        seen.add(k)
+        out.append(name)
+        card = (cards or {}).get(k)
+        if card is None:
+            continue
+        for cid, state, c in index.companions(card, cards, in_project):
+            if state == 'load' and cid.lower() not in seen:
+                seen.add(cid.lower())
+                out.append(cid)
     return out
 
 
@@ -159,6 +183,7 @@ def families(doc, names, folder=None, types=None, interactive=True):
     cards, cache, offline, err = (None, None, False, None)
     if want:
         cards, cache, offline, err = _library(interactive)
+        names = with_companions(names, cards, in_project)
     res.offline = offline
     files = folder_files(folder, want)
     steps = plan(names, in_project, cards, files, types, err)

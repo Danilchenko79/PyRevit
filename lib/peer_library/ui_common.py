@@ -12,7 +12,7 @@ clr.AddReference('WindowsBase')
 
 from System import Uri, UriKind  # noqa: E402
 from System.Windows import CornerRadius, FontWeights, MessageBox, MessageBoxButton, MessageBoxImage, \
-    MessageBoxResult, Thickness  # noqa: E402
+    MessageBoxResult, TextWrapping, Thickness  # noqa: E402
 from System.Windows.Controls import Border, TextBlock  # noqa: E402
 from System.Windows.Media import BrushConverter  # noqa: E402
 from System.Windows.Media.Imaging import BitmapCacheOption, BitmapImage  # noqa: E402
@@ -56,6 +56,21 @@ def chip(text, code, small=True):
     t.FontWeight = FontWeights.SemiBold
     b.Child = t
     return b
+
+
+def label(text):
+    """Content for a CheckBox / Button made of data (family names, type names):
+    a plain string would lose its first underscore (WPF reads '_' as an access
+    key) and would be cut instead of wrapped."""
+    t = TextBlock()
+    t.Text = text
+    t.TextWrapping = TextWrapping.Wrap
+    return t
+
+
+def label_text(control):
+    c = control.Content
+    return getattr(c, 'Text', None) or u'{0}'.format(c or u'')
 
 
 def new_badge():

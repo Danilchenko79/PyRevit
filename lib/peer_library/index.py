@@ -38,7 +38,49 @@ CARD_DEFAULTS = {
     'history': [],
     'types': [],          # type names (family + catalog) - search finds "HE200A"
     'checks': [],         # publish warnings [{code, text}] - admin "Needs attention"
+    'companions': [],     # IDs loaded together with this family (a pile -> its tag)
 }
+
+MAX_COMPANIONS = 20
+
+
+def parse_companions(text, own_id=u''):
+    """'A, B; C' (or a list) -> unique IDs, own ID dropped, order kept."""
+    if isinstance(text, (list, tuple)):
+        parts = [u'{0}'.format(x) for x in text]
+    else:
+        parts = (text or u'').replace(u';', u',').replace(u'\n', u',').split(u',')
+    out, seen = [], set([own_id.strip().lower()])
+    for p in parts:
+        p = p.strip()
+        if p and p.lower() not in seen:
+            seen.add(p.lower())
+            out.append(p)
+    return out[:MAX_COMPANIONS]
+
+
+def companions(card, cards, in_project=None):
+    """What goes with a family: [(id, state, card or None)], state:
+        'load'      in the library, not in the project -> load it too
+        'present'   already in the project -> left as it is (never replaced)
+        'catalog'   has a type catalog -> the person picks its types himself
+        'retired'   deprecated in the library
+        'unknown'   no such family in the library (a typing mistake in the card)
+    cards: {id.lower(): card}; in_project: {name.lower(): version} or None."""
+    out = []
+    for cid in parse_companions(card.get('companions') or [], card.get('id') or u''):
+        c = (cards or {}).get(cid.lower())
+        if c is None:
+            out.append((cid, 'unknown', None))
+        elif in_project is not None and c['id'].lower() in in_project:
+            out.append((c['id'], 'present', c))
+        elif c.get('status') == 'deprecated':
+            out.append((c['id'], 'retired', c))
+        elif c.get('type_catalog'):
+            out.append((c['id'], 'catalog', c))
+        else:
+            out.append((c['id'], 'load', c))
+    return out
 
 
 def attention(card):

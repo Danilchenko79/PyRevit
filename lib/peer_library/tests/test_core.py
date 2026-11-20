@@ -305,6 +305,34 @@ class TestChecks(unittest.TestCase):
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
+    def test_companions(self):
+        self.assertEqual(index.parse_companions(u' A , b;A\n C ,, a ', u'c'), [u'A', u'b'])
+        self.assertEqual(index.parse_companions([u'X', u'x', u'Y']), [u'X', u'Y'])
+        self.assertEqual(len(index.parse_companions(u','.join(u'F%d' % i for i in range(50)))), 20)
+        cards = {'tag': {'id': u'Tag'}, 'cat': {'id': u'Cat', 'type_catalog': True},
+                 'old': {'id': u'Old', 'status': 'deprecated'}}
+        pile = {'id': u'Pile', 'companions': [u'tag', u'Cat', u'Old', u'Nope', u'PILE']}
+        got = [(i, s) for i, s, c in index.companions(pile, cards, {})]
+        self.assertEqual(got, [(u'Tag', 'load'), (u'Cat', 'catalog'), (u'Old', 'retired'), (u'Nope', 'unknown')])
+        self.assertEqual(index.companions(pile, cards, {'tag': 2})[0][:2], (u'Tag', 'present'))
+        self.assertEqual(index.companions({'id': u'X'}, cards, {}), [])
+
+    def test_companions_are_card_info_and_survive_a_new_version(self):
+        tmp = tempfile.mkdtemp(prefix='peercomp_')
+        try:
+            root = os.path.join(tmp, 'share')
+            os.makedirs(root)
+            admin = LocalBackend(root, role='admin', user=u'dima')
+            rfa = fake_rfa(os.path.join(tmp, 'Pile.rfa'))
+            admin.publish(index.new_card(id=u'Pile', group='02_Foundations', version=1), rfa)
+            card = admin.update_card(u'Pile', {'companions': [u'Tag_Pile']})
+            self.assertEqual(card['companions'], [u'Tag_Pile'])
+            fake_rfa(rfa, payload=b'y')
+            new = dict(index.find_card(admin.lib, u'Pile'), version=2)
+            self.assertEqual(admin.publish(new, rfa)['companions'], [u'Tag_Pile'])
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
     def test_attention(self):
         c = index.new_card(id='PEER_A', group='01_Framing', version=1, png_sha1='x',
                            description=u'd', tags=[u't'])

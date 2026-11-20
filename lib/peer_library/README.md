@@ -46,8 +46,8 @@ Revit **2024**, публиковать только из 2024. ID = имя фа�
 
 ## Проверки
 ```
-py -3 -m unittest discover -s lib/peer_library/tests     # 104 теста, в т.ч. клиент ↔ сервис (node)
-node --test service/test                                  # 24 теста сервиса
+py -3 -m unittest discover -s lib/peer_library/tests     # 107 тестов, в т.ч. клиент ↔ сервис (node)
+node --test service/test                                  # 25 тестов сервиса
 ```
 Синтаксис IronPython и XAML — `ipy`-компиляция и `XamlReader` (см. историю сессии 20.11.2026).
 
@@ -99,6 +99,8 @@ sym = require.symbol(doc, u'PR_Wall2D_Edge', u'Type 1')   # затем sym.Activ
   `res.outdated`, обновляет человек в «This project»); нет → библиотека (скачать / локальная копия,
   офлайн 14 дней) → `folder/<имя>.rfa` → `res.missing` с причиной;
 - семейство с каталогом без `types` не грузится (иначе придут все типы каталога);
+- вместе с загружаемым семейством грузятся его «спутники» из карточки (`companions`: свая → марка), если их нет
+  в проекте (`index.companions`, в окне — блок «Also load», правка — Edit info);
 - каждая загрузка — своя транзакция: вызывать вне открытой `Transaction` (внутри `TransactionGroup` можно);
 - `interactive=False` — без окна входа (хуки, пакетные прогоны): без ключа только папка;
 - имя = ID библиотеки = имя семейства в Revit; `require.plan` — чистая логика, тесты `tests/test_require.py`.

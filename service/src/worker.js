@@ -321,7 +321,7 @@ async function deprecate(request, env, who) {
 }
 
 // ---- card info without a new version (admin) --------------------------------------
-const INFO_FIELDS = ['name', 'tags', 'description', 'help_url', 'group', 'types', 'revit_category'];
+const INFO_FIELDS = ['name', 'tags', 'description', 'help_url', 'group', 'types', 'revit_category', 'companions'];
 
 async function updateCardInfo(request, env, who) {
   needAdmin(who);
@@ -335,6 +335,14 @@ async function updateCardInfo(request, env, who) {
       if (changes[k] === undefined) continue;
       if (k === 'group' && !GROUPS.includes(changes[k])) throw new HttpError(400, 'unknown group');
       if ((k === 'tags' || k === 'types') && !Array.isArray(changes[k])) throw new HttpError(400, k + ' must be a list');
+      if (k === 'companions') {            // IDs loaded together with this family (a pile -> its tag)
+        if (!Array.isArray(changes[k])) throw new HttpError(400, 'companions must be a list');
+        const ids = [...new Set(changes[k].map(x => String(x).trim()).filter(Boolean))].slice(0, 20);
+        const bad = ids.filter(x => !NAME_RE.test(x) || x.length > 80 || x.toLowerCase() === fam.id.toLowerCase());
+        if (bad.length) throw new HttpError(400, 'Not a family ID: ' + bad.join(', '));
+        fam[k] = ids;
+        continue;
+      }
       if (k === 'types') fam[k] = changes[k].slice(0, 2000).map(String);
       else if (k === 'tags') fam[k] = changes[k].slice(0, 50).map(t => String(t).slice(0, 60));
       else if (k === 'name' && !String(changes[k]).trim()) throw new HttpError(400, 'name is empty');

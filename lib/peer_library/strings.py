@@ -313,3 +313,13 @@ ACC_SIGNOUT_ASK = (u'Sign out on this computer?\n\nThe key is removed from this 
                    u'To sign in again you need the key or a new access request.')
 ACC_NEED_KEY = (u'PEER works with a personal key.\n\nSign in now? (PEER tab → Account: paste the key '
                 u'from a PEER admin, or request access.)')
+
+# ---- families loaded together (card field "companions") ---------------------------
+COMP_HEADER = u'Also load'
+COMP_PRESENT = u'already in the project'
+COMP_CATALOG = u'has a type catalog - load it from its own card'
+COMP_RETIRED = u'retired in the library'
+COMP_MISSING = u'not in the library (fix the card)'
+COMP_LOADED = u'Also loaded: {0}.'
+COMP_FAILED = u'The family is loaded, but these could not be loaded with it:'
+COMP_UNKNOWN = u'Not in the library: {0}. Use the family ID (the grey line under its name).'

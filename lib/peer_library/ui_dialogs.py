@@ -58,12 +58,14 @@ class TextWindow(forms.WPFWindow):
 class EditInfoWindow(forms.WPFWindow):
     """Admin: card info without a new version. self.fields after Save."""
 
-    def __init__(self, card, owner=None):
+    def __init__(self, card, owner=None, known_ids=None):
         forms.WPFWindow.__init__(self, os.path.join(BTN_DIR, 'EditInfoWindow.xaml'))
         if owner is not None:
             self.Owner = owner
         self.card = card
+        self.known = dict((k.lower(), k) for k in (known_ids or []))
         self.fields = None
+        self.comp_box.Text = u', '.join(card.get('companions') or [])
         self.head.Text = card['id']
         self.name_box.Text = card.get('name') or u''
         for g in groups.GROUPS:
@@ -92,8 +94,17 @@ class EditInfoWindow(forms.WPFWindow):
         if url and not (url.startswith('http://') or url.startswith('https://')):
             self.status_text.Text = u'The link must start with https://'
             return
+        from peer_library import index
+        comp = index.parse_companions(self.comp_box.Text, self.card['id'])
+        if self.known:
+            wrong = [c for c in comp if c.lower() not in self.known]
+            if wrong:
+                self.status_text.Text = strings.COMP_UNKNOWN.format(u', '.join(wrong))
+                return
+            comp = [self.known[c.lower()] for c in comp]
         i = self.group_box.SelectedIndex
-        self.fields = {'name': name,
+        self.fields = {'companions': comp,
+                       'name': name,
                        'group': groups.GROUP_IDS[i] if i >= 0 else self.card.get('group'),
                        'tags': [t.strip() for t in (self.tags_box.Text or u'').split(u',') if t.strip()],
                        'description': (self.desc_box.Text or u'').strip(),
