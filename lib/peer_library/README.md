@@ -25,6 +25,7 @@
 | `backend_base` интерфейс; `backend_local` папка; `backend_http` сервис | `ui_publish` (+ Excel), `ui_inbox`, `ui_propose`, `ui_dialogs` |
 | `catalog` каталог типов; `cards_csv` карточки ↔ Excel; `importmeta` имена/теги | `notify` уведомление при старте; `project_check` + `hooks/doc-opened.py` |
 | `keystore` ключ и заявка (DPAPI); `userprefs` избранное/недавние; `search` поиск (слитно, RU/HE-синонимы, порядок) | `ui_common` цвета/чипы (без синего, статус всегда с подписью) |
+| `require` (план: проект → библиотека → папка) |  `require.families` / `symbol` — семейства для других кнопок |
 | `family_diff` что сломает замена семейства, проверки по ФОП, имена, типы (правила и тексты) | `family_sig` состав семейства данными; `load_check` проверка перед заменой (сравнение + пробная загрузка с откатом), `rename_aside`; `family_check` кнопка Check family / папка / Publish; `ui_check` окно отчёта; `family_fix` + `ui_fix` замена/переименование/удаление параметров, исправление папки в копию (план — `family_diff.fix_plan`) |
 
 ## Настройки
@@ -44,7 +45,7 @@ Revit **2024**, публиковать только из 2024. ID = имя фа�
 
 ## Проверки
 ```
-py -3 -m unittest discover -s lib/peer_library/tests     # 58 тестов, в т.ч. клиент ↔ сервис (node)
+py -3 -m unittest discover -s lib/peer_library/tests     # 68 тестов, в т.ч. клиент ↔ сервис (node)
 node --test service/test                                  # 17 тестов сервиса
 ```
 Синтаксис IronPython и XAML — `ipy`-компиляция и `XamlReader` (см. историю сессии 20.11.2026).
@@ -81,6 +82,25 @@ Keys, Inbox, Publish, Propose, вход, запрос, правка карточ
   ~1,5–2 с на семейство. После отката старые Python-ссылки на элементы недействительны — брать по id;
 - семейство с предупреждениями, открытое в фоне, показывает модальное окно «Warnings» и вешает скрипт —
   `revit_family.open_quiet` / `QuietOpen` (обработчик `FailuresProcessing` снимает предупреждения).
+
+## Семейства для других кнопок (`require`)
+Кнопка, которой нужны семейства компании, не ищет их по папкам сама:
+```python
+from peer_library import require
+res = require.families(doc, [u'PR_Wall2D_Edge', u'PEER_Rebar_Shape 21'],
+                       folder=BUTTON_FOLDER,              # старый запасной путь, можно не давать
+                       types={u'HE_Profile': [u'HE200A']}) # семейства с каталогом — только эти типы
+if not res.ok:
+    forms.alert(res.message(), exitscript=True)
+sym = require.symbol(doc, u'PR_Wall2D_Edge', u'Type 1')   # затем sym.Activate() в транзакции кнопки
+```
+- есть в проекте → берётся как есть (не перезагружается и не заменяется, даже если в библиотеке новее —
+  `res.outdated`, обновляет человек в «This project»); нет → библиотека (скачать / локальная копия,
+  офлайн 14 дней) → `folder/<имя>.rfa` → `res.missing` с причиной;
+- семейство с каталогом без `types` не грузится (иначе придут все типы каталога);
+- каждая загрузка — своя транзакция: вызывать вне открытой `Transaction` (внутри `TransactionGroup` можно);
+- `interactive=False` — без окна входа (хуки, пакетные прогоны): без ключа только папка;
+- имя = ID библиотеки = имя семейства в Revit; `require.plan` — чистая логика, тесты `tests/test_require.py`.
 
 ## Инструменты (`tools/`)
 - `sort_source.py <сырые> <папка>` — раскладка по группам, журнал `_sort_log.csv`.

@@ -57,6 +57,14 @@ families alone and list them at the end.
 - When you open a project with outdated library families, Windows shows a notification.
 - At Revit start you get a notification about new and updated families (every 6 hours at most).
 
+## Buttons that need families
+
+PEER buttons that use library families take them from the library themselves: a family the
+project does not have yet is downloaded and loaded when the button runs (your library sign-in is
+used; offline - the copy downloaded before). A family already in the project is used as it is -
+a button never replaces it, even when the library has a newer version; it only tells you, and you
+update it in **Library → This project**.
+
 ## Ask for something
 
 - **Request a family…** (bottom right): describe what you need.
