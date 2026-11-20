@@ -69,8 +69,8 @@ def findings(text):
         bad = sorted(set(c for c in name if c in FORBIDDEN))
         if bad:
             out.append((u'error', u'forbidden_char', guid, name, g,
-                        u'Revit does not accept {0} in a parameter name - the parameter cannot be added '
-                        u'from this file.'.format(u' '.join(bad))))
+                        u'{0} in a parameter name: Revit refuses it when a name is typed, and lost letters '
+                        u'(α, β, Cyrillic) end up as ?.'.format(u' '.join(bad))))
         if name != name.strip() or u'  ' in name:
             out.append((u'warning', u'spaces', guid, name, g, u'Spaces at the ends or doubled.'))
         if len(by_name[name]) > 1:
