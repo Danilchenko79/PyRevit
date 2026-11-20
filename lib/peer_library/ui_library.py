@@ -68,7 +68,6 @@ class LibraryWindow(forms.WPFWindow):
         self.proj_rows = []
         self._busy = False
         self._closing = False
-        self._shown_order = []
         self._png_lock = threading.Lock()   # one download of a preview at a time
         self._downloader = None
         self._texts()
@@ -451,18 +450,29 @@ class LibraryWindow(forms.WPFWindow):
         self._show_order(self.items)
 
     def _show_order(self, order):
-        """Put the tiles in this order (only when it changed); keeps the selection."""
-        ids = [id(x) for x in order]
-        if ids == self._shown_order:
-            return
+        """Shown tiles in this order; keeps the selection. Only the order of the
+        shown tiles matters (hidden ones are collapsed), so only the shown tiles
+        from the first misplaced one on are moved - re-adding all tiles costs
+        ~1 s per keystroke with 500+ families."""
+        items = self.tile_list.Items
         sel = self.current
         self._busy = True
         try:
-            self.tile_list.Items.Clear()
-            for it in order:
-                self.tile_list.Items.Add(it.lbi)
-            self._shown_order = ids
-            if sel is not None and sel.lbi is not None and sel.shown:
+            if items.Count != len(order):
+                items.Clear()
+                for it in order:
+                    items.Add(it.lbi)
+            else:
+                want = [x for x in order if x.shown]
+                have = [lbi.Tag for lbi in items if lbi.Tag.shown]
+                j = 0
+                while j < len(want) and j < len(have) and want[j] is have[j]:
+                    j += 1
+                for it in want[j:]:
+                    items.Remove(it.lbi)
+                    items.Add(it.lbi)
+            if sel is not None and sel.lbi is not None and sel.shown \
+                    and self.tile_list.SelectedItem is not sel.lbi:
                 self.tile_list.SelectedItem = sel.lbi
         finally:
             self._busy = False

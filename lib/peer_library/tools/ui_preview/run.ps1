@@ -30,10 +30,13 @@ foreach ($name in $scripts) {
   $scope.SetVariable('OUT', $Out)
   $buf = New-Object IO.MemoryStream
   $py.Runtime.IO.SetOutput($buf, [Text.Encoding]::UTF8)
+  $py.Runtime.IO.SetErrorOutput($buf, [Text.Encoding]::UTF8)
   $err = $null
-  try { [void]$py.CreateScriptSourceFromFile($file, [Text.Encoding]::UTF8).Execute($scope) }
+  # run through execfile so a Python error prints its own traceback
+  $boot = "import traceback`n__file__ = r'" + $file + "'`ntry:`n    execfile(__file__, globals())`nexcept BaseException:`n    traceback.print_exc()`n"
+  try { [void]$py.CreateScriptSourceFromString($boot).Execute($scope) }
   catch { $e = $_.Exception; while ($e.InnerException) { $e = $e.InnerException }
-          $err = $py.GetService([Microsoft.Scripting.Hosting.ExceptionOperations]).FormatException($e) }
+          $err = $e.ToString() }
   "==== $name"
   [Text.Encoding]::UTF8.GetString($buf.ToArray())
   if ($err) { "ERROR:"; $err }
