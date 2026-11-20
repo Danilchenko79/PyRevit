@@ -98,6 +98,9 @@ def run(doc, choice, families_folder, ask, require_families=True):
         return out
 
     report = {'notes': []}
+    if types.get('bar_tag_dense') is None:
+        report['notes'].append(u'Tag type "%s" is not in the project - bar tags show the main spacing only.'
+                               % revit_draw.BAR_TAG_DENSE)
     st = {}
     tg = TransactionGroup(doc, TITLE)
     tg.Start()

@@ -34,6 +34,10 @@ TIE_FAMILIES = (u'PEER_Rebar_Shape 62', u'PEER_Rebar Shape 62')
 NUMBER_FAMILY = u'PR_Column Number'
 COL_TAG = (u'Detail items_Tag Rebar', u'Tag Rebar 2∅10')
 BAR_TAG = (u'Detail items_Tag Rebar(Text Quantity)', u'Tag Rebar 2∅10@20 L=')
+# the same tag with the dense spacing after the main one: @20/10 (its label shows
+# Rebar_Stirrup Spacing Dense of the detail); used when the project has it
+BAR_TAG_DENSE = u'Tag Rebar 2∅10@20/10 L='
+DENSE_GUID = '5242800f-7b14-44da-a656-3d6e2a183a5c'     # Rebar_Stirrup Spacing Dense
 TEXT_TYPE = u'Structural 3.5'
 DIM_TYPE = u'PEER-Linear'
 
@@ -90,6 +94,7 @@ def find_types(doc):
     t['number'] = symbol(doc, NUMBER_FAMILY)
     t['col_tag'] = symbol(doc, COL_TAG[0], COL_TAG[1], BuiltInCategory.OST_DetailComponentTags)
     t['bar_tag'] = symbol(doc, BAR_TAG[0], BAR_TAG[1], BuiltInCategory.OST_DetailComponentTags)
+    t['bar_tag_dense'] = symbol(doc, BAR_TAG[0], BAR_TAG_DENSE, BuiltInCategory.OST_DetailComponentTags)
     t['dim'] = None
     for d in FilteredElementCollector(doc).OfClass(DimensionType):
         p = d.get_Parameter(BuiltInParameter.SYMBOL_NAME_PARAM)
@@ -191,6 +196,19 @@ def _set(el, values):
             p.Set(u'%s' % v)
         else:
             p.Set(ft(v))
+
+
+def _set_dense(el, dense):
+    """Dense spacing onto the detail (shared Rebar_Stirrup Spacing Dense); False
+    when the detail family has no such parameter (older library family)."""
+    from System import Guid
+    if not dense:
+        return False
+    p = el.get_Parameter(Guid(DENSE_GUID))
+    if p is None or p.IsReadOnly:
+        return False
+    p.Set(ft(dense))
+    return True
 
 
 def _tag(doc, view, el, tag_type, head):
@@ -298,6 +316,7 @@ def draw_group(doc, view, g, result, values, origin, types, report):
         vals['Rebar_Diameter'] = result['stirrup']['dia']
         vals['Rebar_Spacing'] = result['spacing'] or code466.DEFAULT_SPACING
         _set(el, vals)
+        dense_ok = _set_dense(el, result.get('dense'))
         if kind != 'stirrup' and qty:
             for k in ('Rebar_Quantity Text',):
                 p = el.LookupParameter(k)
@@ -320,7 +339,8 @@ def draw_group(doc, view, g, result, values, origin, types, report):
             w = (box[2] - box[0]) * FT
             if types['bar_tag'] is not None:
                 drop = TAG_DROP + (ROUND_TAG_EXTRA if kind == 'stirrup' and g['shape'] == code466.ROUND1 else 0)
-                _tag(doc, view, el, types['bar_tag'], XYZ(box[0] + ft(100), box[1] - ft(drop), 0))
+                tt = types['bar_tag_dense'] if dense_ok and types.get('bar_tag_dense') is not None else types['bar_tag']
+                _tag(doc, view, el, tt, XYZ(box[0] + ft(100), box[1] - ft(drop), 0))
         xs += max(w, TAG_ROOM) + LIST_ITEM_GAP
     if any(t.get('kind') == 'v' for t in result.get('ties') or []):
         report['notes'].append(u'%s: V-shaped tie drawn in the section, no shape family for the bar list'
