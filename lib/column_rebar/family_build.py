@@ -176,12 +176,14 @@ class Builder(object):
                 sub = c
         if sub is None:
             sub = cats.NewSubcategory(parent, name)
-        pat = LinePatternElement.GetLinePatternElementByName(self.fd, u'Dash')
+        # own name: a project's 'Dash' would replace it on loading.
+        # Fine dashes (user 2026-11-20: 'smaller, more short lines'), sizes on the sheet.
+        pat = LinePatternElement.GetLinePatternElementByName(self.fd, u'PEER Tie Dash')
         if pat is None:
-            lp = LinePattern(u'Dash')
+            lp = LinePattern(u'PEER Tie Dash')
             segs = List[LinePatternSegment]()
-            segs.Add(LinePatternSegment(LinePatternSegmentType.Dash, 3.0 / FT))
-            segs.Add(LinePatternSegment(LinePatternSegmentType.Space, 1.5 / FT))
+            segs.Add(LinePatternSegment(LinePatternSegmentType.Dash, 1.2 / FT))
+            segs.Add(LinePatternSegment(LinePatternSegmentType.Space, 0.6 / FT))
             lp.SetSegments(segs)
             pat = LinePatternElement.Create(self.fd, lp)
         sub.SetLinePatternId(pat.Id, GraphicsStyleType.Projection)
