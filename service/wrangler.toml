@@ -30,4 +30,4 @@ bucket_name = "peer-prod"
 [[env.production.d1_databases]]
 binding = "DB"
 database_name = "peer-prod"
-database_id = "PASTE-PRODUCTION-DATABASE-ID"
+database_id = "f38f9b55-bac1-48a0-84fa-ec6968d756b8"
