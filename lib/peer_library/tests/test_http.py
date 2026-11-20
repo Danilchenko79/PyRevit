@@ -225,6 +225,28 @@ class TestHttp(unittest.TestCase):
         with open(os.path.join(ext, 'startup.py'), 'rb') as f:
             self.assertEqual(f.read(), b's2')          # stays on what was downloaded before
 
+    def test_template_release_end_to_end(self):
+        """admin releases the template -> a colleague's computer gets the file,
+        then the next version, with the note; products do not mix."""
+        from peer_library import releases, template_sync
+        admin, user = self.backend(self.admin_key), self.backend(self.user_key)
+        folder = os.path.join(self.tmp, 'Templates')
+        self.assertEqual(template_sync.sync(user, 'stable', folder)[0], 'none')
+        for ver, data, note in (('1', b'rte one', u'первая версия'), ('2', b'rte two', u'исправлены фильтры')):
+            f = self.file('PR_Template Concrete.rte', data)
+            sha = rfa_info.sha1(f)
+            admin.release_upload(releases.TEMPLATE, ver, f, sha)
+            admin.release_publish(releases.TEMPLATE, ver, 'stable', note, sha, 'PR_Template Concrete.rte')
+            status, det, notes = template_sync.sync(user, 'stable', folder)
+            self.assertEqual(status, 'updated', det)
+            self.assertEqual(notes[0], (ver, note))
+            with open(template_sync.path(folder), 'rb') as fh:
+                self.assertEqual(fh.read(), data)
+        self.assertEqual(template_sync.installed(folder)['version'], '2')
+        self.assertEqual(template_sync.sync(user, 'stable', folder)[0], 'clean')
+        m, _ = user.release_manifest(releases.EXT)
+        self.assertEqual(m['versions'], [])                        # the PEER package is another product
+
     def test_auth_tells_the_service_the_peer_version(self):
         admin, user = self.backend(self.admin_key), self.backend(self.user_key)
         user.auth()

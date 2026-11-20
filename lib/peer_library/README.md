@@ -26,6 +26,7 @@
 | `catalog` каталог типов; `cards_csv` карточки ↔ Excel; `importmeta` имена/теги | `notify` уведомление при старте; `project_check` + `hooks/doc-opened.py` |
 | `keystore` ключ и заявка (DPAPI); `userprefs` избранное/недавние; `search` поиск (слитно, RU/HE-синонимы, порядок) | `ui_common` цвета/чипы (без синего, статус всегда с подписью) |
 | `require` (план: проект → библиотека → папка) |  `require.families` / `symbol` — семейства для других кнопок |
+| `template_sync` шаблон проекта на компьютере; `passport` разница версий шаблона | кнопка New project |
 | `access` статус ключа / замок; `version`; `releases`, `ext_update`, `pack` — пакет PEER | `ui_account` окно Account |
 | `family_diff` что сломает замена семейства, проверки по ФОП, имена, типы (правила и тексты) | `family_sig` состав семейства данными; `load_check` проверка перед заменой (сравнение + пробная загрузка с откатом), `rename_aside`; `family_check` кнопка Check family / папка / Publish; `ui_check` окно отчёта; `family_fix` + `ui_fix` замена/переименование/удаление параметров, исправление папки в копию (план — `family_diff.fix_plan`) |
 
@@ -46,7 +47,7 @@ Revit **2024**, публиковать только из 2024. ID = имя фа�
 
 ## Проверки
 ```
-py -3 -m unittest discover -s lib/peer_library/tests     # 107 тестов, в т.ч. клиент ↔ сервис (node)
+py -3 -m unittest discover -s lib/peer_library/tests     # 119 тестов, в т.ч. клиент ↔ сервис (node)
 node --test service/test                                  # 25 тестов сервиса
 ```
 Синтаксис IronPython и XAML — `ipy`-компиляция и `XamlReader` (см. историю сессии 20.11.2026).
@@ -137,6 +138,20 @@ powershell -ExecutionPolicy Bypass -File lib\peer_library\tools\release\release.
 Переход с GitHub: (1) выпуск в `main` с этим кодом и адресом сервиса в `settings.json`; (2) у кого есть ключ —
 установка сама переходит на пакет при старте Revit, в Keys видна версия пакета; у кого нет — работает старый
 git-способ; (3) когда перешли все — `"access_lock": true` и закрыть репозиторий.
+
+## Шаблон проекта `PR_Template Concrete`
+- Файл всегда один: `%LOCALAPPDATA%\PEER\Templates\PR_Template Concrete.rte`; рядом `template.json` (версия, SHA-1,
+  заметка). `template_sync.sync` при старте Revit (в фоне) доводит файл до версии канала: скачать один раз, сверить
+  SHA-1, заменить; файл занят — новая версия ждёт рядом как `*.new` до следующего старта. После обновления —
+  уведомление с заметкой «что изменено». Испорченный или удалённый файл восстанавливается.
+- Выпуск: шаблон сохранить из Revit в `.rte`, затем
+  `release.ps1 -Do template -File "…\PR_Template Concrete.rte" -Note "что изменено"` (версии 1, 2, 3…; сначала `beta`,
+  потом `-Do promote -Product template -Version N -Channel stable`).
+- Кнопка **New project** (панель Account): новый проект из этого файла, сразу «Сохранить как» и открыть.
+- `passport.py` — «паспорт» шаблона (`{раздел: {имя: {поле: значение}}}`) и читаемая разница двух версий
+  (`diff`, `text`, `summary`), сверка семейств шаблона с библиотекой (`outdated_families`). Сбор паспорта из
+  `.rte` и кнопка «Update from template» — в Revit, ещё не сделаны.
+- Новый шаблон меняет только новые проекты; начатые проекты он не трогает.
 
 ## Инструменты (`tools/`)
 - `sort_source.py <сырые> <папка>` — раскладка по группам, журнал `_sort_log.csv`.

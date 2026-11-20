@@ -117,6 +117,15 @@ office turns the lock on - the PEER buttons themselves.
 - Install on a new computer: run `install.bat` from the PEER site - it asks for the key (or sends the
   access request) and downloads PEER. After that PEER updates itself when Revit starts.
 
+## New project from the company template
+
+**PEER → New project** creates a project from **PR_Template Concrete** - always the released
+version: PEER keeps the template file on your computer up to date by itself (a notification says
+what changed). You only choose where to save the project. Revit's own **New…** can use the same
+file: `%LOCALAPPDATA%\PEER\Templates\PR_Template Concrete.rte`.
+
+A new template version changes new projects only; projects that are already started stay as they are.
+
 ## Admins (2–3 people)
 
 Admin buttons are visible only with an admin key: **Publish**, **Inbox**, **Keys**.
@@ -134,6 +143,7 @@ Admin buttons are visible only with an admin key: **Publish**, **Inbox**, **Keys
 | Retire a family | card → **Deprecate…** (projects keep it, the window hides it) |
 | Proposals, requests, problems | **Inbox**: open in the editor, publish, mark done, reject with a comment |
 | People | **Keys**: approve access requests, create a key, revoke a key (works at once); the list shows which PEER version each person runs |
+| Release the template | save it as `.rte`, then `release.ps1 -Do template -File … -Note "what changed"` → **beta** → **stable** |
 | Release PEER | `release.ps1` (developer README): package → **beta** → **stable**; roll back by pointing a channel at an older version |
 
 Rules: the ID = file name = family name in Revit and never changes; the library format is

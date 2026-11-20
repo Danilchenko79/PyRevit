@@ -35,6 +35,15 @@ try:
 except Exception:
     pass
 
+# В фоне: шаблон проекта компании (%LOCALAPPDATA%/PEER/Templates/PR_Template Concrete.rte) доводится
+# до версии, выпущенной на сервисе; после обновления - уведомление «что нового».
+# Логика - lib/peer_library/template_sync.py.
+try:
+    from peer_library import template_sync as _peer_template
+    _peer_template.run_async(_peer_template.toast)
+except Exception:
+    pass
+
 # В фоне: уведомление «что нового в библиотеке семейств» (раз в 6 часов, только с ключом),
 # админам - сколько ждут предложений и заявок на доступ. Логика - lib/peer_library/notify.py.
 try:

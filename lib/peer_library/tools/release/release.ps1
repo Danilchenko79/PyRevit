@@ -1,10 +1,11 @@
 param(
-  [ValidateSet('status', 'ext', 'promote')] [string]$Do = 'status',
+  [ValidateSet('status', 'ext', 'template', 'promote')] [string]$Do = 'status',
   [ValidateSet('ext', 'template')] [string]$Product = 'ext',
   [string]$Ref = 'HEAD',
   [ValidateSet('beta', 'stable')] [string]$Channel = 'beta',
   [string]$Version = '',
   [string]$Note = '',
+  [string]$File = '',                    # -Do template: the .rte saved from Revit
   [string]$Engine = (Join-Path $env:APPDATA 'pyRevit-Master\bin\engines\IPY2711PR'),
   [switch]$Yes
 )
@@ -14,6 +15,9 @@ param(
 #   release.ps1 -Do ext -Note "what changed"           package of HEAD -> beta
 #   release.ps1 -Do ext -Ref dev -Channel stable -Note "..."
 #   release.ps1 -Do promote -Version 2026.11.20.1 -Channel stable     beta -> everybody / roll back
+#   release.ps1 -Do template -File "D:\work\PR_Template Concrete.rte" -Note "what changed"     template -> beta
+#   release.ps1 -Product template                      template versions
+#   release.ps1 -Do promote -Product template -Version 14 -Channel stable
 #
 # Only committed files are packed (git archive). Publishing asks before it sends, unless -Yes.
 $ErrorActionPreference = 'Stop'
@@ -60,6 +64,26 @@ if ($Do -eq 'promote') {
     if ($a -ne 'yes') { 'Cancelled.'; return }
   }
   Invoke-Service @('promote', $Product, $Version, $Channel); return
+}
+
+# ---- the project template (a .rte saved from Revit; versions are 1, 2, 3 ...) ----
+if ($Do -eq 'template') {
+  if (-not $Note.Trim()) { throw 'Give -Note "what changed" - colleagues see it.' }
+  if (-not $File -or -not (Test-Path -LiteralPath $File)) { throw 'Give -File with the template (.rte).' }
+  if ([IO.Path]::GetExtension($File).ToLower() -ne '.rte') { throw 'The template must be a .rte file.' }
+  if (-not $Version) {
+    $out = Invoke-Service @('manifest', 'template')
+    $out
+    $Version = ((($out -split "`n") | Where-Object { $_ -match '^NEXTINT ' } | Select-Object -First 1) -replace '^NEXTINT\s+', '').Trim()
+  }
+  if (-not $Version) { throw 'Could not work out the next version.' }
+  $mb = [Math]::Round((Get-Item -LiteralPath $File).Length / 1MB, 1)
+  if (-not $Yes) {
+    $a = Read-Host "Publish template version $Version ($mb MB) to '$Channel'? (yes/no)"
+    if ($a -ne 'yes') { 'Cancelled.'; return }
+  }
+  Invoke-Service @('publish', 'template', $Version, (Resolve-Path -LiteralPath $File).Path, $Channel, $Note)
+  return
 }
 
 # ---- package of the extension ----

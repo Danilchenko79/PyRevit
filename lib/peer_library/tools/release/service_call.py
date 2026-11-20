@@ -38,6 +38,8 @@ if cmd == 'manifest':
         print('VERSION', v['version'], v.get('time'), v.get('size'), (v.get('note') or u'').split(u'\n')[0][:80])
     import datetime
     print('NEXT', releases.next_version(m, datetime.datetime.now().strftime('%Y.%m.%d')))
+    ints = [releases.vkey(v['version'])[0] for v in m.get('versions') or [] if len(releases.vkey(v['version'])) == 1]
+    print('NEXTINT', (max(ints) if ints else 0) + 1)
 elif cmd == 'publish':
     version, path, channel, note = args[2], args[3], args[4], args[5]
     sha = rfa_info.sha1(path)

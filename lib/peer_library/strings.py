@@ -323,3 +323,11 @@ COMP_MISSING = u'not in the library (fix the card)'
 COMP_LOADED = u'Also loaded: {0}.'
 COMP_FAILED = u'The family is loaded, but these could not be loaded with it:'
 COMP_UNKNOWN = u'Not in the library: {0}. Use the family ID (the grey line under its name).'
+
+# ---- project template --------------------------------------------------------------
+TPL_TITLE = u'PEER - New project'
+TPL_NO_SERVICE = u'The PEER service is not set up on this computer - there is no template to take.'
+TPL_NOT_READY = (u'The company template is not on this computer yet and could not be downloaded:\n\n{0}\n\n'
+                 u'Check the internet and PEER -> Account, then try again.')
+TPL_SAVE_AS = u'New project from PR_Template Concrete v{0} - save as'
+TPL_NOT_OVER = u'Choose another name: this is the template file itself.'
