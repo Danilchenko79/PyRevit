@@ -1,7 +1,7 @@
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="PEER - Propose a family"
-        Height="720" Width="620" MinWidth="520" MinHeight="560"
+        Height="800" Width="620" MinWidth="520" MinHeight="560"
         WindowStartupLocation="CenterScreen" ResizeMode="CanResizeWithGrip"
         ShowInTaskbar="False" PreviewKeyDown="on_key"
         Background="#F5F5F4" FontFamily="Segoe UI" FontSize="13" Foreground="#111827">

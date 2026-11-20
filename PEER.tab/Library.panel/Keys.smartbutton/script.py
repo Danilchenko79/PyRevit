@@ -13,6 +13,7 @@ import clr
 from pyrevit import forms
 
 from peer_library import config, log, session, strings
+from peer_library import ui_common as U
 
 clr.AddReference('System.Data')
 from System.Data import DataTable  # noqa: E402
@@ -61,8 +62,8 @@ class KeysWindow(forms.WPFWindow):
             table.Columns.Add(c)
         for r in self.rows:
             table.Rows.Add(r['id'], r['name'], r['role'], u'active' if r['active'] else u'revoked',
-                           (r.get('last_used') or u'never').replace(u'T', u' '),
-                           (r.get('created') or u'').replace(u'T', u' '))
+                           U.local_time(r.get('last_used')) or u'never',
+                           U.local_time(r.get('created')))
         self.keys_list.ItemsSource = table.DefaultView
         self.status_text.Text = u'{0} active key(s)'.format(sum(1 for r in self.rows if r['active']))
 
@@ -80,7 +81,7 @@ class KeysWindow(forms.WPFWindow):
         for r in self.requests:
             note = u'  -  {0}'.format(r['note']) if r.get('note') else u''
             self.requests_list.Items.Add(u'{0}{1}   ({2})'.format(
-                r['name'], note, (r.get('created') or u'')[:16].replace(u'T', u' ')))
+                r['name'], note, U.local_time(r.get('created'))))
         self.requests_box.Visibility = Visibility.Visible if self.requests else Visibility.Collapsed
         self.requests_title.Text = u'{0} person(s) ask for access'.format(len(self.requests))
         if self.requests:

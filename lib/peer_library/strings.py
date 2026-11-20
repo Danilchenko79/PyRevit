@@ -186,4 +186,7 @@ PUBLISH_ONLY_2024 = u'Publish from Revit {0} only.'
 BATCH_TITLE = u'Publish a sorted folder'
 BATCH_DONE = u'Published {0}, skipped {1}, failed {2}. Report: {3}'
 REJECT_NEED = u'Write why the proposal is rejected.'
+INBOX_EMPTY = (u'Nothing waiting for review.\n\n'
+               u'New proposals, requests and problem reports from colleagues appear here.')
+INBOX_SELECT = u'Select a proposal on the left.'
 NOT_ADMIN = u'Only library admins can do this.'

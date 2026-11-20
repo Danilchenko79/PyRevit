@@ -62,7 +62,7 @@
         </Border>
 
         <TextBlock Grid.Row="2" Margin="0,14,0,6" FontWeight="SemiBold" Text="Keys"/>
-        <ListView x:Name="keys_list" Grid.Row="3" BorderBrush="#D6D3D1">
+        <ListView x:Name="keys_list" Grid.Row="3" BorderBrush="#D6D3D1" Foreground="#111827">
             <ListView.View>
                 <GridView>
                     <GridViewColumn Header="Name" Width="200" DisplayMemberBinding="{Binding name}"/>

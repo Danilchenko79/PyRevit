@@ -89,6 +89,20 @@ def bitmap(path, width=None):
         return None
 
 
+def local_time(iso, seconds=False):
+    """Service time (UTC, '2026-11-20T04:42:27') -> local 'YYYY-MM-DD HH:MM'."""
+    import datetime
+    if not iso:
+        return u''
+    try:
+        t = datetime.datetime.strptime(iso[:19], '%Y-%m-%dT%H:%M:%S')
+    except ValueError:
+        return iso.replace(u'T', u' ')
+    offset = datetime.datetime.now() - datetime.datetime.utcnow()
+    t = t + datetime.timedelta(seconds=round(offset.total_seconds() / 60.0) * 60)
+    return t.strftime('%Y-%m-%d %H:%M:%S' if seconds else '%Y-%m-%d %H:%M')
+
+
 def info(text, title=strings.APP):
     MessageBox.Show(text, title, MessageBoxButton.OK, MessageBoxImage.Information)
 

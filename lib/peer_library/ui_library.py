@@ -1192,7 +1192,7 @@ class LibraryWindow(forms.WPFWindow):
                   'accepted': (strings.P_ACCEPTED, loader.CURRENT),
                   'rejected': (strings.P_REJECTED, loader.NEWER)}
         for p in sorted(mine, key=lambda x: x.get('sent', u''), reverse=True):
-            sub = u'{0}{1}'.format((p.get('sent') or u'')[:16].replace(u'T', u' '),
+            sub = u'{0}{1}'.format(U.local_time(p.get('sent')),
                                    (u' · ' + p['comment']) if p.get('comment') else u'')
             self.mine_list.Items.Add(self._line(p.get('name') or p['id'], sub,
                                                 labels.get(p.get('status'), labels['pending'])))

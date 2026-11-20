@@ -6,7 +6,7 @@ import os
 
 from pyrevit import forms
 
-from System.Windows import Thickness, TextWrapping  # noqa: E402
+from System.Windows import Thickness, TextWrapping, Visibility  # noqa: E402
 from System.Windows.Controls import Orientation, StackPanel, TextBlock  # noqa: E402
 from System.Windows.Input import Cursors, Key  # noqa: E402
 
@@ -66,8 +66,7 @@ class InboxWindow(forms.WPFWindow):
             sp.Children.Add(head)
             s = TextBlock()
             s.Foreground = U.brush(U.MUTED)
-            s.Text = u'{0} · {1}'.format(p.get('author', u''),
-                                             (p.get('sent') or u'')[:16].replace(u'T', u' '))
+            s.Text = u'{0} · {1}'.format(p.get('author', u''), U.local_time(p.get('sent')))
             sp.Children.Add(s)
             self.list.Items.Add(sp)
         pending = sum(1 for p in self.items if p.get('status') == 'pending')
@@ -89,7 +88,10 @@ class InboxWindow(forms.WPFWindow):
         self.publish_btn.IsEnabled = pending and not fileless
         self.done_btn.IsEnabled = pending and fileless
         self.reject_btn.IsEnabled = pending
+        self.d_panel.Visibility = Visibility.Visible if has else Visibility.Collapsed
+        self.d_empty.Visibility = Visibility.Collapsed if has else Visibility.Visible
         if not has:
+            self.d_empty.Text = strings.INBOX_SELECT if self.items else strings.INBOX_EMPTY
             for t in (self.d_name, self.d_meta, self.d_reason, self.d_checks, self.d_work):
                 t.Text = u''
             self.d_shot.Source = None
@@ -97,7 +99,7 @@ class InboxWindow(forms.WPFWindow):
         self.d_name.Text = p.get('name') or p['id']
         kind = strings.KIND_LABELS.get(p.get('kind') or 'new', strings.KIND_NEW)
         self.d_meta.Text = u'{0} · {1} · {2} · {3} {4}\nRevit {5}'.format(
-            p.get('author', u''), (p.get('sent') or u'')[:16].replace(u'T', u' '),
+            p.get('author', u''), U.local_time(p.get('sent')),
             groups.title(p.get('group')), kind, p.get('family_id') or u'', p.get('revit') or u'?')
         self.d_reason.Text = p.get('reason') or u''
         checks = [u'{0}: {1}'.format(c.get('level', u'').upper(), c.get('text', u''))
