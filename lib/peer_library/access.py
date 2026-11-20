@@ -237,6 +237,20 @@ def startup():
     return st
 
 
+def refresh_index(cfg=None):
+    """Save a fresh copy of the library index (ETag: cheap). The ribbon reads it
+    to decide whether the Library panel has anything to show. True = saved."""
+    from peer_library.cache import Cache
+    cfg = cfg or config.load()
+    try:
+        Cache(cfg['cache'], config.make_backend(cfg)).index()
+        return True
+    except Exception as ex:
+        from peer_library import log
+        log.write(u'access: library index {0}'.format(ex))
+        return False
+
+
 def _toast(title, text):
     try:
         from pyrevit.forms import toaster
@@ -264,10 +278,9 @@ def background_work():
             except Exception:
                 log.write(u'access: full PEER after approval', exc=True)
         _toast(strings.ACC_TITLE, text + u' ' + strings.UPD_FULL_TEXT)
+    refresh_index(cfg)                                 # keeps the saved copy current
     try:
-        from peer_library.cache import Cache
         backend = config.make_backend(cfg)
-        Cache(cfg['cache'], backend).index()          # keeps the saved copy current (ETag: cheap)
         if cfg.get('role') == 'admin':
             n = len(backend.list_access_requests())
             if n:

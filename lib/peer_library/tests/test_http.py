@@ -268,6 +268,18 @@ class TestHttp(unittest.TestCase):
         self.assertEqual(access.pick_up(self.backend(None)), 'rejected')
         self.assertIsNone(keystore.load_request())
 
+    def test_library_panel_is_ready_right_after_signing_in(self):
+        from peer_library import access
+        admin = self.backend(self.admin_key)
+        config.save_local(backend=u'http', url=self.url)
+        admin.sign_in(self.user_key)                      # the colleague signs in on this "computer"
+        self.assertFalse(access.library_ready())          # empty library: nothing to show
+        self.assertTrue(access.refresh_index())
+        self.assertFalse(access.library_ready())
+        self.publish(self.backend(self.admin_key))
+        self.assertTrue(access.refresh_index())
+        self.assertTrue(access.library_ready())           # one family: the panel shows
+
     def test_auth_tells_the_service_the_peer_version(self):
         admin, user = self.backend(self.admin_key), self.backend(self.user_key)
         user.auth()

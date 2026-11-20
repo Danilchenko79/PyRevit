@@ -112,6 +112,7 @@ class AccountWindow(forms.WPFWindow):
 
     def on_signin(self, sender, args):
         if sign_in_flow():
+            access.refresh_index()
             self.check = 'ok'
         self._after_change()
 
@@ -168,6 +169,8 @@ def show(check=True):
     st = access.status()
     if st.code in (access.NONE, access.REQUESTED):
         ok = sign_in_flow()
+        if ok:
+            access.refresh_index()         # so the Library panel shows at once, not at the next start
         try:
             access.apply_ribbon()
         except Exception:
