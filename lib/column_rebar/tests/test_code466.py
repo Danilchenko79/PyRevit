@@ -160,6 +160,23 @@ class Hoops(unittest.TestCase):
         self.assertIn('restrained', codes(c.design(CIRCLE, 1200, None, 30, 20, 6), RED))
 
 
+class ColumnParams(unittest.TestCase):
+
+    def test_summary(self):
+        self.assertEqual(c.summary(c.design(RECT, 800, 800, 25, 25, 4, 4)),
+                         u'Ø8@250/100; 2 inner hoops')
+        self.assertEqual(c.summary(c.design(RECT, 1500, 600, 25, 20, 7, 3)),
+                         u'Ø8@250/100; 2 triangles + 3 ties')
+        self.assertEqual(c.summary(c.design(RECT, 300, 300, 25, 12, 2, 2)), u'Ø8@175/100')
+        self.assertEqual(c.summary({'label': None}), u'')
+
+    def test_mode_from_text(self):
+        self.assertEqual(c.mode_from_text(None), c.AUTO)
+        self.assertEqual(c.mode_from_text(u' Ties'), c.TIES)
+        self.assertEqual(c.mode_from_text(u'hoops'), c.HOOPS)
+        self.assertEqual(c.mode_from_text(u'???'), c.AUTO)
+
+
 class OldLegend(unittest.TestCase):
 
     def test_counts(self):

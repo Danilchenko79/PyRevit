@@ -439,6 +439,31 @@ def design(shape, b, h, cover, bar_dia, nb, nh=None, stirrup_dia=None,
     return out
 
 
+def summary(result):
+    """Text for Rebar_Stirrup Label: 'D8@250/100; 2 inner hoops + 1 tie'."""
+    if not result.get('label'):
+        return u''
+    parts = []
+    rect = len([x for x in result.get('hoops') or [] if x['kind'] == 'rect'])
+    tri = len([x for x in result.get('hoops') or [] if x['kind'] == 'triangle'])
+    ties = len(result.get('ties') or [])
+    for n, one, many in ((rect, u'inner hoop', u'inner hoops'), (tri, u'triangle', u'triangles'),
+                         (ties, u'tie', u'ties')):
+        if n:
+            parts.append(u'%d %s' % (n, one if n == 1 else many))
+    return result['label'] + (u'; ' + u' + '.join(parts) if parts else u'')
+
+
+def mode_from_text(text):
+    """Rebar_Transverse value -> AUTO / TIES / HOOPS (empty or unknown -> AUTO)."""
+    t = (text or u'').strip().lower()
+    if t.startswith(u'tie'):
+        return TIES
+    if t.startswith(u'hoop'):
+        return HOOPS
+    return AUTO
+
+
 def blocked(result):
     """True when the drawing may not be issued (a RED message)."""
     return any(x['level'] == RED for x in result['messages'])
