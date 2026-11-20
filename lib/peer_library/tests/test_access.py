@@ -101,7 +101,8 @@ class TestVersion(unittest.TestCase):
             f.write(u'{"version": "2026.11.20.1", "channel": "beta", "built": "2026-11-20T10:00:00"}')
         v = version.get(self.tmp)
         self.assertEqual((v['version'], v['channel'], v['kind']), (u'2026.11.20.1', u'beta', 'package'))
-        self.assertEqual(version.text(self.tmp), u'2026.11.20.1 (beta)')
+        self.assertEqual(version.text(self.tmp, 'beta'), u'2026.11.20.1 (beta)')
+        self.assertEqual(version.text(self.tmp, 'stable'), u'2026.11.20.1')
 
     def test_git_clone(self):
         os.makedirs(os.path.join(self.tmp, '.git', 'refs', 'heads'))
@@ -109,7 +110,7 @@ class TestVersion(unittest.TestCase):
             f.write(u'ref: refs/heads/main\n')
         with io.open(os.path.join(self.tmp, '.git', 'refs', 'heads', 'main'), 'w', encoding='utf-8') as f:
             f.write(u'0123456789abcdef0123456789abcdef01234567\n')
-        self.assertEqual(version.text(self.tmp), u'git 0123456')
+        self.assertEqual(version.text(self.tmp, 'beta'), u'git 0123456')
         self.assertEqual(version.get(self.tmp)['kind'], 'git')
 
     def test_nothing(self):

@@ -46,8 +46,17 @@ def get(folder=None):
     return {'version': u'dev', 'channel': u'', 'built': u'', 'kind': 'dev'}
 
 
-def text(folder=None):
+def text(folder=None, channel=None):
+    """'2026.11.20.1' or '2026.11.20.1 (beta)'. The channel is the one this
+    computer follows (settings), not the one the package was first published to:
+    a beta package promoted to stable is the same file."""
     v = get(folder)
-    if v['channel'] and v['channel'] != 'stable':
-        return u'{0} ({1})'.format(v['version'], v['channel'])
+    if channel is None:
+        try:
+            from peer_library import config
+            channel = config.load().get('channel')
+        except Exception:
+            channel = u''
+    if v['kind'] == 'package' and channel == 'beta':
+        return u'{0} (beta)'.format(v['version'])
     return v['version']

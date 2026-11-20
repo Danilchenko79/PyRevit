@@ -1,18 +1,25 @@
 # -*- coding: utf-8 -*-
-"""Keep an installed PEER extension identical to GitHub main.
+"""Keep an installed PEER extension up to date.
 
 Called from startup.py on every Revit start and every pyRevit Reload.
 """
-# pyRevit сам делает git pull при старте и Reload (autoupdate), но молча пропускает
-# обновление, если у сотрудника изменён файл из репозитория (открыл .rfa из папки кнопки
-# и сохранил и т.п.). Здесь после pull папка доводится до origin/main (reset --hard):
-# локальные правки в файлах репозитория стираются, новые файлы (логи, кэш) не трогаются.
+# Два способа доставки, выбор автоматический:
 #
-# Работает ТОЛЬКО на установке сотрудника: папка в %APPDATA%\pyRevit\Extensions (так ставит
-# install.bat) и ветка main. Рабочая копия автора (Desktop, ветка dev) не трогается никогда.
+# 1. ПАКЕТ с сервиса PEER (новый способ, GitHub не нужен). Есть ключ PEER на компьютере и на
+#    сервисе опубликован пакет - папка доводится до пакета (lib/peer_library/ext_update.py):
+#    скачать zip один раз, сверить SHA-1, заменить изменённые файлы, убрать удалённые.
+#    Установка из git при этом сама превращается в пакетную: появляется version.json,
+#    папка .git удаляется (если занята - после закрытия Revit).
+# 2. GIT (старый способ, пока репозиторий открыт). pyRevit сам делает git pull при старте и
+#    Reload, но молча пропускает обновление, если у сотрудника изменён файл из репозитория.
+#    Здесь после pull папка доводится до origin/main (reset --hard). Работает, только пока
+#    установка ещё не пакетная: нет ключа, или пакет на сервисе ещё не опубликован.
+#
+# Оба способа работают ТОЛЬКО на установке сотрудника: папка в %APPDATA%\pyRevit\Extensions
+# (так ставит установщик). Рабочая копия автора (Desktop, ветка dev) не трогается никогда.
 #
 # Правки скриптов и lib действуют сразу (pyRevit читает script.py при нажатии); новые /
-# удалённые кнопки появятся после следующего Reload — ленту pyRevit собрал до startup.py.
+# удалённые кнопки появятся после следующего Reload - ленту pyRevit собрал до startup.py.
 
 import os
 import io
@@ -96,13 +103,88 @@ def _sync_repo(git, lg, repo_info):
     return 'updated', det
 
 
+# ---- package from the PEER service ----------------------------------------------------
+def _work_dir():
+    base = os.environ.get('LOCALAPPDATA') or os.path.expanduser('~')
+    return os.path.join(base, 'PEER', 'Update')
+
+
+def _git_tracked(ext_dir):
+    """Files git tracks in a clone: the list of what PEER owns there, so files deleted
+    from PEER later are removed when the clone becomes a package installation."""
+    try:
+        from pyrevit.coreutils import git
+        info = git.get_repo(ext_dir)
+        try:
+            return dict((e.Path.replace(u'\\', u'/'), u'') for e in info.repo.Index)
+        finally:
+            info.repo.Dispose()
+    except Exception:
+        return {}
+
+
+def _drop_git(ext_dir):
+    """Remove .git of a converted installation. pyRevit may still hold its pack
+    files open in this Revit: then only HEAD is removed - without it the folder
+    is not a git repository any more, pyRevit stops opening (and pulling) it,
+    and the next Revit start removes the rest. No helper process is started."""
+    git_dir = os.path.join(ext_dir, '.git')
+    if not os.path.isdir(git_dir):
+        return u''
+    try:
+        from peer_library import ext_update
+        if ext_update._rmtree(git_dir):
+            return u'.git removed'
+    except Exception:
+        pass
+    head = os.path.join(git_dir, 'HEAD')
+    try:
+        if os.path.isfile(head):
+            os.chmod(head, 0o666)
+            os.remove(head)
+        return u'.git is in use - switched off, the rest is removed at the next Revit start'
+    except (IOError, OSError) as ex:
+        return u'.git not removed: {0}'.format(ex)
+
+
+def sync_package(ext_dir, any_path=False):
+    """-> (status, details). status: skip / nokey / none / offline / clean /
+    updated / partial / error (see peer_library/ext_update.py)."""
+    if not any_path and not _installed_by_installer(ext_dir):
+        return 'skip', u'not an installed copy (author working folder): ' + ext_dir
+    from peer_library import config, ext_update
+    cfg = config.load()
+    if cfg['backend'] != 'http' or not config.is_configured(cfg):
+        return 'skip', u'the PEER service is not set up on this computer'
+    backend = config.make_backend(cfg)
+    was_git = os.path.isdir(os.path.join(ext_dir, '.git'))
+    old = _git_tracked(ext_dir) if was_git and not ext_update.installed_files(ext_dir) else None
+    status, det = ext_update.sync(ext_dir, backend, cfg.get('channel') or 'stable', _work_dir(), old)
+    if was_git and status in ('updated', 'clean'):
+        note = _drop_git(ext_dir)
+        if note:
+            det += u'; ' + note
+    return status, det
+
+
 def run(ext_dir=None):
     # папка расширения = родитель lib/, где лежит этот модуль
     if ext_dir is None:
         ext_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    lines = []
     try:
-        status, det = sync(ext_dir)
+        status, det = sync_package(ext_dir)
     except Exception as ex:
         status, det = 'error', u'{0}'.format(ex)
-    _log([u'PEER update: ' + status, det])
+    lines += [u'PEER update (package): ' + status, det]
+    # пакет не сработал и установка ещё из git - старый способ (пока репозиторий открыт)
+    if status in ('skip', 'nokey', 'none', 'offline', 'error') and \
+            os.path.isdir(os.path.join(ext_dir, '.git')) and \
+            not os.path.isfile(os.path.join(ext_dir, 'version.json')):
+        try:
+            status, det = sync(ext_dir)
+        except Exception as ex:
+            status, det = 'error', u'{0}'.format(ex)
+        lines += [u'PEER update (git): ' + status, det]
+    _log(lines)
     return status, det

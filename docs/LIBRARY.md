@@ -102,6 +102,20 @@ A folder: after the folder check press **Fix copies…** and choose another fold
 saved there with the same sub-folders and a list of changes (`_family_fix.csv`); the checked files
 stay as they are. A family selected in a project is only checked - open it (Edit Family) to fix it.
 
+## Your account (one key for PEER)
+
+**PEER → Account** shows who is signed in on this computer, the state of your key and the installed
+PEER version. The same personal key opens the family library, brings PEER updates and - when the
+office turns the lock on - the PEER buttons themselves.
+
+- **Sign in / request access…**: paste the key from a PEER admin, or send a request and press
+  Sign in again after an admin approves it.
+- **Check now**: asks the service whether the key is still valid. **Sign out** removes the key from
+  this computer.
+- Without internet PEER keeps working for 14 days after the last check.
+- Install on a new computer: run `install.bat` from the PEER site - it asks for the key (or sends the
+  access request) and downloads PEER. After that PEER updates itself when Revit starts.
+
 ## Admins (2–3 people)
 
 Admin buttons are visible only with an admin key: **Publish**, **Inbox**, **Keys**.
@@ -117,7 +131,8 @@ Admin buttons are visible only with an admin key: **Publish**, **Inbox**, **Keys
 | Collections (kits) | card → **Add to collection…**; in a collection → **Remove from this collection** |
 | Retire a family | card → **Deprecate…** (projects keep it, the window hides it) |
 | Proposals, requests, problems | **Inbox**: open in the editor, publish, mark done, reject with a comment |
-| People | **Keys**: approve access requests, create a key, revoke a key (works at once) |
+| People | **Keys**: approve access requests, create a key, revoke a key (works at once); the list shows which PEER version each person runs |
+| Release PEER | `release.ps1` (developer README): package → **beta** → **stable**; roll back by pointing a channel at an older version |
 
 Rules: the ID = file name = family name in Revit and never changes; the library format is
 Revit 2024; publish only from Revit 2024.

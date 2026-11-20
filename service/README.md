@@ -54,6 +54,19 @@ Workers 100 000 запросов в день. Workers Paid — 5 $ в месяц
    Ушёл человек — «Revoke selected key», ключ перестаёт работать сразу.
 3. Пока адреса сервиса в настройках нет, панель Library у коллег скрыта.
 
+## Раздача самого PEER и шаблона (`/release/...`)
+Пакет PEER (`ext`) и шаблон проекта (`template`) лежат в R2 под `PEER-Releases/<product>/`. Версия загружается
+один раз и не меняется; каналы `stable` и `beta` — указатели на версию, откат = перевести указатель на старую.
+Хранятся последние 5 версий и те, на которые указывает канал. Скачать может любой действующий ключ, загрузить
+и переключить — только админ. Команды — `lib/peer_library/tools/release/release.ps1`.
+
+База, созданная до 20.11.2026, перед деплоем этой версии сервиса требует одной команды (колонка версии PEER у ключа):
+```
+npx wrangler d1 execute peer-library --remote --file=migrations/001_key_version.sql
+npx wrangler deploy
+```
+Порядок важен: сначала миграция, потом deploy (иначе проверка ключа падает с ошибкой 500).
+
 ## Резервная копия
 - Файлы библиотеки:
   `powershell -ExecutionPolicy Bypass -File lib\peer_library\tools\backup.ps1 -Folder D:\Backup\PEER`
@@ -62,7 +75,7 @@ Workers 100 000 запросов в день. Workers Paid — 5 $ в месяц
 
 ## Проверка без Cloudflare
 ```
-node --test test                     # 10 тестов сервиса (R2 и D1 подменены, node:sqlite)
+node --test test                     # 24 теста сервиса (R2 и D1 подменены, node:sqlite)
 node test/dev_server.mjs 8787        # локальная копия сервиса, печатает тестовые ключи
 py -3 -m unittest discover -s ..\lib\peer_library\tests   # в т.ч. клиент против dev_server
 ```

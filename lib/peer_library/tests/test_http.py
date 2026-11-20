@@ -171,6 +171,66 @@ class TestHttp(unittest.TestCase):
         mine = dict((p['id'], p) for p in user.my_proposals())
         self.assertEqual(mine[pid2]['comment'], u'уже есть')
 
+    def test_package_release_end_to_end(self):
+        """build a package -> upload -> publish to beta -> a colleague's
+        installation updates; promote; revoke the key -> no more updates."""
+        import zipfile
+        from peer_library import ext_update, pack, releases, version
+        admin, user = self.backend(self.admin_key), self.backend(self.user_key)
+
+        def package(ver, files):
+            src = os.path.join(self.tmp, 'src-{0}.zip'.format(ver))
+            with zipfile.ZipFile(src, 'w') as z:
+                for rel, data in files.items():
+                    z.writestr(rel, data)
+            out = os.path.join(self.tmp, 'PEER-{0}.zip'.format(ver))
+            count, sha, size = pack.build(src, out, ver, 'beta')
+            return out, sha, size
+
+        base = {'startup.py': b's1', 'lib/peer_update.py': b'u1', 'lib/peer_library/ext_update.py': b'e1',
+                'service/src/worker.js': b'not for colleagues', 'PEER.tab/A.panel/B.pushbutton/OLD/x.py': b'old'}
+        out, sha, size = package('2026.11.20.1', base)
+        with self.assertRaises(AccessError):
+            user.release_upload(releases.EXT, '2026.11.20.1', out, sha)
+        up = admin.release_upload(releases.EXT, '2026.11.20.1', out, sha)
+        self.assertEqual((up['size'], up['sha1']), (size, sha))
+        admin.release_publish(releases.EXT, '2026.11.20.1', 'beta', u'первый пакет', sha)
+
+        ext = os.path.join(self.tmp, 'PEER.extension')
+        work = os.path.join(self.tmp, 'update')
+        os.makedirs(ext)
+        self.assertEqual(ext_update.sync(ext, user, 'stable', work)[0], 'none')     # beta only so far
+        status, det = ext_update.sync(ext, user, 'beta', work)
+        self.assertEqual(status, 'updated', det)
+        self.assertTrue(os.path.isfile(os.path.join(ext, 'lib', 'peer_update.py')))
+        self.assertFalse(os.path.exists(os.path.join(ext, 'service')))              # not packed
+        self.assertFalse(os.path.exists(os.path.join(ext, 'PEER.tab')))
+        self.assertEqual(version.get(ext)['version'], u'2026.11.20.1')
+
+        admin.release_promote(releases.EXT, '2026.11.20.1', 'stable')
+        self.assertEqual(ext_update.sync(ext, user, 'stable', work), ('clean', u'2026.11.20.1'))
+
+        out2, sha2, _ = package('2026.11.20.2', dict(base, **{'startup.py': b's2'}))
+        admin.release_upload(releases.EXT, '2026.11.20.2', out2, sha2)
+        admin.release_publish(releases.EXT, '2026.11.20.2', 'stable', u'второй', sha2)
+        self.assertEqual(ext_update.sync(ext, user, 'stable', work)[0], 'updated')
+        with open(os.path.join(ext, 'startup.py'), 'rb') as f:
+            self.assertEqual(f.read(), b's2')
+
+        admin.revoke_key('usr1')                       # the person left
+        out3, sha3, _ = package('2026.11.20.3', dict(base, **{'startup.py': b's3'}))
+        admin.release_upload(releases.EXT, '2026.11.20.3', out3, sha3)
+        admin.release_publish(releases.EXT, '2026.11.20.3', 'stable', u'третий', sha3)
+        self.assertEqual(ext_update.sync(ext, user, 'stable', work)[0], 'nokey')
+        with open(os.path.join(ext, 'startup.py'), 'rb') as f:
+            self.assertEqual(f.read(), b's2')          # stays on what was downloaded before
+
+    def test_auth_tells_the_service_the_peer_version(self):
+        admin, user = self.backend(self.admin_key), self.backend(self.user_key)
+        user.auth()
+        row = [k for k in admin.list_keys() if k['id'] == 'usr1'][0]
+        self.assertTrue(row['version'])                # 'git <sha>' or 'dev' in the working copy
+
     def test_keys_revoke(self):
         admin = self.backend(self.admin_key)
         k = admin.add_key(u'Борис', 'user')

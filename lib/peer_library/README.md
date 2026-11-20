@@ -26,6 +26,7 @@
 | `catalog` каталог типов; `cards_csv` карточки ↔ Excel; `importmeta` имена/теги | `notify` уведомление при старте; `project_check` + `hooks/doc-opened.py` |
 | `keystore` ключ и заявка (DPAPI); `userprefs` избранное/недавние; `search` поиск (слитно, RU/HE-синонимы, порядок) | `ui_common` цвета/чипы (без синего, статус всегда с подписью) |
 | `require` (план: проект → библиотека → папка) |  `require.families` / `symbol` — семейства для других кнопок |
+| `access` статус ключа / замок; `version`; `releases`, `ext_update`, `pack` — пакет PEER | `ui_account` окно Account |
 | `family_diff` что сломает замена семейства, проверки по ФОП, имена, типы (правила и тексты) | `family_sig` состав семейства данными; `load_check` проверка перед заменой (сравнение + пробная загрузка с откатом), `rename_aside`; `family_check` кнопка Check family / папка / Publish; `ui_check` окно отчёта; `family_fix` + `ui_fix` замена/переименование/удаление параметров, исправление папки в копию (план — `family_diff.fix_plan`) |
 
 ## Настройки
@@ -45,8 +46,8 @@ Revit **2024**, публиковать только из 2024. ID = имя фа�
 
 ## Проверки
 ```
-py -3 -m unittest discover -s lib/peer_library/tests     # 68 тестов, в т.ч. клиент ↔ сервис (node)
-node --test service/test                                  # 17 тестов сервиса
+py -3 -m unittest discover -s lib/peer_library/tests     # 104 теста, в т.ч. клиент ↔ сервис (node)
+node --test service/test                                  # 24 теста сервиса
 ```
 Синтаксис IronPython и XAML — `ipy`-компиляция и `XamlReader` (см. историю сессии 20.11.2026).
 
@@ -101,6 +102,39 @@ sym = require.symbol(doc, u'PR_Wall2D_Edge', u'Type 1')   # затем sym.Activ
 - каждая загрузка — своя транзакция: вызывать вне открытой `Transaction` (внутри `TransactionGroup` можно);
 - `interactive=False` — без окна входа (хуки, пакетные прогоны): без ключа только папка;
 - имя = ID библиотеки = имя семейства в Revit; `require.plan` — чистая логика, тесты `tests/test_require.py`.
+
+## Один ключ на весь PEER (`access`, кнопка Account)
+- `access.status()` — что есть на компьютере: ключ (DPAPI), последняя проверка (`last_ok`), сколько дней офлайн осталось.
+- Замок выключен, пока в `settings.json` нет `"access_lock": true` и адреса сервиса. С замком без действующего
+  ключа `startup.py` прячет все панели, кроме Account и Feedback (`access.apply_ribbon`), а первая строка каждой
+  кнопки `import peer_access; peer_access.require_key()` предлагает войти и останавливает скрипт.
+- Ключ сверяется с сервисом в фоне при старте Revit и в Account («Check now»); отозванный забывается, без сети
+  действует последняя проверка 14 дней. С проверкой уходит версия PEER (`X-PEER-Version`) — в Keys видно, кто на какой.
+- Окно во всех состояниях без Revit: `tools/ui_preview/run.ps1 -Script account` (ключ и сервис не трогаются).
+
+## PEER раздаётся сервисом (пакет вместо GitHub)
+| Что | Где |
+|---|---|
+| Сервис `/release/<ext\|template>/…`: манифест (каналы `stable`/`beta` — указатели на версии), файл, загрузка, publish, promote | `service/src/worker.js` |
+| Что входит в пакет, сборка zip + `files.json` + `version.json` | `pack.py`, `tools/release/build_ext.py` |
+| Какая версия нужна компьютеру (beta не отстаёт от stable) | `releases.py` |
+| Довести установку до пакета (скачать раз, SHA-1, заменить изменённое, убрать удалённое, чужое не трогать; `version.json` пишется последним) | `ext_update.py` |
+| Старт Revit: сначала пакет, иначе старый git-способ; git-клон сам становится пакетом | `lib/peer_update.py` |
+| Установщик по ключу / по заявке на доступ | `installer/install.bat` + `install.ps1` |
+
+Выпуск (ключ админа этого пользователя Windows, не печатается; в пакет идут только закоммиченные файлы):
+```
+powershell -ExecutionPolicy Bypass -File lib\peer_library\tools\release\release.ps1                      # что опубликовано
+... release.ps1 -Do ext -Note "что изменилось"                    # пакет HEAD -> beta
+... release.ps1 -Do promote -Version 2026.11.20.1 -Channel stable  # beta -> всем; так же откат на старую версию
+```
+Свой компьютер на beta: `"channel": "beta"` в `%APPDATA%\PEER\library.json`. Журнал обновления —
+`%TEMP%\peer_revit_logs\peer_update.log`, пакеты — `%LOCALAPPDATA%\PEER\Update`.
+Рабочая копия автора (не в `%APPDATA%\pyRevit\Extensions`) не обновляется никогда.
+
+Переход с GitHub: (1) выпуск в `main` с этим кодом и адресом сервиса в `settings.json`; (2) у кого есть ключ —
+установка сама переходит на пакет при старте Revit, в Keys видна версия пакета; у кого нет — работает старый
+git-способ; (3) когда перешли все — `"access_lock": true` и закрыть репозиторий.
 
 ## Инструменты (`tools/`)
 - `sort_source.py <сырые> <папка>` — раскладка по группам, журнал `_sort_log.csv`.

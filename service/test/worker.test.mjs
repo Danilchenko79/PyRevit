@@ -275,3 +275,95 @@ test('index and changelog: ETag, 304 when unchanged (also weak tags), new tag af
   assert.equal((await get('/index', null)).status, 200);
   assert.equal((await worker.fetch(new Request('https://lib.test/index', { headers: { 'if-none-match': tag } }), env)).status, 401);
 });
+
+// ---- releases: the PEER package and the project template -------------------------
+import { createHash } from 'node:crypto';
+const sha1 = (text) => createHash('sha1').update(text).digest('hex');
+
+async function upload(product, version, text, key = ADMIN, hash) {
+  const body = new TextEncoder().encode(text);
+  const res = await worker.fetch(new Request(`https://lib.test/release/${product}/file/${version}`, {
+    method: 'PUT', body,
+    headers: { authorization: 'Bearer ' + key, 'x-sha1': hash || sha1(text), 'content-length': String(body.length) },
+  }), env);
+  return { status: res.status, data: await res.json() };
+}
+
+async function release(product, version, channel, text = 'zip-' + version) {
+  assert.equal((await upload(product, version, text)).status, 200);
+  const r = await call('POST', `/release/${product}/publish`, ADMIN, { version, channel, note: 'what changed in ' + version });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  return r;
+}
+
+test('release: upload, publish to beta, promote to stable, download with any key', async () => {
+  assert.equal((await call('GET', '/release/ext/manifest')).status, 401);
+  let m = await call('GET', '/release/ext/manifest', USER);
+  assert.deepEqual([m.status, m.data.channels, m.data.versions], [200, { stable: '', beta: '' }, []]);
+  await release('ext', '2026.11.20.1', 'beta');
+  m = (await call('GET', '/release/ext/manifest', USER)).data;
+  assert.deepEqual(m.channels, { stable: '', beta: '2026.11.20.1' });
+  assert.deepEqual([m.versions[0].sha1, m.versions[0].size, m.versions[0].by], [sha1('zip-2026.11.20.1'), 16, 'Dima']);
+  const f = await call('GET', '/release/ext/file/2026.11.20.1', USER);
+  assert.equal(new TextDecoder().decode(f.data), 'zip-2026.11.20.1');
+  const p = await call('POST', '/release/ext/promote', ADMIN, { version: '2026.11.20.1', channel: 'stable' });
+  assert.deepEqual(p.data.channels, { stable: '2026.11.20.1', beta: '2026.11.20.1' });
+  const log = (await call('GET', '/audit', ADMIN)).data.map(a => a.action);
+  for (const a of ['release_upload', 'release_publish', 'release_download', 'release_promote']) assert.ok(log.includes(a), a);
+});
+
+test('release: only admins upload / publish / promote; no key gets nothing', async () => {
+  assert.equal((await upload('ext', '1', 'x', USER)).status, 403);
+  assert.equal((await call('POST', '/release/ext/publish', USER, { version: '1', channel: 'beta', note: 'n' })).status, 403);
+  assert.equal((await call('POST', '/release/ext/promote', USER, { version: '1', channel: 'stable' })).status, 403);
+  await release('ext', '1', 'stable');
+  assert.equal((await call('GET', '/release/ext/file/1')).status, 401);
+  assert.equal((await call('GET', '/release/ext/file/1', 'peer_' + 'x'.repeat(40))).status, 401);
+});
+
+test('release: a broken upload, bad input and unknown things are refused', async () => {
+  assert.equal((await upload('ext', '1', 'whole file', ADMIN, sha1('other'))).status, 400);       // damaged on the way
+  assert.equal((await call('POST', '/release/ext/publish', ADMIN, { version: '1', channel: 'beta', note: 'n' })).status, 404);
+  assert.equal((await upload('ext', '1', 'x', ADMIN, 'nothex')).status, 400);
+  assert.equal((await upload('nope', '1', 'x')).status, 404);
+  assert.equal((await call('GET', '/release/ext/file/..%2F..%2Fkeys', USER)).status, 404);
+  assert.equal((await call('GET', '/release/ext/file/9', USER)).status, 404);
+  assert.equal((await upload('ext', '1', 'x')).status, 200);
+  assert.equal((await call('POST', '/release/ext/publish', ADMIN, { version: '1', channel: 'nightly', note: 'n' })).status, 400);
+  assert.equal((await call('POST', '/release/ext/publish', ADMIN, { version: '1', channel: 'beta', note: ' ' })).status, 400);
+  assert.equal((await call('POST', '/release/ext/publish', ADMIN, { version: '1', channel: 'beta', note: 'n', sha1: sha1('y') })).status, 409);
+  assert.equal((await call('POST', '/release/ext/promote', ADMIN, { version: '7', channel: 'stable' })).status, 404);
+});
+
+test('release: a published version never changes; products are separate', async () => {
+  await release('ext', '5', 'stable');
+  assert.equal((await upload('ext', '5', 'something else')).status, 409);
+  assert.equal((await call('POST', '/release/ext/publish', ADMIN, { version: '5', channel: 'beta', note: 'again' })).status, 409);
+  await release('template', '5', 'stable', 'rte-5');
+  const f = await call('GET', '/release/template/file/5', USER);
+  assert.equal(new TextDecoder().decode(f.data), 'rte-5');
+  assert.equal(new TextDecoder().decode((await call('GET', '/release/ext/file/5', USER)).data), 'zip-5');
+});
+
+test('release: old files are removed, but never the version a channel points at; roll back', async () => {
+  await release('ext', '1', 'stable');
+  for (const v of ['2', '3', '4', '5', '6', '7']) await release('ext', v, 'beta');
+  const m = (await call('GET', '/release/ext/manifest', USER)).data;
+  assert.deepEqual(m.versions.map(v => v.version), ['1', '3', '4', '5', '6', '7']);       // 1 is stable, 2 is gone
+  assert.deepEqual(m.channels, { stable: '1', beta: '7' });
+  assert.equal((await call('GET', '/release/ext/file/2', USER)).status, 404);
+  assert.equal((await call('GET', '/release/ext/file/1', USER)).status, 200);
+  const back = await call('POST', '/release/ext/promote', ADMIN, { version: '6', channel: 'beta' });     // roll beta back
+  assert.deepEqual(back.data.channels, { stable: '1', beta: '6' });
+  assert.equal((await call('POST', '/release/ext/promote', ADMIN, { version: '2', channel: 'stable' })).status, 404);
+});
+
+test('release manifest: ETag and 304 when unchanged', async () => {
+  await release('ext', '1', 'stable');
+  const first = await worker.fetch(new Request('https://lib.test/release/ext/manifest', { headers: { authorization: 'Bearer ' + USER } }), env);
+  const tag = first.headers.get('etag');
+  assert.ok(tag);
+  const again = await worker.fetch(new Request('https://lib.test/release/ext/manifest', {
+    headers: { authorization: 'Bearer ' + USER, 'if-none-match': tag } }), env);
+  assert.equal(again.status, 304);
+});

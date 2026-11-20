@@ -29,6 +29,11 @@
 //   GET    /access               waiting access requests             admin
 //   POST   /access/approve       {id, role}                          admin
 //   POST   /access/reject        {id}                                admin
+//   GET    /release/<p>/manifest           channels + versions (ETag)  any key   p = ext | template
+//   GET    /release/<p>/file/<version>     the package / the template  any key
+//   PUT    /release/<p>/file/<version>     upload (raw body, x-sha1)   admin
+//   POST   /release/<p>/publish            {version, channel, note}    admin
+//   POST   /release/<p>/promote            {version, channel}          admin  (beta -> stable, roll back)
 //
 // Publishing is all-or-nothing: new files go to new version keys
 // (<group>/<ID>/v<N>.rfa), index.json is written last (the commit point),
@@ -511,6 +516,139 @@ async function resolveAccess(request, env, who, approve) {
   return json({ id: body.id, status: approve ? 'approved' : 'rejected' });
 }
 
+// ---- releases: the PEER package and the project template ---------------------------
+// PEER-Releases/<product>/manifest.json  {format, product, channels: {stable, beta}, versions: [...]}
+// PEER-Releases/<product>/<version>      the file (zip of the extension / the .rte)
+// A version is uploaded once and never changes; a channel is a pointer to a version, so
+// "roll back" = point the channel at an older version. Every file needs a key.
+const REL = 'PEER-Releases/';
+const PRODUCTS = {
+  ext: { max: 40 * 1024 * 1024, type: 'application/zip' },
+  template: { max: 95 * 1024 * 1024, type: 'application/octet-stream' },
+};
+const CHANNELS = ['stable', 'beta'];
+const VERSION_RE = /^[0-9]{1,4}(\.[0-9]{1,4}){0,3}$/;
+const SHA1_RE = /^[0-9a-f]{40}$/;
+
+const emptyManifest = (product) => ({ format: 1, product, channels: { stable: '', beta: '' }, versions: [] });
+
+function productOf(name) {
+  if (!Object.prototype.hasOwnProperty.call(PRODUCTS, name)) throw new HttpError(404, 'Unknown product');
+  return PRODUCTS[name];
+}
+
+function versionOf(text) {
+  const v = String(text || '');
+  if (!VERSION_RE.test(v)) throw new HttpError(400, 'Bad version (digits and dots, like 2026.11.20.1 or 14)');
+  return v;
+}
+
+async function releaseUpload(request, env, who, product, version) {
+  needAdmin(who);
+  const spec = productOf(product);
+  versionOf(version);
+  const sha1 = (request.headers.get('x-sha1') || '').trim().toLowerCase();
+  if (!SHA1_RE.test(sha1)) throw new HttpError(400, 'Header x-sha1 (SHA-1 of the file) is missing');
+  const size = parseInt(request.headers.get('content-length') || '', 10);
+  if (!Number.isFinite(size) || size <= 0) throw new HttpError(411, 'Content-Length is missing');
+  if (size > spec.max) throw new HttpError(413, `The file is larger than ${spec.max / 1048576} MB`);
+  const manifest = await readJson(env, REL + product + '/manifest.json', emptyManifest(product));
+  if ((manifest.versions || []).some(v => v.version === version)) {
+    throw new HttpError(409, `Version ${version} is already published - a published version never changes.`);
+  }
+  try {
+    await env.BUCKET.put(REL + product + '/' + version, request.body, {
+      sha1, httpMetadata: { contentType: spec.type }, customMetadata: { sha1 },
+    });
+  } catch (e) {
+    throw new HttpError(400, 'The file did not arrive whole (SHA-1 differs) - send it again.');
+  }
+  await audit(env, who, 'release_upload', product + ' ' + version, String(size));
+  return json({ product, version, size, sha1 });
+}
+
+async function releasePublish(request, env, who, product) {
+  needAdmin(who);
+  productOf(product);
+  const body = await request.json().catch(() => ({}));
+  const version = versionOf(body.version);
+  const channel = String(body.channel || '');
+  const note = String(body.note || '').trim();
+  if (!CHANNELS.includes(channel)) throw new HttpError(400, 'Channel must be stable or beta');
+  if (!note) throw new HttpError(400, 'Write what changed in this version.');
+  const key = REL + product + '/' + version;
+  const obj = await env.BUCKET.head(key);
+  if (!obj) throw new HttpError(404, `Upload the file of version ${version} first.`);
+  const sha1 = (obj.customMetadata && obj.customMetadata.sha1) || '';
+  if (body.sha1 && String(body.sha1).toLowerCase() !== sha1) {
+    throw new HttpError(409, 'The uploaded file is not the one you describe (SHA-1 differs).');
+  }
+  return withLock(env, 'release-' + product, who.id, async () => {
+    const manifest = await readJson(env, REL + product + '/manifest.json', emptyManifest(product));
+    manifest.versions = manifest.versions || [];
+    if (manifest.versions.some(v => v.version === version)) {
+      throw new HttpError(409, `Version ${version} is already published.`);
+    }
+    manifest.versions.push({
+      version, size: obj.size, sha1, note: note.slice(0, 4000), time: nowIso(), by: who.name,
+      name: String(body.name || '').slice(0, 120),
+    });
+    manifest.channels = { stable: '', beta: '', ...(manifest.channels || {}) };
+    manifest.channels[channel] = version;
+    // keep the last versions and whatever a channel points at; delete the files of the rest
+    const pinned = new Set(Object.values(manifest.channels).filter(Boolean));
+    const keep = manifest.versions.slice(-KEEP_VERSIONS).map(v => v.version);
+    const gone = manifest.versions.filter(v => !pinned.has(v.version) && !keep.includes(v.version));
+    manifest.versions = manifest.versions.filter(v => !gone.includes(v));
+    await putJson(env, REL + product + '/manifest.json', manifest);
+    if (gone.length) await env.BUCKET.delete(gone.map(v => REL + product + '/' + v.version));
+    await audit(env, who, 'release_publish', product + ' ' + version, channel);
+    return json({ product, version, channel, channels: manifest.channels });
+  });
+}
+
+async function releasePromote(request, env, who, product) {
+  needAdmin(who);
+  productOf(product);
+  const body = await request.json().catch(() => ({}));
+  const version = versionOf(body.version);
+  const channel = String(body.channel || '');
+  if (!CHANNELS.includes(channel)) throw new HttpError(400, 'Channel must be stable or beta');
+  return withLock(env, 'release-' + product, who.id, async () => {
+    const manifest = await readJson(env, REL + product + '/manifest.json', emptyManifest(product));
+    if (!(manifest.versions || []).some(v => v.version === version)) {
+      throw new HttpError(404, `Version ${version} is not published (or its file was already removed).`);
+    }
+    manifest.channels = { stable: '', beta: '', ...(manifest.channels || {}) };
+    manifest.channels[channel] = version;
+    await putJson(env, REL + product + '/manifest.json', manifest);
+    await audit(env, who, 'release_promote', product + ' ' + version, channel);
+    return json({ product, version, channel, channels: manifest.channels });
+  });
+}
+
+async function releaseRoute(request, env, who, method, path) {
+  let m;
+  if (method === 'GET' && (m = /^\/release\/([a-z]+)\/manifest$/.exec(path))) {
+    productOf(m[1]);
+    return storedJson(request, env, REL + m[1] + '/manifest.json', emptyManifest(m[1]));
+  }
+  if ((m = /^\/release\/([a-z]+)\/file\/([0-9.]+)$/.exec(path))) {
+    productOf(m[1]);
+    const version = versionOf(m[2]);
+    if (method === 'PUT') return releaseUpload(request, env, who, m[1], version);
+    if (method === 'GET') {
+      const obj = await env.BUCKET.get(REL + m[1] + '/' + version);
+      if (!obj) throw new HttpError(404, `No such version: ${m[1]} ${version}`);
+      await audit(env, who, 'release_download', m[1] + ' ' + version, '');
+      return fileResponse(obj);
+    }
+  }
+  if (method === 'POST' && (m = /^\/release\/([a-z]+)\/publish$/.exec(path))) return releasePublish(request, env, who, m[1]);
+  if (method === 'POST' && (m = /^\/release\/([a-z]+)\/promote$/.exec(path))) return releasePromote(request, env, who, m[1]);
+  return null;
+}
+
 // ---- router ---------------------------------------------------------------------
 async function route(request, env) {
   const url = new URL(request.url);
@@ -545,6 +683,10 @@ async function route(request, env) {
     if (!obj) throw new HttpError(404, 'Not in the library: ' + p);
     if (p.endsWith('.rfa')) await audit(env, who, 'download', p, '');
     return fileResponse(obj);
+  }
+  if (path.startsWith('/release/')) {
+    const r = await releaseRoute(request, env, who, method, path);
+    if (r) return r;
   }
   if (method === 'POST' && path === '/publish') return publish(request, env, who);
   if (method === 'POST' && path === '/deprecate') return deprecate(request, env, who);

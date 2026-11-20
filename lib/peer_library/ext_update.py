@@ -1,0 +1,244 @@
+# -*- coding: utf-8 -*-
+"""Keep an installed PEER identical to the package on the service.
+
+The package is a zip of the extension with two files at its root:
+    files.json    {"version": "...", "files": {"rel/path": sha1, ...}}
+    version.json  {"version", "channel", "built"}   (peer_library/version.py)
+
+sync(ext_dir, backend, channel, work_dir):
+    1. manifest of the 'ext' product -> the version this computer should run;
+    2. already that version and every file matches files.json -> 'clean';
+    3. otherwise the zip (downloaded once, SHA-1 checked) is unpacked next to
+       the installation and the folder is brought to it: changed files copied,
+       files of the old list that the new one does not have removed, files
+       PEER does not own (logs, caches, a person's own files) left alone.
+       version.json is written last - a start that was interrupted finishes
+       on the next one.
+A person's edits in PEER files are overwritten on purpose (as git reset did).
+Pure Python + zip; runs under IronPython (Revit) and CPython (tests).
+"""
+
+import io
+import os
+import shutil
+
+from peer_library import jsonio, releases, rfa_info, version
+from peer_library.backend_base import AccessError, LibraryError, OfflineError
+
+FILES = 'files.json'
+OWN = (FILES, version.FILE)          # written by the updater itself, last
+KEEP_ZIPS = 2
+
+
+class UpdateError(Exception):
+    pass
+
+
+def _safe(rel):
+    rel = (rel or u'').replace(u'\\', u'/')
+    parts = rel.split(u'/')
+    if not rel or rel.startswith(u'/') or u':' in rel or any(p in (u'', u'.', u'..') for p in parts):
+        raise UpdateError(u'Bad path in the package: {0}'.format(rel))
+    return os.path.join(*parts)
+
+
+def _unzip(zip_path, folder):
+    try:
+        import clr
+    except ImportError:
+        import zipfile
+        with zipfile.ZipFile(zip_path) as z:
+            for name in z.namelist():
+                if not name.endswith('/'):
+                    _safe(name)
+            z.extractall(folder)
+        return
+    clr.AddReference('System.IO.Compression.FileSystem')
+    from System.IO.Compression import ZipFile
+    ZipFile.ExtractToDirectory(zip_path, folder)     # refuses entries outside the folder
+
+
+def _rmtree(folder):
+    def on_error(fn, path, exc):
+        try:
+            os.chmod(path, 0o666)
+            fn(path)
+        except Exception:
+            pass
+    if os.path.isdir(folder):
+        shutil.rmtree(folder, onerror=on_error)
+    return not os.path.exists(folder)
+
+
+def _copy(src, dst):
+    folder = os.path.dirname(dst)
+    if not os.path.isdir(folder):
+        os.makedirs(folder)
+    if os.path.exists(dst):
+        try:
+            os.chmod(dst, 0o666)
+        except OSError:
+            pass
+    shutil.copyfile(src, dst)
+
+
+def installed_files(ext_dir):
+    data = jsonio.read(os.path.join(ext_dir, FILES))
+    files = data.get('files') if isinstance(data, dict) else None
+    return files if isinstance(files, dict) else {}
+
+
+def changed(ext_dir, files):
+    """Tracked files that are missing or differ from the list."""
+    out = []
+    for rel, sha in files.items():
+        p = os.path.join(ext_dir, _safe(rel))
+        if not os.path.isfile(p) or rfa_info.sha1(p) != sha:
+            out.append(rel)
+    return sorted(out)
+
+
+def stage(zip_path, folder):
+    """Unpack and verify the package. Returns its file list {rel: sha1}."""
+    _rmtree(folder)
+    os.makedirs(folder)
+    _unzip(zip_path, folder)
+    data = jsonio.read(os.path.join(folder, FILES))
+    files = data.get('files') if isinstance(data, dict) else None
+    if not isinstance(files, dict) or not files:
+        raise UpdateError(u'The package has no file list.')
+    if not version.get(folder).get('version') or version.get(folder)['kind'] != 'package':
+        raise UpdateError(u'The package has no version.')
+    for rel, sha in files.items():
+        p = os.path.join(folder, _safe(rel))
+        if not os.path.isfile(p) or rfa_info.sha1(p) != sha:
+            raise UpdateError(u'The package is damaged: {0}'.format(rel))
+    return files
+
+
+def apply(staged, ext_dir, files, old_files):
+    """Bring ext_dir to the staged package. Returns (copied, removed, failed)."""
+    copied, removed, failed = [], [], []
+    for rel in sorted(files):
+        src = os.path.join(staged, _safe(rel))
+        dst = os.path.join(ext_dir, _safe(rel))
+        if os.path.isfile(dst) and rfa_info.sha1(dst) == files[rel]:
+            continue
+        try:
+            _copy(src, dst)
+            copied.append(rel)
+        except (IOError, OSError) as ex:
+            failed.append(u'{0}: {1}'.format(rel, ex))
+    have = set(k.lower() for k in files)
+    for rel in sorted(old_files or {}):
+        if rel.lower() in have or rel in OWN:
+            continue
+        try:
+            p = os.path.join(ext_dir, _safe(rel))
+        except UpdateError:
+            continue
+        if os.path.isfile(p):
+            try:
+                os.chmod(p, 0o666)
+                os.remove(p)
+                removed.append(rel)
+                d = os.path.dirname(p)
+                while d and os.path.normcase(d) != os.path.normcase(ext_dir) and not os.listdir(d):
+                    os.rmdir(d)
+                    d = os.path.dirname(d)
+            except (IOError, OSError) as ex:
+                failed.append(u'{0}: {1}'.format(rel, ex))
+    if not failed:
+        for name in OWN:                        # version.json last: the commit point
+            _copy(os.path.join(staged, name), os.path.join(ext_dir, name))
+    return copied, removed, failed
+
+
+def _zip_name(v):
+    return u'ext-{0}.zip'.format(v)
+
+
+def _tidy(work_dir, keep):
+    try:
+        zips = sorted((f for f in os.listdir(work_dir) if f.startswith('ext-') and f.endswith('.zip')),
+                      key=lambda f: releases.vkey(f[4:-4]))
+    except OSError:
+        return
+    keep = set(keep)
+    for f in zips[:-KEEP_ZIPS]:
+        if f not in keep:
+            try:
+                os.remove(os.path.join(work_dir, f))
+            except OSError:
+                pass
+
+
+def read_manifest(backend, work_dir, quick=True):
+    """Manifest from the service (ETag copy in work_dir). Raises OfflineError."""
+    copy = os.path.join(work_dir, 'ext_manifest.json')
+    tag_file = copy + '.etag'
+    old = None
+    if os.path.isfile(copy) and os.path.isfile(tag_file):
+        try:
+            with io.open(tag_file, 'r', encoding='utf-8') as f:
+                old = f.read().strip() or None
+        except (IOError, OSError):
+            old = None
+    data, tag = backend.release_manifest(releases.EXT, old, quick)
+    if data is None:
+        data = jsonio.read(copy)
+        if data is None:
+            data, tag = backend.release_manifest(releases.EXT, None, quick)
+    if not os.path.isdir(work_dir):
+        os.makedirs(work_dir)
+    jsonio.write(copy, data)
+    try:
+        with io.open(tag_file, 'w', encoding='utf-8') as f:
+            f.write(u'{0}'.format(tag or u''))
+    except (IOError, OSError):
+        pass
+    return data
+
+
+def sync(ext_dir, backend, channel, work_dir, old_files=None):
+    """-> (status, details). status: clean / updated / partial / none / nokey /
+    offline / error. old_files: tracked files of an installation that has no
+    files.json yet (a git clone being converted)."""
+    if not backend.has_key():
+        return 'nokey', u'no PEER key on this computer - sign in (PEER -> Account)'
+    try:
+        manifest = read_manifest(backend, work_dir)
+    except OfflineError as ex:
+        return 'offline', u'{0}'.format(ex)
+    except AccessError as ex:
+        return 'nokey', u'{0}'.format(ex)
+    except LibraryError as ex:
+        return 'error', u'{0}'.format(ex)
+    goal = releases.target(manifest, channel)
+    if goal is None:
+        return 'none', u'no PEER package is published yet'
+    want = goal['version']
+    have = version.get(ext_dir)
+    mine = installed_files(ext_dir)
+    if have['kind'] == 'package' and have['version'] == want and mine and not changed(ext_dir, mine):
+        return 'clean', want
+    zip_path = os.path.join(work_dir, _zip_name(want))
+    try:
+        if not os.path.isfile(zip_path) or rfa_info.sha1(zip_path) != goal.get('sha1'):
+            backend.release_download(releases.EXT, want, zip_path)
+            if rfa_info.sha1(zip_path) != goal.get('sha1'):
+                os.remove(zip_path)
+                return 'error', u'the downloaded package {0} is damaged - will try again'.format(want)
+        staged = os.path.join(work_dir, 'stage')
+        files = stage(zip_path, staged)
+        copied, removed, failed = apply(staged, ext_dir, files, mine or old_files or {})
+        _rmtree(staged)
+    except OfflineError as ex:
+        return 'offline', u'{0}'.format(ex)
+    except (LibraryError, UpdateError, IOError, OSError) as ex:
+        return 'error', u'{0}'.format(ex)
+    _tidy(work_dir, [_zip_name(want), _zip_name(have['version'])])
+    det = u'{0} -> {1}: {2} file(s) written, {3} removed'.format(have['version'], want, len(copied), len(removed))
+    if failed:
+        return 'partial', det + u'; could not write (next start tries again): ' + u'; '.join(failed[:10])
+    return 'updated', det

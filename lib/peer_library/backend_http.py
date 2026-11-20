@@ -20,6 +20,8 @@ from peer_library.backend_base import (AccessError, Backend, ConflictError, Libr
 
 TIMEOUT_S = 20
 DOWNLOAD_TIMEOUT_S = 120
+UPLOAD_TIMEOUT_S = 600
+QUICK_TIMEOUT_S = 6
 
 try:
     text_type = unicode  # noqa: F821
@@ -77,7 +79,7 @@ def _part_head(boundary, name, filename):
 
 # ---- transport: .NET (Revit) ----------------------------------------------------
 def _send_dotnet(method, url, key, json_body=None, parts=None, target=None, timeout=TIMEOUT_S,
-                 headers=None, meta=None):
+                 headers=None, meta=None, raw=None):
     from System.IO import File, FileMode, FileStream, StreamReader
     from System.Net import DecompressionMethods, HttpWebRequest, SecurityProtocolType, \
         ServicePointManager, WebException
@@ -124,6 +126,18 @@ def _send_dotnet(method, url, key, json_body=None, parts=None, target=None, time
         tail = utf8.GetBytes(u'--{0}--\r\n'.format(b))
         s.Write(tail, 0, tail.Length)
         s.Close()
+    elif raw is not None:                       # the file itself as the body
+        from System.IO import FileInfo
+        req.ContentType = 'application/octet-stream'
+        req.ContentLength = FileInfo(raw).Length
+        req.AllowWriteStreamBuffering = False
+        s = req.GetRequestStream()
+        fs = File.OpenRead(raw)
+        try:
+            fs.CopyTo(s)
+        finally:
+            fs.Close()
+        s.Close()
     try:
         resp = req.GetResponse()
     except WebException as ex:
@@ -152,7 +166,7 @@ def _send_dotnet(method, url, key, json_body=None, parts=None, target=None, time
 
 # ---- transport: urllib (tests, command line) --------------------------------------
 def _send_urllib(method, url, key, json_body=None, parts=None, target=None, timeout=TIMEOUT_S,
-                 headers=None, meta=None):
+                 headers=None, meta=None, raw=None):
     try:
         from urllib.request import Request, urlopen
         from urllib.error import HTTPError, URLError
@@ -181,6 +195,10 @@ def _send_urllib(method, url, key, json_body=None, parts=None, target=None, time
         buf.write(u'--{0}--\r\n'.format(b).encode('utf-8'))
         body = buf.getvalue()
         headers['Content-Type'] = 'multipart/form-data; boundary=' + b
+    elif raw is not None:
+        with open(raw, 'rb') as f:
+            body = f.read()
+        headers['Content-Type'] = 'application/octet-stream'
     req = Request(url, data=body, headers=headers)
     req.get_method = lambda: method
     try:
@@ -226,17 +244,17 @@ class HttpBackend(Backend):
         return bool(self.key)
 
     def _call(self, method, path, json_body=None, parts=None, target=None, timeout=TIMEOUT_S,
-              auth=True, headers=None, meta=None):
+              auth=True, headers=None, meta=None, raw=None, tries=2):
         if not self.url.startswith('https://') and not self.url.startswith('http://127.0.0.1'):
             raise LibraryError(u'The library address is not set (https://...).')
         if auth and not self.key:
             raise AccessError(u'Sign in with your PEER library key.')
         url = self.url + path
         last = None
-        for attempt in (1, 2):
+        for attempt in range(1, tries + 1):
             try:
                 return _send(method, url, self.key if auth else None, json_body, parts, target,
-                             timeout, headers, meta)
+                             timeout, headers, meta, raw)
             except HttpStatusError as ex:
                 if ex.status == 304:
                     raise NotModified()
@@ -250,7 +268,7 @@ class HttpBackend(Backend):
                     raise LibraryError(u'{0}'.format(ex))
                 if ex.status == 409:
                     raise ConflictError(u'{0}'.format(ex))
-                if ex.status >= 500 and attempt == 1:
+                if ex.status >= 500 and attempt < tries:
                     last = ex
                     continue
                 raise LibraryError(u'{0}'.format(ex))
@@ -304,12 +322,12 @@ class HttpBackend(Backend):
     def get_changelog(self):
         return self._get_json('/changelog')
 
-    def get_json_if_changed(self, path, etag=None):
+    def get_json_if_changed(self, path, etag=None, timeout=TIMEOUT_S, tries=2):
         """(data, etag); data None = the copy with this etag is still current."""
         meta = {}
         try:
             raw = self._call('GET', path, headers={'If-None-Match': etag} if etag else None,
-                             meta=meta)
+                             meta=meta, timeout=timeout, tries=tries)
         except NotModified:
             return None, etag
         return json.loads(raw), meta.get('etag')
@@ -392,6 +410,32 @@ class HttpBackend(Backend):
             os.remove(target)
         os.rename(tmp, target)
         return target
+
+    # ---- releases: the PEER package ('ext') and the project template ('template') ----
+    def release_manifest(self, product, etag=None, quick=False):
+        """(manifest, etag); manifest None = unchanged. quick: one short try
+        (Revit start must not wait for a dead network)."""
+        return self.get_json_if_changed('/release/{0}/manifest'.format(product), etag,
+                                        timeout=QUICK_TIMEOUT_S if quick else TIMEOUT_S,
+                                        tries=1 if quick else 2)
+
+    def release_download(self, product, version, target):
+        folder = os.path.dirname(target)
+        if folder and not os.path.isdir(folder):
+            os.makedirs(folder)
+        return self.download_to('/release/{0}/file/{1}'.format(product, version), target)
+
+    def release_upload(self, product, version, path, sha1):
+        return json.loads(self._call('PUT', '/release/{0}/file/{1}'.format(product, version), raw=path,
+                                     headers={'X-SHA1': sha1}, timeout=UPLOAD_TIMEOUT_S))
+
+    def release_publish(self, product, version, channel, note, sha1=u'', name=u''):
+        return json.loads(self._call('POST', '/release/{0}/publish'.format(product), json_body={
+            'version': version, 'channel': channel, 'note': note, 'sha1': sha1, 'name': name}))
+
+    def release_promote(self, product, version, channel):
+        return json.loads(self._call('POST', '/release/{0}/promote'.format(product), json_body={
+            'version': version, 'channel': channel}))
 
     def resolve_proposal(self, proposal_id, status, comment=u''):
         """rejected (comment required) / accepted - for requests and issues;
