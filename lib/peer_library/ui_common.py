@@ -73,6 +73,21 @@ def label_text(control):
     return getattr(c, 'Text', None) or u'{0}'.format(c or u'')
 
 
+def copy_text(text, tries=10):
+    """Text to the Windows clipboard. Another program may hold the clipboard for
+    a moment (remote desktop, clipboard managers: CLIPBRD_E_CANT_OPEN) - try a
+    few times. True = copied; never raises."""
+    import time
+    from System.Windows import Clipboard
+    for i in range(tries):
+        try:
+            Clipboard.SetDataObject(u'{0}'.format(text), True)
+            return True
+        except Exception:
+            time.sleep(0.05 * (i + 1))
+    return False
+
+
 def new_badge():
     b = Border()
     b.CornerRadius = CornerRadius(3)

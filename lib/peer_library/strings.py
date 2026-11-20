@@ -345,3 +345,9 @@ ACC_APPROVED = u'Access approved. Welcome, {0}!'
 ACC_REQUESTS_WAIT = u'{0} person(s) ask for access to PEER - open PEER -> Keys.'
 UPD_DONE_TITLE = u'PEER updated to {0}'
 UPD_DONE_TEXT = u'{0}\nNew buttons appear after pyRevit -> Reload or the next Revit start.'
+
+# ---- clipboard ---------------------------------------------------------------------
+COPIED = u'Copied: {0}'
+COPY_BUSY = u'The clipboard is busy (another program holds it). Try again in a second.'
+COPY_BUSY_KEY = (u'The clipboard is busy (another program holds it). Press Copy again, or select the key '
+                 u'with the mouse and press Ctrl+C.')

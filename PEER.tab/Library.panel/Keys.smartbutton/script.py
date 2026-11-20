@@ -139,10 +139,11 @@ class KeysWindow(forms.WPFWindow):
         self.refresh()
 
     def on_copy(self, sender, args):
-        from System.Windows import Clipboard
         if self.new_key.Text:
-            Clipboard.SetText(self.new_key.Text)
-            self.status_text.Text = u'Copied.'
+            if U.copy_text(self.new_key.Text):
+                self.status_text.Text = u'Copied.'
+            else:
+                self.status_text.Text = strings.COPY_BUSY_KEY
 
     def on_revoke(self, sender, args):
         i = self.keys_list.SelectedIndex

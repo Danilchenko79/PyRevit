@@ -161,8 +161,7 @@ class LoadCheckWindow(forms.WPFWindow):
         self.Close()
 
     def on_copy(self, sender, args):
-        try:
-            Clipboard.SetText(self.report.text())
+        if U.copy_text(self.report.text()):
             self.copy_btn.Content = strings.CHECK_COPIED
-        except Exception:
-            log.write(u'copy report', exc=True)
+        else:
+            U.error(strings.COPY_BUSY)

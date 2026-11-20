@@ -97,7 +97,7 @@ class LibraryWindow(forms.WPFWindow):
         add('check', self.on_check)
         m.Items.Add(Separator())
         add('fav', lambda: self.on_fav(None, None))
-        add('copy', lambda: Clipboard.SetText(self.current.card['id']))
+        add('copy', self._copy_id)
         add('issue', lambda: self.on_issue(None, None))
         if self.is_admin:
             m.Items.Add(Separator())
@@ -695,6 +695,14 @@ class LibraryWindow(forms.WPFWindow):
             cb.Margin = Thickness(2)
             self.type_boxes.append(cb)
             self.types_list.Items.Add(cb)
+
+    def _copy_id(self):
+        if self.current is None:
+            return
+        if U.copy_text(self.current.card['id']):
+            self.status_text.Text = strings.COPIED.format(self.current.card['id'])
+        else:
+            self.status_text.Text = strings.COPY_BUSY
 
     def _fill_companions(self, card):
         """'Also load' boxes: what the card says goes with this family (a tag
