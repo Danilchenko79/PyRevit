@@ -103,21 +103,25 @@ A folder: after the folder check press **Fix copies…** and choose another fold
 saved there with the same sub-folders and a list of changes (`_family_fix.csv`); the checked files
 stay as they are. A family selected in a project is only checked - open it (Edit Family) to fix it.
 
-## Your account (one key for PEER)
+## Install PEER and sign in (one key for everything)
 
-**PEER → Account** shows who is signed in on this computer, the state of your key and the installed
-PEER version. The same personal key opens the family library, brings PEER updates and - when the
-office turns the lock on - the PEER buttons themselves.
+1. Download **PEER_install.bat** (link from a PEER admin) and run it. It asks nothing and needs no
+   key. pyRevit must be installed.
+2. Start Revit. The **PEER** tab has one button - **Account**. Press it:
+   - you have a key from an admin: paste it, **Sign in**;
+   - no key: write your name, **Request access**. An admin approves it (PEER → Keys). You do not
+     have to do anything else: at the next Revit start you are signed in by itself.
+3. Right after signing in PEER downloads all its tools and reloads - every panel appears.
 
-- **Sign in / request access…**: paste the key from a PEER admin, or send a request and press
-  Sign in again after an admin approves it.
-- **Check now**: asks the service whether the key is still valid. **Sign out** removes the key from
-  this computer.
-- Without internet PEER keeps working for 14 days after the last check.
-- Install on a new computer: run `install.bat` from the PEER site - no key needed. It installs the
-  PEER loader: the PEER tab with **Account**. Start Revit, press **Account** and sign in (paste the
-  key or request access) - PEER downloads all its tools at once and pyRevit reloads. After that PEER
-  updates itself when Revit starts.
+After that everything comes by itself: when an admin releases a new PEER version (new buttons,
+fixes), it is downloaded when Revit starts and a notification says what changed. New buttons appear
+after pyRevit → Reload or the next Revit start. The same key opens the family library and brings the
+company project template.
+
+**PEER → Account** shows who is signed in, the state of the key and the installed version;
+**Check now** asks the service again, **Sign out** removes the key from this computer. Without
+internet PEER keeps working for 14 days after the last check. When a key is revoked, the PEER
+panels are hidden at the next check and updates stop.
 
 ## New project from the company template
 
@@ -146,7 +150,9 @@ Admin buttons are visible only with an admin key: **Publish**, **Inbox**, **Keys
 | Proposals, requests, problems | **Inbox**: open in the editor, publish, mark done, reject with a comment |
 | People | **Keys**: approve access requests, create a key, revoke a key (works at once); the list shows which PEER version each person runs |
 | Release the template | save it as `.rte`, then `release.ps1 -Do template -File … -Note "what changed"` → **beta** → **stable** |
-| Release PEER | `release.ps1` (developer README): package → **beta** → **stable**; roll back by pointing a channel at an older version |
+| New person | they run `PEER_install.bat` and press Account → **Request access**; you get a notification at Revit start → **Keys** → approve. Or **Keys → Create key** and send it privately |
+| Somebody leaves | **Keys** → **Revoke selected key**: no more updates, the PEER panels hide at the next check |
+| Release PEER (new buttons, fixes) | commit, then `release.ps1 -Do ext -Note "what changed"` → **beta** (your own computers) → `-Do promote` → **stable** (everybody, at the next Revit start); roll back by pointing a channel at an older version |
 
 Rules: the ID = file name = family name in Revit and never changes; the library format is
 Revit 2024; publish only from Revit 2024.

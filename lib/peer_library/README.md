@@ -47,8 +47,8 @@ Revit **2024**, публиковать только из 2024. ID = имя фа�
 
 ## Проверки
 ```
-py -3 -m unittest discover -s lib/peer_library/tests     # 119 тестов, в т.ч. клиент ↔ сервис (node)
-node --test service/test                                  # 25 тестов сервиса
+py -3 -m unittest discover -s lib/peer_library/tests     # 134 теста, в т.ч. клиент ↔ сервис (node)
+node --test service/test                                  # 27 тестов сервиса
 ```
 Синтаксис IronPython и XAML — `ipy`-компиляция и `XamlReader` (см. историю сессии 20.11.2026).
 
@@ -123,23 +123,30 @@ sym = require.symbol(doc, u'PR_Wall2D_Edge', u'Type 1')   # затем sym.Activ
 | Какая версия нужна компьютеру (beta не отстаёт от stable) | `releases.py` |
 | Довести установку до пакета (скачать раз, SHA-1, заменить изменённое, убрать удалённое, чужое не трогать; `version.json` пишется последним) | `ext_update.py` |
 | Старт Revit: сначала пакет, иначе старый git-способ; git-клон сам становится пакетом | `lib/peer_update.py` |
-| Установщик без ключа: ставит открытый загрузчик (`boot`), с ключом на компьютере — сразу полный PEER | `installer/install.bat` + `install.ps1` |
+| Установщик — один файл `PEER_install.bat` без вопросов (заголовок cmd + `installer/install.ps1` внутри, `pack.installer_bat`); сервис отдаёт его по `GET /install`, вписывая свой адрес. Ставит открытый загрузчик (`boot`), с ключом на компьютере — сразу полный PEER | `installer/install.ps1`, `pack.py` |
 | Загрузчик: Account, клиент библиотеки, Feedback, обновление — без инструментов (`pack.in_loader`); `version.json` с `"flavor": "boot"` | `pack.py`, `version.is_loader` |
-| После входа в Account — сразу полный пакет и Reload pyRevit; без ключа при старте Revit обновляется только загрузчик | `ui_account._get_full`, `peer_update.sync_package` |
+| Account без ключа сразу открывает вход; после входа — полный пакет и Reload pyRevit. Одобренная заявка подхватывается сама при старте Revit (`access.pick_up`, `access.background_work`) | `ui_account.show`, `access.py` |
+| После обновления — уведомление с версией и заметкой выпуска; админу при старте — сколько заявок ждёт | `peer_update.run`, `access.background_work` |
+| Панель Library скрыта у пользователей, пока в библиотеке нет семейств (`access.library_ready`) | `access.py` |
 
 Выпуск (ключ админа этого пользователя Windows, не печатается; в пакет идут только закоммиченные файлы):
 ```
 powershell -ExecutionPolicy Bypass -File lib\peer_library\tools\release\release.ps1                      # что опубликовано
 ... release.ps1 -Do ext -Note "что изменилось"                    # пакет HEAD + загрузчик той же версии -> beta
 ... release.ps1 -Do promote -Version 2026.11.20.1 -Channel stable  # beta -> всем; так же откат на старую версию
+... -Target production                                             # боевой сервис офиса вместо сервиса этого компьютера
 ```
 Свой компьютер на beta: `"channel": "beta"` в `%APPDATA%\PEER\library.json`. Журнал обновления —
 `%TEMP%\peer_revit_logs\peer_update.log`, пакеты — `%LOCALAPPDATA%\PEER\Update`.
 Рабочая копия автора (не в `%APPDATA%\pyRevit\Extensions`) не обновляется никогда.
 
-Переход с GitHub: (1) выпуск в `main` с этим кодом и адресом сервиса в `settings.json`; (2) у кого есть ключ —
-установка сама переходит на пакет при старте Revit, в Keys видна версия пакета; у кого нет — работает старый
-git-способ; (3) когда перешли все — `"access_lock": true` и закрыть репозиторий.
+Каждый выпуск `-Do ext` кладёт на сервис три вещи одной версии: полный пакет, загрузчик и установщик.
+`-Target production` берёт адрес из `%APPDATA%\PEER\production.json` и ключ админа из
+`%APPDATA%\PEER\library_key_production.bin` (в репозитории адреса сервиса нет: его несёт установщик).
+
+Переход с GitHub: каждый один раз запускает `PEER_install.bat` (старая git-установка сохраняется рядом как
+`PEER_backup_<дата>`), входит в Account — после этого репозиторий можно закрывать. Замок включён в
+`lib/peer_library/settings.json` (`"access_lock": true`); он действует только там, где задан адрес сервиса.
 
 ## Шаблон проекта `PR_Template Concrete`
 - Файл всегда один: `%LOCALAPPDATA%\PEER\Templates\PR_Template Concrete.rte`; рядом `template.json` (версия, SHA-1,
