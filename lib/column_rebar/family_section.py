@@ -199,7 +199,8 @@ def build(app, src, folder, shape=RECT):
                         p_ = H.plane(name, False, h / 2, bottom, H.P(name + '_Y', value=h / 2 / FT))
                         inst = H.place(tie, c, h / 2, -90, bl, p_)
                         H.link(inst, 'L', bars_b)
-                    H.link(inst, 'T', hook)
+                    H.link(inst, 'C', hook)
+                    H.link(inst, 'R', ho)
                     H.link(inst, 'Alt', H.P(name + '_Alt', yes, value=0))
                 elif kind == 'hoopt':          # ROUND1: from the flat end down to a row of side bars
                     a = H.P(name + '_A', value=100 / FT)
@@ -243,7 +244,8 @@ def build(app, src, folder, shape=RECT):
                             inst = H.place(vtie, w - c, h / 2, 90, br, p_)
                     H.link(inst, 'W', vw)
                     H.link(inst, 'H', vh)
-                    H.link(inst, 'T', hook)
+                    H.link(inst, 'C', hook)
+                    H.link(inst, 'R', ho)
                 H.visible(inst, vis)
             return H.made
 

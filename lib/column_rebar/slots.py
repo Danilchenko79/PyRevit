@@ -10,6 +10,7 @@ therefore snapped to the bars of the family's own layout.
 """
 
 N_TIES, N_HOOPS = 12, 4
+MAX_ARC_BARS = 6          # Point+Radius draws 7+ wrong (7 -> 3 bars, 8 -> 6), checked 2026-11-20
 RECT, ROUND1, ROUND2 = 'RECT', 'ROUND1', 'ROUND2'
 
 
@@ -95,6 +96,9 @@ def params(result, b, h, cover, bar_dia, nb, nh, shape=RECT):
     if shape == RECT:
         out['Rebar_QuantityX'], out['Rebar_QuantityY'] = max(0, nb - 2), max(0, nh - 2)
     else:
+        if nb > MAX_ARC_BARS:
+            raise ValueError('the family draws at most %d bars on a round end (old nested '
+                             'Point+Radius), %d asked' % (MAX_ARC_BARS, nb))
         out['Rebar_QuantityX'], out['Rebar_QuantityY'] = nb, nh
     have = set()
     for name, kind, d in slot_names(shape):         # every slot off, somewhere harmless
