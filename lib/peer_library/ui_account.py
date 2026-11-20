@@ -34,7 +34,12 @@ class AccountWindow(forms.WPFWindow):
         self.changed = False
         if check:
             self._check()
-        self.render()
+        st = self.render()
+        if check:
+            try:
+                access.apply_ribbon(st)        # a check here may unlock (or lock) the panels
+            except Exception:
+                log.write(u'account: ribbon', exc=True)
 
     # ---- state -------------------------------------------------------------
     def _check(self):

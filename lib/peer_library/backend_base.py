@@ -17,7 +17,11 @@ class OfflineError(LibraryError):
 
 
 class AccessError(LibraryError):
-    pass
+    """status: 401 = the service does not know the key (revoked), 403 = not allowed
+    (or a proxy / firewall in between) - only 401 means the key is gone."""
+    def __init__(self, message=u'', status=None):
+        LibraryError.__init__(self, message)
+        self.status = status
 
 
 class ConflictError(LibraryError):

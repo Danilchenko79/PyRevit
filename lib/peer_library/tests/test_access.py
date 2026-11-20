@@ -52,9 +52,74 @@ class TestEvaluate(unittest.TestCase):
         self.assertEqual(A.evaluate(cfg(), False, True, now=NOW).code, A.REQUESTED)
         self.assertTrue(A.evaluate(cfg(), False, now=NOW).locked)
 
+    def test_future_check_is_not_trusted(self):
+        st = A.evaluate(cfg(last=u'2027-01-01T00:00:00'), True, now=NOW)
+        self.assertEqual((st.code, st.locked), (A.STALE, True))
+
     def test_lock_off_never_locks(self):
         for has_key, last in ((False, u''), (True, u''), (True, u'2020-01-01T00:00:00')):
             self.assertFalse(A.evaluate(cfg(lock=False, last=last), has_key, now=NOW).locked)
+
+
+class TestSettingsFiles(unittest.TestCase):
+
+    def setUp(self):
+        from peer_library import config
+        self.config = config
+        self.tmp = tempfile.mkdtemp(prefix='peercfg_')
+        self.old = (config.REPO_FILE, os.environ.get('APPDATA'))
+        config.REPO_FILE = os.path.join(self.tmp, 'settings.json')
+        os.environ['APPDATA'] = os.path.join(self.tmp, 'appdata')
+
+    def tearDown(self):
+        self.config.REPO_FILE = self.old[0]
+        if self.old[1] is None:
+            os.environ.pop('APPDATA', None)
+        else:
+            os.environ['APPDATA'] = self.old[1]
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def write(self, path, text):
+        if not os.path.isdir(os.path.dirname(path)):
+            os.makedirs(os.path.dirname(path))
+        with io.open(path, 'w', encoding='utf-8') as f:
+            f.write(text)
+
+    def test_only_the_office_file_sets_the_lock(self):
+        self.write(self.config.REPO_FILE, u'{"access_lock": true}')
+        self.write(self.config.local_file(), u'{"access_lock": false, "url": "https://x.example"}')
+        cfg = self.config.load()
+        self.assertTrue(cfg['access_lock'])
+        self.assertEqual(cfg['url'], u'https://x.example')
+
+    def test_unreadable_file_is_not_overwritten(self):
+        self.write(self.config.local_file(), u'{"url": "https://x.example", broken')
+        with self.assertRaises(IOError):
+            self.config.save_local(last_ok=u'2026-11-20T10:00:00')
+        with io.open(self.config.local_file(), encoding='utf-8') as f:
+            self.assertIn(u'broken', f.read())
+
+    def test_parallel_writers_keep_every_key(self):
+        import threading
+        self.config.save_local(url=u'https://x.example')
+        errors = []
+
+        def work(i):
+            try:
+                for _ in range(15):
+                    self.config.save_local(**{('last_ok' if i % 2 else 'notify_checked'): u'2026-11-20T10:00:0%d' % (i % 10)})
+            except Exception as ex:
+                errors.append(ex)
+        ts = [threading.Thread(target=work, args=(i,)) for i in range(4)]
+        for t in ts:
+            t.start()
+        for t in ts:
+            t.join()
+        self.assertEqual(errors, [])
+        cfg = self.config.load()
+        self.assertEqual(cfg['url'], u'https://x.example')
+        self.assertTrue(cfg['last_ok'] and cfg['notify_checked'])
+        self.assertEqual([f for f in os.listdir(os.path.dirname(self.config.local_file())) if f.endswith('.tmp')], [])
 
 
 class TestRibbonPlan(unittest.TestCase):

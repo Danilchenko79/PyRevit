@@ -258,10 +258,8 @@ class HttpBackend(Backend):
             except HttpStatusError as ex:
                 if ex.status == 304:
                     raise NotModified()
-                if ex.status == 401:
-                    raise AccessError(u'{0}'.format(ex))
-                if ex.status == 403:
-                    raise AccessError(u'{0}'.format(ex))
+                if ex.status in (401, 403):
+                    raise AccessError(u'{0}'.format(ex), ex.status)
                 if ex.status == 404:
                     raise NotFoundError(u'{0}'.format(ex))
                 if ex.status == 429:
@@ -289,13 +287,14 @@ class HttpBackend(Backend):
         return datetime.datetime.now() - t < datetime.timedelta(days=config.OFFLINE_DAYS)
 
     # ---- read -----------------------------------------------------------------
-    def auth(self):
+    def auth(self, quick=False):
         try:
             from peer_library import version
             head = {'X-PEER-Version': version.text().encode('ascii', 'replace').decode('ascii')}
         except Exception:
             head = None
-        data = json.loads(self._call('GET', '/auth', headers=head))
+        data = json.loads(self._call('GET', '/auth', headers=head, timeout=QUICK_TIMEOUT_S if quick else TIMEOUT_S,
+                                     tries=1 if quick else 2))
         self.user, self.role = data.get('name') or u'', data.get('role') or u'user'
         try:
             self.cfg = config.save_local(user=self.user, role=self.role,

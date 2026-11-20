@@ -20,8 +20,11 @@ Keys:
 """
 
 import os
+import threading
 
 from peer_library import jsonio
+
+_WRITE = threading.Lock()      # background checks at Revit start write the same file
 
 DEFAULTS = {
     'backend': u'local',
@@ -68,6 +71,9 @@ def _expand(path):
     return os.path.expandvars(os.path.expanduser(path)) if path else path
 
 
+REPO_ONLY = ('access_lock',)     # office decisions: a computer's own file cannot change them
+
+
 def load():
     cfg = dict(DEFAULTS)
     for path in (REPO_FILE, local_file()):
@@ -75,6 +81,8 @@ def load():
         if not isinstance(data, dict):
             continue
         for k, v in data.items():
+            if path != REPO_FILE and k in REPO_ONLY:
+                continue
             if k in DEFAULTS and v not in (None, u''):
                 cfg[k] = v
     cfg['root'] = _expand(cfg['root'])
@@ -88,13 +96,21 @@ def load():
 
 
 def save_local(**values):
-    data = jsonio.read(local_file(), {})
-    if not isinstance(data, dict):
-        data = {}
-    for k, v in values.items():
-        if k in DEFAULTS:
-            data[k] = v
-    jsonio.write(local_file(), data, indent=2)
+    """Change keys of this computer's settings. A file that exists but cannot be
+    read is never overwritten (that would lose the service address)."""
+    with _WRITE:
+        path = local_file()
+        data = jsonio.read(path, None)
+        if data is None:
+            if os.path.exists(path):
+                raise IOError(u'{0} cannot be read - not overwritten'.format(path))
+            data = {}
+        if not isinstance(data, dict):
+            data = {}
+        for k, v in values.items():
+            if k in DEFAULTS:
+                data[k] = v
+        jsonio.write(path, data, indent=2)
     return load()
 
 

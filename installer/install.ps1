@@ -79,9 +79,12 @@ function Compare-Version([string]$a, [string]$b) {
 # ---- 0. address, pyRevit, Revit ------------------------------------------------------
 Say 'PEER for pyRevit - install'
 Say '---------------------------'
-if (-not $Url -and (Test-Path $cfgFile)) { try { $Url = (Get-Content $cfgFile -Raw | ConvertFrom-Json).url } catch { } }
+if (-not $Url -and (Test-Path $cfgFile)) { try { $Url = (Get-Content $cfgFile -Raw -Encoding UTF8 | ConvertFrom-Json).url } catch { } }
 if (-not $Url) { Stop-Install 'The PEER service address is not set. Use install.bat from the PEER site.' }
-if (-not ($Url.StartsWith('https://') -or $Url.StartsWith('http://127.0.0.1'))) { Stop-Install 'The PEER service address must start with https://' }
+$u = $null
+if (-not [Uri]::TryCreate($Url, 'Absolute', [ref]$u) -or -not ($u.Scheme -eq 'https' -or ($u.Scheme -eq 'http' -and $u.Host -eq '127.0.0.1'))) {
+  Stop-Install 'The PEER service address must start with https://'
+}
 
 $pyrevit = @((Join-Path $env:APPDATA 'pyRevit-Master'), (Join-Path $env:ProgramFiles 'pyRevit-Master'),
              (Join-Path $env:ProgramData 'pyRevit-Master')) | Where-Object { Test-Path $_ } | Select-Object -First 1
@@ -150,10 +153,10 @@ $who = $r.data
 
 # ---- 2. settings of this computer ----------------------------------------------------
 $cfg = @{}
-if (Test-Path $cfgFile) { try { (Get-Content $cfgFile -Raw | ConvertFrom-Json).PSObject.Properties | ForEach-Object { $cfg[$_.Name] = $_.Value } } catch { } }
+if (Test-Path $cfgFile) { try { (Get-Content $cfgFile -Raw -Encoding UTF8 | ConvertFrom-Json).PSObject.Properties | ForEach-Object { $cfg[$_.Name] = $_.Value } } catch { } }
 $cfg['backend'] = 'http'; $cfg['url'] = $Url.TrimEnd('/'); $cfg['user'] = $who.name; $cfg['role'] = $who.role
 $cfg['last_ok'] = (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss')
-if ($Channel -eq 'beta') { $cfg['channel'] = 'beta' }
+$cfg['channel'] = $Channel
 [IO.File]::WriteAllText($cfgFile, ($cfg | ConvertTo-Json), (New-Object Text.UTF8Encoding($false)))
 
 # ---- 3. the package ------------------------------------------------------------------

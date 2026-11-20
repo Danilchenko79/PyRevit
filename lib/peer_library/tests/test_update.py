@@ -116,6 +116,23 @@ class TestReleases(unittest.TestCase):
         self.assertEqual(R.next_version({}, '2026.01.05'), '2026.01.05.1')
 
 
+class TestGitBranch(unittest.TestCase):
+
+    def test_branch(self):
+        import peer_update
+        tmp = tempfile.mkdtemp(prefix='peergit_')
+        try:
+            self.assertEqual(peer_update.git_branch(tmp), u'')
+            os.makedirs(os.path.join(tmp, '.git'))
+            for head, want in ((u'ref: refs/heads/main\n', u'main'), (u'ref: refs/heads/dev', u'dev'),
+                               (u'0123456789abcdef', u'')):
+                with io.open(os.path.join(tmp, '.git', 'HEAD'), 'w', encoding='utf-8') as f:
+                    f.write(head)
+                self.assertEqual(peer_update.git_branch(tmp), want)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
 class TestPack(unittest.TestCase):
 
     def test_what_goes_into_the_package(self):
@@ -292,6 +309,56 @@ class TestUpdate(unittest.TestCase):
         self.svc.add('1', {'startup.py': b'one'}, listed={'startup.py': sha(b'one'), '../evil.py': sha(b'e')})
         self.assertEqual(self.sync()[0], 'error')
         self.assertFalse(os.path.exists(os.path.join(self.tmp, 'evil.py')))
+        # a zip that itself holds an entry outside the folder (not only in files.json)
+        self.svc.add('2', {'startup.py': b'two'}, extra={'../evil2.py': b'e'})
+        self.assertEqual(self.sync()[0], 'error')
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, 'evil2.py')))
+        self.assertFalse(os.path.exists(os.path.join(self.work, 'evil2.py')))
+
+    def test_updater_that_does_not_compile_is_not_installed(self):
+        self.svc.add('1', self.V1)
+        self.sync()
+        broken = dict(self.V1, **{'lib/peer_update.py': b'def run(:\n', 'lib/a.py': b'a2'})
+        self.svc.add('2', broken)
+        status, det = self.sync()
+        self.assertEqual(status, 'error')
+        self.assertIn(u'does not run here', det)
+        self.assertEqual(self.read('lib/a.py'), b'a1')               # nothing was written
+        self.assertEqual(version.get(self.ext)['version'], u'1')
+
+    def test_updater_files_are_written_last(self):
+        self.svc.add('1', self.V1)
+        self.sync()
+        self.svc.add('2', {'startup.py': b'two', 'lib/peer_update.py': b'x = 2\n', 'lib/z.py': b'z',
+                           'lib/peer_library/ext_update.py': b'y = 2\n'})
+        order = []
+        real = U._copy
+        U._copy = lambda src, dst: (order.append(os.path.relpath(dst, self.ext).replace(os.sep, '/')), real(src, dst))
+        try:
+            self.assertEqual(self.sync()[0], 'updated')
+        finally:
+            U._copy = real
+        files = [o for o in order if o not in U.OWN]
+        self.assertEqual(files[0], 'lib/z.py')
+        self.assertEqual(set(files[1:]), set(['startup.py', 'lib/peer_update.py', 'lib/peer_library/ext_update.py']))
+
+    def test_copy_never_leaves_half_a_file(self):
+        self.write('lib/a.py', b'old')
+        src = os.path.join(self.tmp, 'new.py')
+        with open(src, 'wb') as f:
+            f.write(b'new')
+        real = U.jsonio.replace
+
+        def boom(a, b):
+            raise OSError('power cut')
+        U.jsonio.replace = boom
+        try:
+            with self.assertRaises(OSError):
+                U._copy(src, os.path.join(self.ext, 'lib', 'a.py'))
+        finally:
+            U.jsonio.replace = real
+        self.assertEqual(self.read('lib/a.py'), b'old')
+        self.assertEqual(os.listdir(os.path.join(self.ext, 'lib')), ['a.py'])
 
     def test_interrupted_update_finishes_next_time(self):
         self.svc.add('1', self.V1)

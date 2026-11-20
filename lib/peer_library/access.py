@@ -56,6 +56,8 @@ def evaluate(cfg, has_key, has_request=False, now=None):
     except ValueError:
         return Status(STALE, lock, 0, name, role)
     age = now - last
+    if age < -datetime.timedelta(days=1):              # a date in the future: the clock or a hand edit
+        return Status(STALE, lock, 0, name, role)
     fresh = age < datetime.timedelta(days=config.OFFLINE_DAYS)
     left = max(config.OFFLINE_DAYS - age.days, 0) if fresh else 0
     return Status(OK if fresh else STALE, lock, left, name, role, cfg.get('last_ok') or u'')
@@ -139,7 +141,7 @@ def apply_ribbon(st=None):
 
 
 # ---- key check -----------------------------------------------------------------------
-def check_now(cfg=None):
+def check_now(cfg=None, quick=False):
     """Asks the service about the key. Returns (status, 'ok' | 'revoked' |
     'offline' | 'no key' | 'off' | error text). A revoked key is forgotten;
     no connection keeps the last good check."""
@@ -152,16 +154,37 @@ def check_now(cfg=None):
         return status(cfg), 'no key'
     msg = 'ok'
     try:
-        backend.auth()
-    except AccessError:
-        keystore.forget()
-        config.save_local(last_ok=u'', role=u'user')
-        msg = 'revoked'
+        backend.auth(quick=quick)
+    except AccessError as ex:
+        if getattr(ex, 'status', None) == 401:            # the service says the key is not valid
+            keystore.forget()
+            config.save_local(last_ok=u'', role=u'user')
+            msg = 'revoked'
+        else:                                              # 403 from a proxy / firewall: keep the key
+            msg = u'{0}'.format(ex)
     except OfflineError:
         msg = 'offline'
     except LibraryError as ex:
         msg = u'{0}'.format(ex)
     return status(), msg
+
+
+def startup():
+    """Revit start (main thread): draw the ribbon right. A computer that would be
+    locked only because the last check is old asks the service first (one short
+    try) - otherwise the panels would stay hidden although the key is fine.
+    Then the usual check runs in the background."""
+    st = status()
+    if st.locked and st.code == STALE:
+        try:
+            st, _ = check_now(quick=True)
+        except Exception:
+            pass
+        apply_ribbon(st)
+        return st
+    apply_ribbon(st)
+    refresh_async()
+    return st
 
 
 def refresh_async():

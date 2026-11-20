@@ -30,8 +30,7 @@ except Exception:
 # без сети действует последняя проверка, 14 дней). Логика - lib/peer_library/access.py.
 try:
     from peer_library import access as _peer_access
-    _peer_access.apply_ribbon()
-    _peer_access.refresh_async()
+    _peer_access.startup()
 except Exception:
     pass
 

@@ -28,6 +28,12 @@ from peer_library.backend_base import AccessError, LibraryError, OfflineError
 FILES = 'files.json'
 OWN = (FILES, version.FILE)          # written by the updater itself, last
 KEEP_ZIPS = 2
+# what updates PEER: written after everything else, and only if the new code
+# compiles here (a broken updater could never bring the next fix)
+CORE = (u'startup.py', u'lib/peer_update.py', u'lib/peer_library/ext_update.py',
+        u'lib/peer_library/releases.py', u'lib/peer_library/version.py', u'lib/peer_library/jsonio.py',
+        u'lib/peer_library/rfa_info.py', u'lib/peer_library/config.py', u'lib/peer_library/keystore.py',
+        u'lib/peer_library/backend_base.py', u'lib/peer_library/backend_http.py', u'lib/peer_library/log.py')
 
 
 class UpdateError(Exception):
@@ -71,15 +77,36 @@ def _rmtree(folder):
 
 
 def _copy(src, dst):
+    """Copy next to dst, then swap: an interrupted copy never leaves half a file."""
     folder = os.path.dirname(dst)
     if not os.path.isdir(folder):
         os.makedirs(folder)
-    if os.path.exists(dst):
-        try:
+    tmp = dst + u'.peer_new'
+    shutil.copyfile(src, tmp)
+    try:
+        if os.path.exists(dst):
             os.chmod(dst, 0o666)
-        except OSError:
-            pass
-    shutil.copyfile(src, dst)
+        jsonio.replace(tmp, dst)
+    finally:
+        if os.path.exists(tmp):
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+
+
+def check_core(staged, files):
+    """The updater files of the package must compile with this Python (IronPython
+    in Revit). Raises UpdateError."""
+    for rel in CORE:
+        if rel not in files:
+            continue
+        p = os.path.join(staged, _safe(rel))
+        try:
+            with io.open(p, 'r', encoding='utf-8-sig') as f:
+                compile(f.read(), p, 'exec')
+        except (SyntaxError, ValueError, TypeError) as ex:
+            raise UpdateError(u'The package does not run here ({0}: {1}) - not installed.'.format(rel, ex))
 
 
 def installed_files(ext_dir):
@@ -109,6 +136,7 @@ def stage(zip_path, folder):
         raise UpdateError(u'The package has no file list.')
     if not version.get(folder).get('version') or version.get(folder)['kind'] != 'package':
         raise UpdateError(u'The package has no version.')
+    check_core(folder, files)
     for rel, sha in files.items():
         p = os.path.join(folder, _safe(rel))
         if not os.path.isfile(p) or rfa_info.sha1(p) != sha:
@@ -119,7 +147,9 @@ def stage(zip_path, folder):
 def apply(staged, ext_dir, files, old_files):
     """Bring ext_dir to the staged package. Returns (copied, removed, failed)."""
     copied, removed, failed = [], [], []
-    for rel in sorted(files):
+    core = [r for r in CORE if r in files]
+    order = [r for r in sorted(files) if r not in core] + core      # the updater last
+    for rel in order:
         src = os.path.join(staged, _safe(rel))
         dst = os.path.join(ext_dir, _safe(rel))
         if os.path.isfile(dst) and rfa_info.sha1(dst) == files[rel]:
@@ -129,6 +159,8 @@ def apply(staged, ext_dir, files, old_files):
             copied.append(rel)
         except (IOError, OSError) as ex:
             failed.append(u'{0}: {1}'.format(rel, ex))
+            if rel in core:
+                break                    # the rest of the updater stays as it was, consistent
     have = set(k.lower() for k in files)
     for rel in sorted(old_files or {}):
         if rel.lower() in have or rel in OWN:

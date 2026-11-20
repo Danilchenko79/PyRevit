@@ -7,7 +7,6 @@ always the released version (PEER keeps the template file up to date by
 itself, nothing to search for or download).
 
 You choose where to save the project; the project opens right away.
-The version of the template is written in Project Information.
 
 Projects that are already started are not changed by a new template.
 """

@@ -147,6 +147,16 @@ def _drop_git(ext_dir):
         return u'.git not removed: {0}'.format(ex)
 
 
+def git_branch(ext_dir):
+    """Branch of a clone from .git/HEAD ('' = not a clone or detached)."""
+    try:
+        with io.open(os.path.join(ext_dir, '.git', 'HEAD'), 'r', encoding='utf-8') as f:
+            head = f.read().strip()
+    except (IOError, OSError):
+        return u''
+    return head[len('ref: refs/heads/'):] if head.startswith('ref: refs/heads/') else u''
+
+
 def sync_package(ext_dir, any_path=False):
     """-> (status, details). status: skip / nokey / none / offline / clean /
     updated / partial / error (see peer_library/ext_update.py)."""
@@ -158,6 +168,8 @@ def sync_package(ext_dir, any_path=False):
         return 'skip', u'the PEER service is not set up on this computer'
     backend = config.make_backend(cfg)
     was_git = os.path.isdir(os.path.join(ext_dir, '.git'))
+    if was_git and os.path.isfile(os.path.join(ext_dir, '.git', 'HEAD')) and git_branch(ext_dir) != BRANCH:
+        return 'skip', u'git clone on branch "{0}" - left as it is'.format(git_branch(ext_dir) or u'?')
     old = _git_tracked(ext_dir) if was_git and not ext_update.installed_files(ext_dir) else None
     status, det = ext_update.sync(ext_dir, backend, cfg.get('channel') or 'stable', _work_dir(), old)
     if was_git and status in ('updated', 'clean'):

@@ -4,6 +4,7 @@
 import io
 import json
 import os
+import uuid
 
 try:
     text_type = unicode  # noqa: F821  (IronPython / py2)
@@ -44,7 +45,14 @@ def replace(src, dst):
 
 def write(path, data, indent=1):
     makedirs(os.path.dirname(path))
-    tmp = path + '.tmp'
-    with io.open(tmp, 'w', encoding='utf-8') as f:
-        f.write(dumps(data, indent))
-    replace(tmp, path)
+    tmp = u'{0}.{1}.tmp'.format(path, uuid.uuid4().hex[:8])     # two writers never share it
+    try:
+        with io.open(tmp, 'w', encoding='utf-8') as f:
+            f.write(dumps(data, indent))
+        replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass

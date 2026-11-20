@@ -48,11 +48,11 @@ function Invoke-Service([string[]]$CallArgs) {
   $buf = New-Object IO.MemoryStream
   $py.Runtime.IO.SetOutput($buf, [Text.Encoding]::UTF8)
   $py.Runtime.IO.SetErrorOutput($buf, [Text.Encoding]::UTF8)
-  $boot = "import traceback, sys`n__file__ = r'" + $file + "'`ntry:`n    execfile(__file__, globals())`nexcept SystemExit as e:`n    print('STOP', e)`nexcept BaseException:`n    traceback.print_exc()`n    print('STOP error')`n"
+  $boot = "import traceback, sys`n__file__ = r'" + $file + "'`ntry:`n    execfile(__file__, globals())`nexcept SystemExit as e:`n    print('STOP ' + str(e))`nexcept BaseException:`n    traceback.print_exc()`n    print('STOP error')`n"
   [void]$py.CreateScriptSourceFromString($boot).Execute($scope)
-  $text = [Text.Encoding]::UTF8.GetString($buf.ToArray())
-  $text.TrimStart([char]0xFEFF).TrimEnd()
-  if ($text -match '(?m)^STOP ') { throw 'The service call failed (see above).' }
+  $text = [Text.Encoding]::UTF8.GetString($buf.ToArray()).TrimStart([char]0xFEFF).TrimEnd()
+  $text
+  if ($text -match '(?m)^STOP') { throw 'The service call failed (see above).' }
 }
 
 if ($Do -eq 'status') { Invoke-Service @('manifest', $Product); return }
