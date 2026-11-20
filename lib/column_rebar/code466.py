@@ -259,6 +259,20 @@ def _transverse(out, mode, b, h, cover, dw, dl, corner, pb, ph, rb, rh):
             span = across - 2.0 * corner
             out['ties'].append({'kind': 'straight', 'direction': direction, 'at': pos[i], 'dia': dw,
                                 'length': tie_cut_length(span, dw)})
+        _alternate(out, direction, pos, inner, singles, across - 2.0 * corner, dw)
+
+
+def _alternate(out, direction, pos, tied, singles, span, dw):
+    """A tie whose mirror bar is not held (the 150 / 300 rule needs only one of
+    two symmetric bars) is placed in turn - on one bar at one level, on the
+    mirror bar at the next (user 2026-11-20): the mirror one is drawn dashed.
+    Same tie, so it adds nothing to the count per level."""
+    n = len(pos)
+    for i in singles:
+        k = n - 1 - i
+        if k != i and k not in tied:
+            out['ties'].append({'kind': 'straight', 'direction': direction, 'at': pos[k], 'dia': dw,
+                                'length': tie_cut_length(span, dw), 'alt': True})
 
 
 def v_base(mid, corner, other):
@@ -334,14 +348,19 @@ def _rounded(out, shape, b, h, cover, dw, dl, ne, ns, mode):
 
     # ROUND1 flat end: which bars need holding; a middle one -> V-shaped tie to
     # the side bars at index kv (forced restrained there, plus a straight tie)
-    kv, xs, rf, inner_f = None, [], [], []
+    # 2+ bars that need holding: inner hoops on pairs (user 2026-11-20) from the
+    # flat end to the first row of side bars; an odd middle one keeps the V-tie
+    kv, xs, rf, inner_f, f_pairs, f_mid = None, [], [], [], [], None
     if not two and ne > 0:
         xs = side_positions(b, ne + 2, corner)
         rf = restrain_side(xs)
         inner_f = (rf or [])[1:-1]
-        if len(inner_f) == 1 and ne % 2 == 1 and inner_f[0] == (ne + 1) // 2:
-            need_y = (xs[inner_f[0]] - xl) / math.tan(math.radians(APEX_MAX / 2.0))
+        f_pairs, f_single = pair_up(inner_f) if len(inner_f) >= 2 else ([], inner_f)
+        if len(f_single) == 1 and ne % 2 == 1 and f_single[0] == (ne + 1) // 2:
+            f_mid = f_single[0]
+            need_y = (xs[f_mid] - xl) / math.tan(math.radians(APEX_MAX / 2.0))
             kv = next((i for i in range(1, ns - 1) if ys[i] - ys[0] >= need_y - 1e-6), None)
+        f_left = [i for i in f_single if i != f_mid or kv is None]
 
     # long sides
     rs = restrain_side(ys, (kv,) if kv is not None else ())
@@ -391,13 +410,21 @@ def _rounded(out, shape, b, h, cover, dw, dl, ne, ns, mode):
             m.append(msg(RED, 'restrained', u'Along the flat end bars are %d mm apart, at most %d. '
                          u'Add a bar on the flat end.' % (round(xs[1] - xs[0]), RESTRAINED_MAX),
                          CL_RESTRAINT, u'b'))
-        elif kv is not None:
-            t = v_tie((xs[inner_f[0]], corner), (xl, ys[kv]), (xr, ys[kv]), dw, dl)
-            t['direction'] = VERTICAL
-            out['ties'].append(t)
-        elif inner_f:
-            m.append(msg(YELLOW, 'flat_end', u'%d bars of the flat end need holding; hold them by hand '
-                         u'(a tie to the rounded end or a hoop).' % len(inner_f), CL_STIRRUP, u'b'))
+        else:
+            if kv is not None:
+                t = v_tie((xs[f_mid], corner), (xl, ys[kv]), (xr, ys[kv]), dw, dl)
+                t['direction'] = VERTICAL
+                out['ties'].append(t)
+            y_row = ys[1] if ns > 2 else ys[-1]
+            for i, j in f_pairs:
+                w = xs[j] - xs[i] + dl + 2.0 * dw
+                d = y_row - corner + dl + 2.0 * dw
+                out['hoops'].append({'kind': 'rect', 'direction': 'flat', 'bars': (i, j),
+                                     'box': (xs[i], corner, xs[j], y_row), 'a': w, 'b': d, 'dia': dw,
+                                     'length': 2.0 * (w + d) + HOOP_HOOKS * dw})
+            if f_left:
+                m.append(msg(YELLOW, 'flat_end', u'%d bar(s) of the flat end need holding; hold them by hand.'
+                             % len(f_left), CL_STIRRUP, u'b'))
     out['bars'], out['restrained'] = bars, flags
 
     # inner bars of the long sides: across b; the end of a V-shaped tie keeps a straight tie
@@ -417,6 +444,8 @@ def _rounded(out, shape, b, h, cover, dw, dl, ne, ns, mode):
     for i in singles:
         out['ties'].append({'kind': 'straight', 'direction': HORIZONTAL, 'at': ys[i], 'dia': dw,
                             'length': tie_cut_length(xr - xl, dw)})
+    if two:      # ROUND1 is not symmetric along h: its ties are not alternated
+        _alternate(out, HORIZONTAL, ys, inner, singles, xr - xl, dw)
     if not two:
         _mirror_y(out, h)
 
@@ -531,7 +560,7 @@ def design(shape, b, h, cover, bar_dia, nb, nh=None, stirrup_dia=None,
 
     if shape in ROUNDED:
         _rounded(out, shape, b, h, cover, stirrup_dia, bar_dia, nb, nh, transverse)
-        out['set_length'] = (out['stirrup']['length'] + sum(t['length'] for t in out['ties'])
+        out['set_length'] = (out['stirrup']['length'] + sum(t['length'] for t in out['ties'] if not t.get('alt'))
                              + sum(x['length'] for x in out['hoops']))
     elif shape == CIRCLE:
         if n < 1:
@@ -604,7 +633,7 @@ def design(shape, b, h, cover, bar_dia, nb, nh=None, stirrup_dia=None,
         _transverse(out, transverse, b, h, cover, stirrup_dia, bar_dia, corner,
                     pb, ph, rb, rh)
         out.pop('_v', None)
-        out['set_length'] = (out['stirrup']['length'] + sum(t['length'] for t in out['ties'])
+        out['set_length'] = (out['stirrup']['length'] + sum(t['length'] for t in out['ties'] if not t.get('alt'))
                              + sum(x['length'] for x in out['hoops']))
 
     # 5. spacing along the column
@@ -629,12 +658,16 @@ def summary(result):
         return u''
     parts = []
     rect = len([x for x in result.get('hoops') or [] if x['kind'] == 'rect'])
-    vt = len([x for x in result.get('ties') or [] if x.get('kind') == 'v'])
-    ties = len(result.get('ties') or []) - vt
+    tl = result.get('ties') or []
+    vt = len([x for x in tl if x.get('kind') == 'v'])
+    alt = len([x for x in tl if x.get('alt')])
+    ties = len(tl) - vt - alt
     for n, one, many in ((rect, u'inner hoop', u'inner hoops'), (vt, u'V-tie', u'V-ties'),
                          (ties, u'tie', u'ties')):
         if n:
             parts.append(u'%d %s' % (n, one if n == 1 else many))
+    if alt:
+        parts[-1] += u' (alternating)'
     return result['label'] + (u'; ' + u' + '.join(parts) if parts else u'')
 
 

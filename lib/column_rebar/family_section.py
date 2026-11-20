@@ -151,7 +151,9 @@ def build(app, src, folder, shape=RECT):
             # 2. cover to the stirrup
             H.P('Stirrup_Diameter', value=8 / FT)
             fm.SetFormula(fm.get_Parameter('CoverR'), 'Cover + Stirrup_Diameter + Rebar_Diameter / 2')
-            ring = H.P('Ring_D', formula='Rebar_Diameter + Stirrup_Diameter')
+            # 135 degree hook tail of a tie, as Shape 62: max(50 + 2 D, 7 D) of the tie
+            hook = H.P('Hook_T', formula='if(7 * Stirrup_Diameter > 50 mm + 2 * Stirrup_Diameter, '
+                                          '7 * Stirrup_Diameter, 50 mm + 2 * Stirrup_Diameter)')
             ho = H.P('Hoop_O', formula='Rebar_Diameter / 2 + Stirrup_Diameter / 2')
             bars_b = H.P('Bars_B', formula='PR_Dimension_Width - 2 * CoverR')
             bars_h = H.P('Bars_H', formula='PR_Dimension_Height - 2 * CoverR')
@@ -197,7 +199,18 @@ def build(app, src, folder, shape=RECT):
                         p_ = H.plane(name, False, h / 2, bottom, H.P(name + '_Y', value=h / 2 / FT))
                         inst = H.place(tie, c, h / 2, -90, bl, p_)
                         H.link(inst, 'L', bars_b)
-                    H.link(inst, 'D', ring)
+                    H.link(inst, 'T', hook)
+                    H.link(inst, 'Alt', H.P(name + '_Alt', yes, value=0))
+                elif kind == 'hoopt':          # ROUND1: from the flat end down to a row of side bars
+                    a = H.P(name + '_A', value=100 / FT)
+                    bh = H.P(name + '_B', value=100 / FT)
+                    x0, y0 = w / 2 - 50, h - c - 100
+                    px_ = H.plane(name + ' X', True, x0, left, H.P(name + '_X', value=x0 / FT))
+                    py_ = H.plane(name + ' Y', False, y0, bottom, H.P(name + '_Y', value=y0 / FT))
+                    inst = H.place(hoop, x0, y0, 0, px_, py_)
+                    H.link(inst, 'A', a)
+                    H.link(inst, 'B', bh)
+                    H.link(inst, 'O', ho)
                 elif kind == 'hoop':
                     a = H.P(name + '_A', value=100 / FT)
                     if d == 'V':
@@ -230,7 +243,7 @@ def build(app, src, folder, shape=RECT):
                             inst = H.place(vtie, w - c, h / 2, 90, br, p_)
                     H.link(inst, 'W', vw)
                     H.link(inst, 'H', vh)
-                    H.link(inst, 'D', ring)
+                    H.link(inst, 'T', hook)
                 H.visible(inst, vis)
             return H.made
 

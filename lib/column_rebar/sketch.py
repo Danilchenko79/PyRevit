@@ -105,19 +105,20 @@ def svg(result, b, h=None, cover=25.0, bar_dia=16.0, size=260.0, margin=56.0):
                 out.append('<circle cx="%s" cy="%s" r="%s" fill="none" stroke="%s" stroke-width="%s"/>'
                            % (_n(X(px)), _n(Y(py)), _n(shift * k), TIE, _n(w)))
             continue
+        dash = ' stroke-dasharray="6 4"' if t.get('alt') else ''   # placed in turn with the mirror tie
         if t['direction'] == code466.VERTICAL:
             ends = [(x, y) for x, y in result['bars'] if abs(x - t['at']) < 0.5]
             if len(ends) < 2:
                 continue
             (x1, y1), (x2, y2) = min(ends, key=lambda p: p[1]), max(ends, key=lambda p: p[1])
-            out.append('<line x1="%s" y1="%s" x2="%s" y2="%s" stroke="%s" stroke-width="%s"/>'
+            out.append(('<line x1="%s" y1="%s" x2="%s" y2="%s" stroke="%s" stroke-width="%s"' + dash + '/>')
                        % (_n(X(x1 - shift)), _n(Y(y1)), _n(X(x2 - shift)), _n(Y(y2)), TIE, _n(w)))
         else:
             ends = [(x, y) for x, y in result['bars'] if abs(y - t['at']) < 0.5]
             if len(ends) < 2:
                 continue
             (x1, y1), (x2, y2) = min(ends), max(ends)
-            out.append('<line x1="%s" y1="%s" x2="%s" y2="%s" stroke="%s" stroke-width="%s"/>'
+            out.append(('<line x1="%s" y1="%s" x2="%s" y2="%s" stroke="%s" stroke-width="%s"' + dash + '/>')
                        % (_n(X(x1)), _n(Y(y1 + shift)), _n(X(x2)), _n(Y(y2 + shift)), TIE, _n(w)))
         for x, y in ((x1, y1), (x2, y2)):
             out.append('<circle cx="%s" cy="%s" r="%s" fill="none" stroke="%s" stroke-width="%s"/>'

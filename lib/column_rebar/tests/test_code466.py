@@ -209,6 +209,47 @@ class Rounded(unittest.TestCase):
         self.assertAlmostEqual(r['rho'], 12 * 3.141592653589793 * 100 / ac)
 
 
+class Alternate(unittest.TestCase):
+    """User 2026-11-20: a face needing one of two symmetric bars held - the tie
+    goes in turn on one and on the other (the mirror one drawn dashed)."""
+
+    def test_four_bar_faces(self):
+        r = c.design(RECT, 400, 400, 25, 16, 4, 4)
+        alt = [t for t in r['ties'] if t.get('alt')]
+        solid = [t for t in r['ties'] if not t.get('alt')]
+        self.assertEqual((len(solid), len(alt)), (2, 2))
+        for s in solid:
+            m = [a for a in alt if a['direction'] == s['direction']][0]
+            self.assertAlmostEqual(s['at'] + m['at'], 400)          # the mirror bar
+        self.assertEqual(c.summary(r), u'Ø8@250/100; 2 ties (alternating)')
+
+    def test_symmetric_face_has_no_alternate(self):
+        r = c.design(RECT, 600, 600, 25, 16, 5, 5)
+        self.assertFalse(any(t.get('alt') for t in r['ties']))
+
+    def test_steel_counts_one_of_the_pair(self):
+        r = c.design(RECT, 400, 400, 25, 16, 4, 4)
+        ties = [t['length'] for t in r['ties'] if not t.get('alt')]
+        self.assertAlmostEqual(r['set_length'], r['stirrup']['length'] + sum(ties))
+
+
+class FlatEnd(unittest.TestCase):
+
+    def test_round1_flat_end_pairs_get_hoops(self):
+        # user 2026-11-20: 2+ bars of the flat end - inner hoops on pairs
+        r = c.design(c.ROUND1, 600, 1000, 25, 20, 2, 4)
+        flat = [x for x in r['hoops'] if x['direction'] == 'flat']
+        self.assertEqual(len(flat), 1)
+        x0, y0, x1, y1 = flat[0]['box']
+        self.assertGreater(y1, 900)                 # reaches the flat end (top)
+        self.assertNotIn('flat_end', codes(r))
+
+    def test_round1_five_bars(self):
+        r = c.design(c.ROUND1, 800, 1400, 25, 25, 5, 5)
+        self.assertEqual(len([x for x in r['hoops'] if x['direction'] == 'flat']), 1)
+        self.assertNotIn('flat_end', codes(r))
+
+
 class ColumnParams(unittest.TestCase):
 
     def test_summary(self):

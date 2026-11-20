@@ -83,7 +83,9 @@ def card(case):
     if r['label']:
         res.append(u'хомуты ' + r['label'])
     if r['ties']:
-        res.append(u'прямых шпилек %d' % len([t for t in r['ties'] if t.get('kind') != 'v']))
+        res.append(u'прямых шпилек %d' % len([t for t in r['ties'] if t.get('kind') != 'v' and not t.get('alt')]))
+        if any(t.get('alt') for t in r['ties']):
+            res.append(u'вразбежку (пунктир)')
     rect = [x for x in r.get('hoops') or [] if x['kind'] == 'rect']
     tri = [x for x in r['ties'] if x.get('kind') == 'v']
     if rect:

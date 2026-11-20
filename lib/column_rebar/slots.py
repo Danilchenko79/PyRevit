@@ -25,7 +25,7 @@ def slot_names(shape=RECT):
     if shape == RECT:
         out += [('VB', 'v', 'B'), ('VT', 'v', 'T'), ('VL', 'v', 'L'), ('VR', 'v', 'R')]
     elif shape == ROUND1:
-        out += [('VT', 'v', 'T')]
+        out += [('VT', 'v', 'T'), ('HoopT1', 'hoopt', 'T'), ('HoopT2', 'hoopt', 'T')]
     return out
 
 
@@ -102,6 +102,10 @@ def params(result, b, h, cover, bar_dia, nb, nh, shape=RECT):
         out[name + '_Vis'] = 0
         if kind == 'tie':
             out[name + ('_X' if d == 'V' else '_Y')] = (b if d == 'V' else h) / 2.0
+            out[name + '_Alt'] = 0
+        elif kind == 'hoopt':
+            out[name + '_X'], out[name + '_Y'] = b / 2.0 - 50, h - cr - 100
+            out[name + '_A'], out[name + '_B'] = 100.0, 100.0
         elif kind == 'hoop':
             out[name + ('_X' if d == 'V' else '_Y')] = (b if d == 'V' else h) / 2.0 - 50
             out[name + '_A'] = 100.0
@@ -137,14 +141,22 @@ def params(result, b, h, cover, bar_dia, nb, nh, shape=RECT):
         elif t['direction'] == 'vertical':
             s = take('TieV', N_TIES, 'a tie along h')
             out[s + '_Vis'], out[s + '_X'] = 1, _snap(t['at'], xs)
+            out[s + '_Alt'] = 1 if t.get('alt') else 0
         else:
             s = take('TieH', N_TIES, 'a tie along b')
             out[s + '_Vis'], out[s + '_Y'] = 1, _snap(t['at'], ys)
+            out[s + '_Alt'] = 1 if t.get('alt') else 0
     for hp in result.get('hoops') or []:
         if hp['kind'] != 'rect':
             continue
         x0, y0, x1, y1 = hp['box']
-        if hp['direction'] == 'vertical':
+        if hp['direction'] == 'flat':                   # ROUND1 flat end
+            s = take('HoopT', 2, 'an inner hoop at the flat end')
+            a, c = _snap(x0, xs), _snap(x1, xs)
+            yb, yt = _snap(y0, ys), h - cr
+            out[s + '_Vis'], out[s + '_X'], out[s + '_Y'] = 1, a, yb
+            out[s + '_A'], out[s + '_B'] = c - a, yt - yb
+        elif hp['direction'] == 'vertical':
             s = take('HoopV', N_HOOPS, 'an inner hoop along h')
             a, c = _snap(x0, xs), _snap(x1, xs)
             out[s + '_Vis'], out[s + '_X'], out[s + '_A'] = 1, a, c - a

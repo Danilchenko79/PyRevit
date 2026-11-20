@@ -124,14 +124,23 @@ def check(case, inst, view, origin, result):
     far = [p for p in result['bars'] if not _near(p, want, 3.0)]
     if far:
         problems.append('code466 bars off the family by > 3 mm: %d, e.g. %s' % (len(far), _fmt(far[:3])))
-    # rings
-    off = [p for p in rings if not _near(p, uniq, TOL)]
-    if off:
-        problems.append('rings off bars %d: %s' % (len(off), _fmt(off[:4])))
+    # hook tails: a line starting on a bar, as long as Hook_T, at 45 degrees
+    hook = max(50.0 + 2 * dw, 7 * dw)
+    tails, rest = [], []
+    for a, c in lines:
+        ln = math.hypot(c[0] - a[0], c[1] - a[1])
+        diag = abs(abs(c[0] - a[0]) - abs(c[1] - a[1])) < 0.5
+        if abs(ln - hook) < 0.6 and diag and (_near(a, uniq, TOL) or _near(c, uniq, TOL)):
+            tails.append((a, c))
+        else:
+            rest.append((a, c))
+    lines_all, lines = lines, rest
     straight = len([t for t in result['ties'] if t.get('kind') != 'v'])
     vt = len([t for t in result['ties'] if t.get('kind') == 'v'])
-    if len(rings) != 2 * straight + 3 * vt:
-        problems.append('rings %d, expected %d (%d ties, %d V)' % (len(rings), 2 * straight + 3 * vt, straight, vt))
+    if len(tails) != 2 * straight + 2 * vt:
+        problems.append('hook tails %d, expected %d (%d ties, %d V)' % (len(tails), 2 * straight + 2 * vt, straight, vt))
+    if rings:
+        problems.append('rings left: %d' % len(rings))
     # lines
     xs_bar = sorted(set(round(p[0], 1) for p in uniq))
     ys_bar = sorted(set(round(p[1], 1) for p in uniq))
@@ -154,11 +163,11 @@ def check(case, inst, view, origin, result):
         if not ok:
             problems.append('arc r=%.1f at %s' % (r, _fmt([cen])))
     # inside
-    pts = [p for ln in lines for p in ln] + uniq + rings
+    pts = [p for ln in lines_all for p in ln] + uniq
     out_ = [p for p in pts if p[0] < -1 or p[0] > b + 1 or p[1] < -1 or p[1] > h + 1]
     if out_:
         problems.append('outside the concrete %d: %s' % (len(out_), _fmt(out_[:3])))
-    return problems, {'bars': len(uniq), 'rings': len(rings), 'lines': len(lines)}
+    return problems, {'bars': len(uniq), 'rings': len(tails), 'lines': len(lines)}
 
 
 def _fmt(pts):
@@ -239,7 +248,7 @@ def run(app, folder, out_folder, only=None):
                     continue
                 probs, info = check(c, inst, v, origin, res)
                 total_bad += 1 if probs else 0
-                lines.append('%s %s bars=%d rings=%d lines=%d%s' % (
+                lines.append('%s %s bars=%d tails=%d lines=%d%s' % (
                     head, 'OK ' if not probs else 'BAD', info['bars'], info['rings'], info['lines'],
                     (' red=' + ','.join(red)) if red else ''))
                 for p in probs:

@@ -163,6 +163,35 @@ class Builder(object):
         d.FamilyLabel = radius_param
         return el
 
+    def dashed_style(self, name=u'Tie Alternate'):
+        """Graphics style of a dashed subcategory of the family's category."""
+        from Autodesk.Revit.DB import (GraphicsStyleType, LinePattern, LinePatternElement,
+                                       LinePatternSegment, LinePatternSegmentType)
+        from System.Collections.Generic import List
+        cats = self.fd.Settings.Categories
+        parent = self.fd.OwnerFamily.FamilyCategory
+        sub = None
+        for c in parent.SubCategories:
+            if c.Name == name:
+                sub = c
+        if sub is None:
+            sub = cats.NewSubcategory(parent, name)
+        pat = LinePatternElement.GetLinePatternElementByName(self.fd, u'Dash')
+        if pat is None:
+            lp = LinePattern(u'Dash')
+            segs = List[LinePatternSegment]()
+            segs.Add(LinePatternSegment(LinePatternSegmentType.Dash, 3.0 / FT))
+            segs.Add(LinePatternSegment(LinePatternSegmentType.Space, 1.5 / FT))
+            lp.SetSegments(segs)
+            pat = LinePatternElement.Create(self.fd, lp)
+        sub.SetLinePatternId(pat.Id, GraphicsStyleType.Projection)
+        return sub.GetGraphicsStyle(GraphicsStyleType.Projection)
+
+    def visible_by(self, el, param):
+        from Autodesk.Revit.DB import BuiltInParameter
+        self.fm.AssociateElementParameterToFamilyParameter(
+            el.get_Parameter(BuiltInParameter.IS_VISIBLE_PARAM), param)
+
     def _style(self, el):
         if not LINE_STYLE:
             return
@@ -182,21 +211,39 @@ class Builder(object):
 
 
 def build_tie(app, folder):
-    """PEER_Col_Tie: L (length between bar axes), D (diameter of the hook
-    ring = bar + tie diameter)."""
+    """PEER_Col_Tie: L - between the bar axes; T - the 135 degree hook tail
+    (both ends, bent to +X); Alt - drawn dashed (the tie placed in turn on the
+    mirror bar, user 2026-11-20)."""
+    from Autodesk.Revit.DB import SpecTypeId as S
     b = Builder(app)
     try:
         def go():
             b.ensure_type('Tie')
-            L = b.param('L')
-            D = b.param('D')
-            top = b.plane('End', False, 400)
-            b.dim([b.cy.GetReference(), top.GetReference()], False, 150, L)
-            b.line((0, 0), (0, 400), [b.cx, b.cy], [b.cx, top])
-            b.ring((0, 0), 14, b.cx, b.cy, D)
-            b.ring((0, 400), 14, b.cx, top, D)
+            L, T = b.param('L'), b.param('T')
+            alt = b.param('Alt', S.Boolean.YesNo)
+            solid = b.param('Solid', S.Boolean.YesNo)
+            tx = b.param('Tx')
             b.fm.Set(L, 400 / FT)
-            b.fm.Set(D, 28 / FT)
+            b.fm.Set(T, 60 / FT)
+            b.fm.SetFormula(tx, 'T * 0.7071')
+            b.fm.SetFormula(solid, 'not(Alt)')
+            t = 60 * 0.7071
+            top = b.plane('End', False, 400)
+            px = b.plane('Tail', True, t)
+            py0 = b.plane('Tail start', False, t)
+            py1 = b.plane('Tail end', False, 400 - t)
+            b.dim([b.cy.GetReference(), top.GetReference()], False, 150, L)
+            b.dim([b.cx.GetReference(), px.GetReference()], True, -100, tx)
+            b.dim([b.cy.GetReference(), py0.GetReference()], False, 200, tx)
+            b.dim([py1.GetReference(), top.GetReference()], False, 200, tx)
+            dashed = b.dashed_style()
+            for vis, style in ((solid, None), (alt, dashed)):
+                for el in (b.line((0, 0), (0, 400), [b.cx, b.cy], [b.cx, top]),
+                           b.line((0, 0), (t, t), [b.cx, b.cy], [px, py0]),
+                           b.line((0, 400), (t, 400 - t), [b.cx, top], [px, py1])):
+                    if style is not None:
+                        el.LineStyle = style
+                    b.visible_by(el, vis)
         res = run(b.fd, 'PEER_Col_Tie', go)
         path = os.path.join(folder, 'PEER_Col_Tie.rfa')
         if res[1] == 'Committed':
@@ -246,27 +293,36 @@ def build_hoop(app, folder):
 
 def build_vtie(app, folder):
     """PEER_Col_VTie: apex on the bar it holds (origin), legs to the bars at
-    (-W/2, H) and (W/2, H); rings of diameter D round the three bars."""
+    (-W/2, H) and (W/2, H); 135 degree hook tails of length T at both ends,
+    turned inwards."""
     b = Builder(app)
     try:
         def go():
             b.ensure_type('V-tie')
-            W, H, D = b.param('W'), b.param('H'), b.param('D')
+            W, H, T = b.param('W'), b.param('H'), b.param('T')
+            tx = b.param('Tx')
             w, hh = 400.0, 300.0
+            b.fm.Set(W, w / FT)
+            b.fm.Set(H, hh / FT)
+            b.fm.Set(T, 60 / FT)
+            b.fm.SetFormula(tx, 'T * 0.7071')
+            t = 60 * 0.7071
             xl = b.plane('Left end', True, -w / 2)
             xr = b.plane('Right end', True, w / 2)
             yh = b.plane('Ends', False, hh)
-            d = b.dim([xl.GetReference(), b.cx.GetReference(), xr.GetReference()], True, -150, None, equal=True)
+            xlt = b.plane('Left tail', True, -w / 2 + t)
+            xrt = b.plane('Right tail', True, w / 2 - t)
+            yt = b.plane('Tails', False, hh - t)
+            b.dim([xl.GetReference(), b.cx.GetReference(), xr.GetReference()], True, -150, None, equal=True)
             b.dim([xl.GetReference(), xr.GetReference()], True, -250, W)
             b.dim([b.cy.GetReference(), yh.GetReference()], False, w / 2 + 150, H)
+            b.dim([xl.GetReference(), xlt.GetReference()], True, -350, tx)
+            b.dim([xrt.GetReference(), xr.GetReference()], True, -350, tx)
+            b.dim([yt.GetReference(), yh.GetReference()], False, w / 2 + 250, tx)
             b.line((0, 0), (-w / 2, hh), [b.cx, b.cy], [xl, yh])
             b.line((0, 0), (w / 2, hh), [b.cx, b.cy], [xr, yh])
-            b.ring((0, 0), 14, b.cx, b.cy, D)
-            b.ring((-w / 2, hh), 14, xl, yh, D)
-            b.ring((w / 2, hh), 14, xr, yh, D)
-            b.fm.Set(W, w / FT)
-            b.fm.Set(H, hh / FT)
-            b.fm.Set(D, 28 / FT)
+            b.line((-w / 2, hh), (-w / 2 + t, hh - t), [xl, yh], [xlt, yt])
+            b.line((w / 2, hh), (w / 2 - t, hh - t), [xr, yh], [xrt, yt])
         res = run(b.fd, 'PEER_Col_VTie', go)
         if res[1] == 'Committed':
             b.save(os.path.join(folder, 'PEER_Col_VTie.rfa'))
