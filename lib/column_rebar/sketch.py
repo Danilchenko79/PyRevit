@@ -30,8 +30,27 @@ def svg(result, b, h=None, cover=25.0, bar_dia=16.0, size=260.0, margin=56.0):
            'font-family="Segoe UI, Arial, sans-serif" font-size="11">' % (_n(W), _n(H), _n(W), _n(H))]
     bad = set(x['where'] for x in result['messages'] if x.get('where') and x['level'] == code466.RED)
 
+    rounded = result['shape'] in code466.ROUNDED
+
+    def outline(o):
+        """SVG path of the rounded outline offset inwards by o."""
+        R = b / 2.0 - o
+        top = 'L %s %s A %s %s 0 0 1 %s %s ' % (_n(X(o)), _n(Y(h - b / 2.0)), _n(R * k), _n(R * k),
+                                               _n(X(b - o)), _n(Y(h - b / 2.0)))
+        if result['shape'] == code466.ROUND2:
+            return ('M %s %s ' % (_n(X(o)), _n(Y(b / 2.0))) + top +
+                    'L %s %s A %s %s 0 0 1 %s %s Z' % (_n(X(b - o)), _n(Y(b / 2.0)), _n(R * k), _n(R * k),
+                                                       _n(X(o)), _n(Y(b / 2.0))))
+        return ('M %s %s ' % (_n(X(o)), _n(Y(o))) + top + 'L %s %s Z' % (_n(X(b - o)), _n(Y(o))))
+
     # concrete
-    if circle:
+    if rounded:
+        out.append('<path d="%s" fill="%s" stroke="%s" stroke-width="1.2"/>' % (outline(0), CONCRETE, EDGE))
+        if 'h' in bad:
+            for x in (0, b):
+                out.append('<line x1="%s" y1="%s" x2="%s" y2="%s" stroke="%s" stroke-width="4"/>'
+                           % (_n(X(x)), _n(Y(b / 2.0)), _n(X(x)), _n(Y(h - b / 2.0)), BAD))
+    elif circle:
         out.append('<circle cx="%s" cy="%s" r="%s" fill="%s" stroke="%s" stroke-width="1.2"/>'
                    % (_n(X(b / 2.0)), _n(Y(b / 2.0)), _n(b / 2.0 * k), CONCRETE, EDGE))
     else:
@@ -49,7 +68,10 @@ def svg(result, b, h=None, cover=25.0, bar_dia=16.0, size=260.0, margin=56.0):
         w = max(1.2, dw * k)
         off = cover + dw / 2.0
         r = code466.mandrel(dw) / 2.0 + dw / 2.0
-        if circle:
+        if rounded:
+            out.append('<path d="%s" fill="none" stroke="%s" stroke-width="%s" stroke-linejoin="round"/>'
+                       % (outline(off), STIRRUP, _n(w)))
+        elif circle:
             out.append('<circle cx="%s" cy="%s" r="%s" fill="none" stroke="%s" stroke-width="%s"/>'
                        % (_n(X(b / 2.0)), _n(Y(b / 2.0)), _n((b / 2.0 - off) * k), STIRRUP, _n(w)))
         else:
@@ -72,6 +94,14 @@ def svg(result, b, h=None, cover=25.0, bar_dia=16.0, size=260.0, margin=56.0):
     for t in result['ties']:
         w = max(1.2, t['dia'] * k)
         shift = dl / 2.0 + t['dia'] / 2.0
+        if t.get('kind') == 'v':
+            pts = ' '.join('%s,%s' % (_n(X(px)), _n(Y(py))) for px, py in t['points'])
+            out.append('<polyline points="%s" fill="none" stroke="%s" stroke-width="%s" '
+                       'stroke-linejoin="round"/>' % (pts, TIE, _n(w)))
+            for px, py in t['points']:
+                out.append('<circle cx="%s" cy="%s" r="%s" fill="none" stroke="%s" stroke-width="%s"/>'
+                           % (_n(X(px)), _n(Y(py)), _n(shift * k), TIE, _n(w)))
+            continue
         if t['direction'] == code466.VERTICAL:
             ends = [(x, y) for x, y in result['bars'] if abs(x - t['at']) < 0.5]
             if len(ends) < 2:
@@ -90,7 +120,7 @@ def svg(result, b, h=None, cover=25.0, bar_dia=16.0, size=260.0, margin=56.0):
             out.append('<circle cx="%s" cy="%s" r="%s" fill="none" stroke="%s" stroke-width="%s"/>'
                        % (_n(X(x)), _n(Y(y)), _n(shift * k), TIE, _n(w)))
 
-    # inner hoops (rectangles round two bars of each face) and triangles
+    # inner hoops (rectangles round two bars of each face)
     for hp in result.get('hoops') or []:
         w = max(1.2, hp['dia'] * k)
         off = dl / 2.0 + hp['dia'] / 2.0
@@ -119,7 +149,7 @@ def svg(result, b, h=None, cover=25.0, bar_dia=16.0, size=260.0, margin=56.0):
     if not circle:
         out.append('<text x="%s" y="%s" text-anchor="middle" fill="%s" transform="rotate(-90 %s %s)">%s</text>'
                    % (_n(X(0) - 12), _n(Y(h / 2.0)), TEXT, _n(X(0) - 12), _n(Y(h / 2.0)), _n(h)))
-        for side, coord in (('b', 0), ('h', 1)):
+        for side, coord in (() if rounded else (('b', 0), ('h', 1))):
             pos = sorted(set(round(p[coord], 3) for p in result['bars']
                              if abs(p[1 - coord] - min(q[1 - coord] for q in result['bars'])) < 0.5)) \
                 if result['bars'] else []

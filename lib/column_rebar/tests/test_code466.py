@@ -120,14 +120,23 @@ class Hoops(unittest.TestCase):
         self.assertEqual(c.pair_up([1, 2, 4, 5]), ([(1, 2), (4, 5)], []))
         self.assertEqual(c.pair_up([1, 2, 3, 4, 5]), ([(1, 2), (4, 5)], [3]))
 
-    def test_pylon_triangles(self):
-        # user sketch 2026-11-20: pylon, middle bar of the short face by a triangle
+    def test_pylon_v_ties(self):
+        # user sketch 2026-11-20: pylon, middle bar of a short face - a V-shaped
+        # tie to the long faces + a straight tie between its ends
         r = c.design(RECT, 1500, 600, 25, 20, 7, 3)
-        tri = [x for x in r['hoops'] if x['kind'] == 'triangle']
-        self.assertEqual(len(tri), 2)
-        self.assertTrue(all(x['apex_angle'] <= 135 for x in tri))
-        self.assertTrue(all(t['direction'] == c.VERTICAL for t in r['ties']))   # short ties only
-        self.assertEqual(len(r['ties']), 3)          # the tie under the triangle leg is gone
+        v = [t for t in r['ties'] if t['kind'] == 'v']
+        straight = [t for t in r['ties'] if t['kind'] == 'straight']
+        self.assertEqual(len(v), 2)
+        self.assertTrue(all(t['apex_angle'] <= 135 for t in v))
+        self.assertTrue(all(t['direction'] == c.VERTICAL for t in straight))    # short ties only
+        ends = set(round(t['points'][0][0]) for t in v)
+        self.assertTrue(ends <= set(round(t['at']) for t in straight))         # straight tie at each V end
+        self.assertEqual(r['hoops'], [])
+        self.assertTrue(all(r['restrained']))
+
+    def test_v_tie_forces_restraint(self):
+        # long faces 150 apart would need few ties; the V ends are held anyway
+        self.assertEqual(c.restrain_side([0, 100, 200, 300, 400], forced=(1, 3)), [0, 1, 3, 4])
 
     def test_modes_compare(self):
         a = c.design(RECT, 800, 800, 25, 25, 4, 4, transverse=c.TIES)
@@ -160,13 +169,53 @@ class Hoops(unittest.TestCase):
         self.assertIn('restrained', codes(c.design(CIRCLE, 1200, None, 30, 20, 6), RED))
 
 
+class Rounded(unittest.TestCase):
+
+    def test_round2_counts_and_ties(self):
+        r = c.design(c.ROUND2, 500, 1500, 25, 20, 3, 6)         # pylon: ties across
+        self.assertEqual(len(r['bars']), 2 * 3 + 2 * 6)
+        self.assertTrue(all(r['restrained']))
+        self.assertEqual(len(r['ties']), 4)
+        self.assertEqual(r['hoops'], [])
+        self.assertFalse(c.blocked(r))
+
+    def test_round2_column_uses_hoops(self):
+        r = c.design(c.ROUND2, 600, 1200, 25, 20, 3, 4)          # h / b = 2, side bars 200 apart
+        self.assertEqual([x['kind'] for x in r['hoops']], ['rect'])
+        self.assertEqual(r['ties'], [])
+        one = c.design(c.ROUND2, 500, 900, 25, 20, 3, 5)         # a single middle bar: a tie
+        self.assertEqual((len(one['ties']), one['hoops']), (1, []))
+
+    def test_round2_arc_too_long(self):
+        r = c.design(c.ROUND2, 600, 1200, 25, 20, 1, 4)
+        self.assertIn('restrained', codes(r, RED))
+
+    def test_round1_flat_end_v_tie(self):
+        r = c.design(c.ROUND1, 400, 800, 25, 20, 1, 3)
+        v = [t for t in r['ties'] if t['kind'] == 'v']
+        self.assertEqual(len(v), 1)
+        self.assertLessEqual(v[0]['apex_angle'], 135)
+        straight = [t for t in r['ties'] if t['kind'] == 'straight']
+        self.assertEqual([round(t['at']) for t in straight], [round(v[0]['points'][0][1])])
+        self.assertEqual(len(r['bars']), 8)
+        self.assertTrue(all(r['restrained']))
+
+    def test_round_needs_long_h(self):
+        self.assertIn('round_sides', codes(c.design(c.ROUND2, 800, 400, 25, 20, 2, 3), RED))
+
+    def test_area(self):
+        r = c.design(c.ROUND2, 400, 1000, 25, 20, 2, 4)
+        ac = 400 * 1000 - 2 * (2 - 3.141592653589793 / 2) * 200 ** 2
+        self.assertAlmostEqual(r['rho'], 12 * 3.141592653589793 * 100 / ac)
+
+
 class ColumnParams(unittest.TestCase):
 
     def test_summary(self):
         self.assertEqual(c.summary(c.design(RECT, 800, 800, 25, 25, 4, 4)),
                          u'Ø8@250/100; 2 inner hoops')
         self.assertEqual(c.summary(c.design(RECT, 1500, 600, 25, 20, 7, 3)),
-                         u'Ø8@250/100; 2 triangles + 3 ties')
+                         u'Ø8@250/100; 2 V-ties + 5 ties')
         self.assertEqual(c.summary(c.design(RECT, 300, 300, 25, 12, 2, 2)), u'Ø8@175/100')
         self.assertEqual(c.summary({'label': None}), u'')
 

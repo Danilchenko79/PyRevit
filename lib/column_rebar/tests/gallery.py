@@ -12,7 +12,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(os.path.dirname(HERE)))
 
 from column_rebar import code466, sketch  # noqa: E402
-from column_rebar.code466 import RECT, CIRCLE  # noqa: E402
+from column_rebar.code466 import RECT, CIRCLE, ROUND1, ROUND2  # noqa: E402
 
 # (title, shape, b, h, cover, bar dia, bars along b, bars along h, overrides)
 CASES = [
@@ -21,7 +21,7 @@ CASES = [
     (u'Стержни далеко — шпилька на каждый', RECT, 800, 800, 25, 25, 4, 4, {'transverse': 'ties'}),
     (u'То же, авто: два шпильки → один внутренний хомут', RECT, 800, 800, 25, 25, 4, 4, {}),
     (u'1000×1000: хомуты парами, средний — шпилькой', RECT, 1000, 1000, 25, 20, 7, 7, {}),
-    (u'Пилон 1500×600, авто: короткие шпильки + треугольники', RECT, 1500, 600, 25, 20, 7, 3, {}),
+    (u'Пилон 1500×600, авто: короткие шпильки + V-образные', RECT, 1500, 600, 25, 20, 7, 3, {}),
     (u'Пилон 1500×600 только шпильками (длинная вдоль)', RECT, 1500, 600, 25, 20, 7, 3, {'transverse': 'ties'}),
     (u'Пилон 1500×600 хомутами парами', RECT, 1500, 600, 25, 20, 7, 3, {'transverse': 'hoops'}),
     (u'Типовая 500×700', RECT, 500, 700, 25, 20, 4, 5, {}),
@@ -36,6 +36,13 @@ CASES = [
     (u'Шаг задан больше нормы (300)', RECT, 400, 600, 25, 20, 3, 4, {'spacing': 300}),
     (u'Круглая D500, 8Ø16', CIRCLE, 500, None, 30, 16, 8, None, {}),
     (u'Круглая D1200, 6Ø20 — шаг по дуге велик', CIRCLE, 1200, None, 30, 20, 6, None, {}),
+    (u'Скруглённая с двух сторон 400×1000 (пилон)', ROUND2, 400, 1000, 25, 20, 2, 4, {}),
+    (u'Скруглённая с двух сторон 500×900 (колонна), средний — шпилькой', ROUND2, 500, 900, 25, 20, 3, 5, {}),
+    (u'Скруглённая с двух сторон 600×1200 (колонна): внутренний хомут', ROUND2, 600, 1200, 25, 20, 3, 4, {}),
+    (u'Скруглённая 500×1500, длинные стороны — шпильки', ROUND2, 500, 1500, 25, 20, 3, 6, {}),
+    (u'Скруглённая, мало стержней на торце', ROUND2, 600, 1200, 25, 20, 1, 4, {}),
+    (u'Скруглённая с одной стороны 400×800', ROUND1, 400, 800, 25, 20, 1, 3, {}),
+    (u'Скруглённая с одной стороны 600×1000', ROUND1, 600, 1000, 25, 20, 3, 4, {}),
 ]
 
 CSS = u"""
@@ -61,6 +68,9 @@ def card(case):
     cls = 'red' if code466.RED in levels else ('yellow' if code466.YELLOW in levels else 'ok')
     if shape == CIRCLE:
         inp = u'D%d, слой %d, %d×Ø%d' % (b, cover, nb, dia)
+    elif shape in code466.ROUNDED:
+        inp = (u'%d×%d, слой %d, Ø%d, на торце %d (без боковых), на длинной стороне %d (с крайними)'
+               % (b, h, cover, dia, nb, nh))
     else:
         inp = u'%d×%d, слой %d, Ø%d, вдоль b %d, вдоль h %d (с угловыми)' % (b, h, cover, dia, nb, nh)
     if ov:
@@ -73,14 +83,14 @@ def card(case):
     if r['label']:
         res.append(u'хомуты ' + r['label'])
     if r['ties']:
-        res.append(u'шпилек %d' % len(r['ties']))
+        res.append(u'прямых шпилек %d' % len([t for t in r['ties'] if t.get('kind') != 'v']))
     rect = [x for x in r.get('hoops') or [] if x['kind'] == 'rect']
-    tri = [x for x in r.get('hoops') or [] if x['kind'] == 'triangle']
+    tri = [x for x in r['ties'] if x.get('kind') == 'v']
     if rect:
         res.append(u'внутр. хомутов %d' % len(rect))
     if tri:
-        res.append(u'треугольных %d (угол %d°)' % (len(tri), round(tri[0]['apex_angle'])))
-    if r.get('set_length') and shape == RECT:
+        res.append(u'V-образных %d (угол %d°)' % (len(tri), round(tri[0]['apex_angle'])))
+    if r.get("set_length") and shape != CIRCLE:
         alt = []
         for mode, name in ((code466.TIES, u'шпильками'), (code466.HOOPS, u'хомутами'), (code466.AUTO, u'авто')):
             o = dict(ov, transverse=mode)
@@ -103,7 +113,7 @@ def main():
             u'пользователь (в окне будут на английском).</p></header>'
             u'<div class="legend"><span><i style="background:#111"></i>закреплённый стержень</span>'
             u'<span><i style="background:#9a9a9a"></i>незакреплённый (≤ 150 от закреплённого)</span>'
-            u'<span><i style="background:#1f5fbf"></i>хомут</span><span><i style="background:#2a8a3a"></i>шпилька</span><span><i style="background:#8a3fc1"></i>внутренний / треугольный хомут</span>'
+            u'<span><i style="background:#1f5fbf"></i>хомут</span><span><i style="background:#2a8a3a"></i>шпилька</span><span><i style="background:#8a3fc1"></i>внутренний хомут</span>'
             u'<span><i style="background:#d0302f"></i>сторона с ошибкой</span></div>'
             u'<div class="grid">%s</div></body></html>' % (CSS, body))
     out = os.path.join(HERE, 'out')

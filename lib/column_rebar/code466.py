@@ -22,6 +22,13 @@ Origin: bottom left corner of the concrete, x along b, y along h.
 import math
 
 RECT, CIRCLE = 'RECT', 'CIRCLE'
+# Rounded shapes of the Create Column families (b = short side = diameter of
+# the rounded end, h = long side; the round ends are at y = 0 / y = h):
+#   ROUND2  both ends half circles;  ROUND1  top end half circle, bottom end flat
+# Bars as in the families' legend: nb = bars on each rounded / flat end WITHOUT
+# the side bars, nh = bars on each long side WITH the end bars of the side.
+ROUND1, ROUND2 = 'ROUND1', 'ROUND2'
+ROUNDED = (ROUND1, ROUND2)
 RED, YELLOW = 'red', 'yellow'
 VERTICAL, HORIZONTAL = 'vertical', 'horizontal'
 
@@ -36,7 +43,7 @@ CL_WALL = u'466-2, 29.1'
 CL_OFFICE = u'office practice'
 
 MIN_BAR_DIA = 12.0
-MIN_BARS = {RECT: 4, CIRCLE: 6}
+MIN_BARS = {RECT: 4, CIRCLE: 6, ROUND1: 4, ROUND2: 4}
 RHO_MIN, RHO_REDUCED, RHO_MAX = 0.008, 0.004, 0.04
 CLEAR_GAP_MIN = 35.0            # aggregate size unknown -> 4/3 * 26 ~ 35 (guide, 3)
 UNRESTRAINED_MAX = 150.0        # unrestrained bar to the nearest restrained one, axes
@@ -54,7 +61,8 @@ WALL_RATIO, WALL_LONG_SIDE = 4.0, 800.0
 #   AUTO   column (long / short <= PYLON_RATIO): ALWAYS (user 2026-11-20) neighbouring restrained bars of
 #          a face are paired into inner closed hoops (two ties -> one hoop);
 #          pylon: ties across the short dimension; the middle bar of a short
-#          face is held by a triangular hoop instead of a long tie.
+#          face is held by a V-shaped tie to the long faces + a straight tie
+#          between its ends, instead of a long tie (user sketch 2026-11-20).
 #   TIES   ties only.   HOOPS  inner hoops wherever two bars can be paired.
 AUTO, TIES, HOOPS = 'auto', 'ties', 'hoops'
 PYLON_RATIO = 2.0               # office rule, to be confirmed
@@ -138,22 +146,24 @@ def _valid(pos, chosen):
     return True
 
 
-def restrain_side(pos):
+def restrain_side(pos, forced=()):
     """Indices of restrained bars on a side: the corners and as few of the
     others as the 150 / 300 rule allows, symmetric about the middle.
+    forced: bars held anyway (the ends of a V-shaped tie).
     None when the rule cannot be met (bars too far apart even if all tied)."""
     n = len(pos)
     if not _valid(pos, range(n)):
         return None
     if n <= 2:
         return list(range(n))
+    forced = set(k for k in forced if 0 < k < n - 1)
     # the fewest ties that pass; of equal ones the symmetric, then the
     # one closest to the middle (ties do not have to be symmetric, bars do)
-    inner = list(range(1, n - 1))
+    inner = [k for k in range(1, n - 1) if k not in forced]
     if len(inner) <= 14:
         best, best_key = None, None
         for mask in range(1 << len(inner)):
-            chosen = [0, n - 1] + [k for b, k in enumerate(inner) if mask >> b & 1]
+            chosen = [0, n - 1] + sorted(forced) + [k for b, k in enumerate(inner) if mask >> b & 1]
             sym = set(chosen) == set(n - 1 - k for k in chosen)
             key = (len(chosen), not sym, sum(abs(k - (n - 1) / 2.0) for k in chosen))
             if best_key is not None and key >= best_key:
@@ -161,7 +171,7 @@ def restrain_side(pos):
             if _valid(pos, chosen):
                 best, best_key = chosen, key
         return sorted(best)
-    chosen, i = [0], 0           # long sides: greedy, then made symmetric
+    chosen, i = [0] + sorted(forced), 0           # long sides: greedy, then made symmetric
     while i < n - 1:
         j = n - 1
         while j > i + 1 and not _valid(pos, [i, j]):
@@ -206,7 +216,7 @@ def tie_cut_length(span, dia):
 
 
 def _transverse(out, mode, b, h, cover, dw, dl, corner, pb, ph, rb, rh):
-    """Ties, inner hoops and triangles of a RECT section (see TRANSVERSE_*).
+    """Ties (straight and V-shaped) and inner hoops of a RECT section (see AUTO).
 
     VERTICAL ties run along h and hold the inner bars of the b faces
     (bottom / top); HORIZONTAL ties run along b and hold the h faces."""
@@ -228,11 +238,9 @@ def _transverse(out, mode, b, h, cover, dw, dl, corner, pb, ph, rb, rh):
             continue
         long_ties = across == long_ and pylon            # a tie along the pylon
         use_hoops = mode == HOOPS or (mode == AUTO and not pylon)
-        triangle = (mode == AUTO and long_ties and len(inner) == 1
-                    and len(pos) % 2 == 1 and inner[0] == len(pos) // 2)
-        if triangle:
-            if _triangles(out, direction, pos, other, corner, b, h, dw, dl):
-                continue
+        if out.get('_v') and out['_v'][0] == direction:
+            _v_ties(out, direction, pos, other, out['_v'][1], corner, dw, dl, b, h)
+            continue
         if use_hoops and len(inner) >= 2:
             pairs, singles = pair_up(inner)
         else:
@@ -249,44 +257,166 @@ def _transverse(out, mode, b, h, cover, dw, dl, corner, pb, ph, rb, rh):
                                  'length': 2.0 * (w + d) + HOOP_HOOKS * dw})
         for i in singles:
             span = across - 2.0 * corner
-            out['ties'].append({'direction': direction, 'at': pos[i], 'dia': dw,
+            out['ties'].append({'kind': 'straight', 'direction': direction, 'at': pos[i], 'dia': dw,
                                 'length': tie_cut_length(span, dw)})
-    # a triangle leg on a long face replaces the tie at the same bar
-    legs = set((x['leg_direction'], round(x['leg_at'], 3)) for x in out['hoops']
-               if x['kind'] == 'triangle')
-    out['ties'] = [t for t in out['ties'] if (t['direction'], round(t['at'], 3)) not in legs]
 
 
-def _triangles(out, direction, pos, other, corner, b, h, dw, dl):
-    """Triangular hoops holding the middle bar of the two short faces: apex on
-    the middle bar, the other two corners on the nearest bars of the long
-    faces at which the angle at the apex is <= 135 degrees.  False if none."""
-    mid = pos[len(pos) // 2]                    # along the short face
+def v_base(mid, corner, other):
+    """Index on the long faces where a V-shaped tie from the middle bar of a
+    short face (at `mid` along it, `corner` from its end) may end: the first
+    bar from that end at which the angle of the V is <= 135 degrees.
+    None if there is none before the middle of the long face."""
     half = mid - corner
     need = half / math.tan(math.radians(APEX_MAX / 2.0))
-    k = None
-    for idx in range(1, len(other) - 1):        # bars of the long faces, from the end
-        if other[idx] - corner >= need - 1e-6:
-            k = idx
-            break
-    if k is None or other[k] >= other[-1 - k]:
-        return False
-    for kk, end in ((k, corner), (len(other) - 1 - k, None)):
+    for idx in range(1, len(other) - 1):
+        if other[idx] - other[0] >= need - 1e-6:
+            return idx if other[idx] < other[-1 - idx] else None
+    return None
+
+
+def v_tie(apex, p1, p2, dw, dl):
+    """A V-shaped tie bent round `apex`, hooked on p1 and p2."""
+    legs = math.hypot(apex[0] - p1[0], apex[1] - p1[1]) + math.hypot(apex[0] - p2[0], apex[1] - p2[1])
+    a1 = math.atan2(p1[1] - apex[1], p1[0] - apex[0])
+    a2 = math.atan2(p2[1] - apex[1], p2[0] - apex[0])
+    ang = abs(math.degrees(a1 - a2))
+    ang = 360.0 - ang if ang > 180.0 else ang
+    return {'kind': 'v', 'points': [p1, apex, p2], 'apex_angle': ang, 'dia': dw,
+            'length': legs + math.pi * (dl + dw) / 2.0 + TIE_HOOKS * dw}
+
+
+def _v_ties(out, direction, pos, other, k, corner, dw, dl, b, h):
+    """V-shaped ties holding the middle bar of both short faces (user sketch
+    2026-11-20, pylon): apex on the middle bar, ends on bar k of the long faces
+    from that end; the straight tie between those two bars comes from the long
+    faces (bar k is forced restrained there)."""
+    mid = pos[len(pos) // 2]
+    n = len(other)
+    for kk, end in ((k, other[0]), (n - 1 - k, other[-1])):
         x = other[kk]
-        apex_x = corner if end is not None else other[-1]
-        angle = 2.0 * math.degrees(math.atan2(half, abs(x - apex_x)))
         if direction == HORIZONTAL:             # short faces are left / right
-            pts = [(apex_x, mid), (x, corner), (x, h - corner)]
-            leg_dir = VERTICAL
+            t = v_tie((end, mid), (x, corner), (x, h - corner), dw, dl)
         else:                                   # short faces are bottom / top
-            pts = [(mid, apex_x), (corner, x), (b - corner, x)]
-            leg_dir = HORIZONTAL
-        per = sum(math.hypot(p[0] - q[0], p[1] - q[1])
-                  for p, q in zip(pts, pts[1:] + pts[:1]))
-        out['hoops'].append({'kind': 'triangle', 'points': pts, 'dia': dw,
-                             'apex_angle': angle, 'leg_direction': leg_dir, 'leg_at': x,
-                             'length': per + math.pi * (dl + dw) + HOOP_HOOKS * dw})
-    return True
+            t = v_tie((mid, end), (corner, x), (b - corner, x), dw, dl)
+        t['direction'] = direction
+        out['ties'].append(t)
+
+
+def _rounded(out, shape, b, h, cover, dw, dl, ne, ns, mode):
+    """Bars and transverse reinforcement of ROUND1 / ROUND2 (see ROUNDED).
+
+    Rule (to be confirmed by the user, 2026-11-20):
+    - the stirrup follows the outline; bars on a rounded end, and the side bars
+      where the side meets it, are held by the curved stirrup (as in a round
+      column) - along the arc at most 300 between bars;
+    - the inner bars of the long sides follow the 150 / 300 rule and are held
+      across b like a RECT column: inner hoops in pairs (column) or ties (pylon);
+    - ROUND1 flat end: corners held by the stirrup; a middle bar that needs it -
+      a V-shaped tie to the side bars + a straight tie between them; more than one - by hand (yellow)."""
+    m = out['messages']
+    R = b / 2.0
+    off = bar_offset(cover, dw, dl)
+    r = R - off
+    corner = corner_offset(cover, dw, dl)
+    need = max(CLEAR_GAP_MIN, dl)
+    if ns < 2 or r <= dl:
+        return
+    two = shape == ROUND2
+    y_top = h - R                                   # centre of the top half circle
+    y_bot = R if two else corner
+    if y_top <= y_bot:
+        m.append(msg(RED, 'round_sides', u'The section is too short for its rounded ends.',
+                     u'geometry'))
+        return
+    ys = [y_bot + (y_top - y_bot) * i / (ns - 1.0) for i in range(ns)]
+    xl, xr = R - r, R + r
+    bars, flags = [], []
+
+    # ROUND1 flat end: which bars need holding; a middle one -> V-shaped tie to
+    # the side bars at index kv (forced restrained there, plus a straight tie)
+    kv, xs, rf, inner_f = None, [], [], []
+    if not two and ne > 0:
+        xs = side_positions(b, ne + 2, corner)
+        rf = restrain_side(xs)
+        inner_f = (rf or [])[1:-1]
+        if len(inner_f) == 1 and ne % 2 == 1 and inner_f[0] == (ne + 1) // 2:
+            need_y = (xs[inner_f[0]] - xl) / math.tan(math.radians(APEX_MAX / 2.0))
+            kv = next((i for i in range(1, ns - 1) if ys[i] - ys[0] >= need_y - 1e-6), None)
+
+    # long sides
+    rs = restrain_side(ys, (kv,) if kv is not None else ())
+    ok, _ = _side_gap_ok(ys, dl)
+    if not ok:
+        gap = min(q - p for p, q in zip(ys, ys[1:])) - dl
+        m.append(msg(RED, 'gap', u'Along the long sides bars are %d mm apart in the clear, '
+                     u'at least %d. Take fewer or thinner bars.' % (round(gap), need), CL_GAP, u'h'))
+    if rs is None:
+        step = max(q - p for p, q in zip(ys, ys[1:]))
+        m.append(msg(RED, 'restrained', u'Along the long sides bars are %d mm apart, at most %d '
+                     u'even when every bar is tied. Add a bar on the long sides.'
+                     % (round(step), RESTRAINED_MAX), CL_RESTRAINT, u'h'))
+    for side_x, corner_x in ((xl, corner), (xr, b - corner)):
+        for i, y in enumerate(ys):
+            x = corner_x if (not two and i == 0) else side_x
+            bars.append((x, y))
+            flags.append(i in (0, ns - 1) or (rs is not None and i in rs))
+
+    # rounded ends: bars between the tangent points, all held by the curved stirrup
+    arcs = [(y_top, 0.0)] + ([(R, math.pi)] if two else [])
+    dth = math.pi / (ne + 1.0)
+    for yc, start in arcs:
+        for k in range(1, ne + 1):
+            th = start + k * dth
+            bars.append((R + r * math.cos(th), yc + r * math.sin(th)))
+            flags.append(True)
+    chord = 2.0 * r * math.sin(dth / 2.0)
+    if chord - dl < need - 1e-6:
+        m.append(msg(RED, 'gap', u'On the rounded end bars are %d mm apart in the clear, at least %d. '
+                     u'Take fewer bars on the end.' % (round(chord - dl), need), CL_GAP, u'b'))
+    if r * dth > RESTRAINED_MAX + 1e-6:
+        m.append(msg(RED, 'restrained', u'On the rounded end bars are %d mm apart along the arc, '
+                     u'at most %d. Add bars on the end.' % (round(r * dth), RESTRAINED_MAX),
+                     CL_BARS, u'b'))
+
+    # ROUND1 flat end
+    if xs:
+        for x in xs[1:-1]:
+            bars.append((x, corner))
+        flags.extend([i in (rf or []) for i in range(1, ne + 1)])
+        ok, _ = _side_gap_ok(xs, dl)
+        if not ok:
+            m.append(msg(RED, 'gap', u'Along the flat end bars are %d mm apart in the clear, at least %d.'
+                         % (round(xs[1] - xs[0] - dl), need), CL_GAP, u'b'))
+        if rf is None:
+            m.append(msg(RED, 'restrained', u'Along the flat end bars are %d mm apart, at most %d. '
+                         u'Add a bar on the flat end.' % (round(xs[1] - xs[0]), RESTRAINED_MAX),
+                         CL_RESTRAINT, u'b'))
+        elif kv is not None:
+            t = v_tie((xs[inner_f[0]], corner), (xl, ys[kv]), (xr, ys[kv]), dw, dl)
+            t['direction'] = VERTICAL
+            out['ties'].append(t)
+        elif inner_f:
+            m.append(msg(YELLOW, 'flat_end', u'%d bars of the flat end need holding; hold them by hand '
+                         u'(a tie to the rounded end or a hoop).' % len(inner_f), CL_STIRRUP, u'b'))
+    out['bars'], out['restrained'] = bars, flags
+
+    # inner bars of the long sides: across b; the end of a V-shaped tie keeps a straight tie
+    inner = [i for i in (rs or [])[1:-1] if i != kv]
+    pylon = h / float(b) > PYLON_RATIO
+    if mode == HOOPS or (mode != TIES and not pylon):
+        pairs, singles = pair_up(inner) if len(inner) >= 2 else ([], inner)
+    else:
+        pairs, singles = [], inner
+    if kv is not None:
+        singles = sorted(singles + [kv])
+    for i, j in pairs:
+        w = ys[j] - ys[i] + dl + 2.0 * dw
+        out['hoops'].append({'kind': 'rect', 'direction': HORIZONTAL, 'bars': (i, j),
+                             'box': (xl, ys[i], xr, ys[j]), 'a': w, 'b': b - 2.0 * cover,
+                             'dia': dw, 'length': 2.0 * (w + b - 2.0 * cover) + HOOP_HOOKS * dw})
+    for i in singles:
+        out['ties'].append({'kind': 'straight', 'direction': HORIZONTAL, 'at': ys[i], 'dia': dw,
+                            'length': tie_cut_length(xr - xl, dw)})
 
 
 def design(shape, b, h, cover, bar_dia, nb, nh=None, stirrup_dia=None,
@@ -310,6 +440,15 @@ def design(shape, b, h, cover, bar_dia, nb, nh=None, stirrup_dia=None,
         ac = math.pi * b * b / 4.0
         short = long_ = b
         n = nb
+    elif shape in ROUNDED:
+        ends = 2 if shape == ROUND2 else 1
+        ac = b * h - ends * (2.0 - math.pi / 2.0) * (b / 2.0) ** 2
+        short, long_ = b, h
+        n = 2 * nb + 2 * nh
+        if h < b:
+            m.append(msg(RED, 'round_sides', u'For a rounded column give b as the short side '
+                         u'(diameter of the round end) and h as the long one.', u'geometry'))
+            return out
     else:
         ac = b * h
         short, long_ = min(b, h), max(b, h)
@@ -362,11 +501,22 @@ def design(shape, b, h, cover, bar_dia, nb, nh=None, stirrup_dia=None,
         m.append(msg(RED, 'stirrup_fit', u'Cover %d leaves no room for the stirrup and bars. '
                      u'Reduce the cover or enlarge the section.' % cover, u'geometry'))
         return out
-    out['stirrup'] = {'shape': shape, 'dia': stirrup_dia, 'a': sa, 'b': sb,
-                      'length': (math.pi * sa if shape == CIRCLE else 2.0 * (sa + sb))
-                      + HOOP_HOOKS * stirrup_dia}
-
     if shape == CIRCLE:
+        per = math.pi * sa
+    elif shape == ROUND2:
+        per = 2.0 * (sb - sa) + math.pi * sa
+    elif shape == ROUND1:
+        per = 2.0 * (sb - sa / 2.0) + sa + math.pi * sa / 2.0
+    else:
+        per = 2.0 * (sa + sb)
+    out['stirrup'] = {'shape': shape, 'dia': stirrup_dia, 'a': sa, 'b': sb,
+                      'length': per + HOOP_HOOKS * stirrup_dia}
+
+    if shape in ROUNDED:
+        _rounded(out, shape, b, h, cover, stirrup_dia, bar_dia, nb, nh, transverse)
+        out['set_length'] = (out['stirrup']['length'] + sum(t['length'] for t in out['ties'])
+                             + sum(x['length'] for x in out['hoops']))
+    elif shape == CIRCLE:
         if n < 1:
             return out
         r = b / 2.0 - bar_offset(cover, stirrup_dia, bar_dia)
@@ -390,6 +540,22 @@ def design(shape, b, h, cover, bar_dia, nb, nh=None, stirrup_dia=None,
         ph = side_positions(h, nh, corner)      # y of bars on the left / right sides
         bars, flags = [], []
         rb, rh = restrain_side(pb), restrain_side(ph)
+        # pylon, AUTO: the middle bar of a short face by a V-shaped tie + a straight one
+        if (transverse or AUTO) == AUTO and long_ / float(short) > PYLON_RATIO:
+            if b < h:      # short faces bottom / top, their ties would run along h
+                sp, sr, lp, sdir = pb, rb, ph, VERTICAL
+            else:
+                sp, sr, lp, sdir = ph, rh, pb, HORIZONTAL
+            inner_s = (sr or [])[1:-1]
+            if len(inner_s) == 1 and len(sp) % 2 == 1 and inner_s[0] == len(sp) // 2:
+                k = v_base(sp[len(sp) // 2], sp[0], lp)
+                if k is not None:
+                    forced = (k, len(lp) - 1 - k)
+                    if sdir == VERTICAL:
+                        rh = restrain_side(ph, forced)
+                    else:
+                        rb = restrain_side(pb, forced)
+                    out['_v'] = (sdir, k)
         for pos, restr, side, name in ((pb, rb, b, u'b'), (ph, rh, h, u'h')):
             ok, need = _side_gap_ok(pos, bar_dia)
             if not ok:
@@ -420,6 +586,7 @@ def design(shape, b, h, cover, bar_dia, nb, nh=None, stirrup_dia=None,
         out['bars'], out['restrained'] = bars, flags
         _transverse(out, transverse, b, h, cover, stirrup_dia, bar_dia, corner,
                     pb, ph, rb, rh)
+        out.pop('_v', None)
         out['set_length'] = (out['stirrup']['length'] + sum(t['length'] for t in out['ties'])
                              + sum(x['length'] for x in out['hoops']))
 
@@ -445,9 +612,9 @@ def summary(result):
         return u''
     parts = []
     rect = len([x for x in result.get('hoops') or [] if x['kind'] == 'rect'])
-    tri = len([x for x in result.get('hoops') or [] if x['kind'] == 'triangle'])
-    ties = len(result.get('ties') or [])
-    for n, one, many in ((rect, u'inner hoop', u'inner hoops'), (tri, u'triangle', u'triangles'),
+    vt = len([x for x in result.get('ties') or [] if x.get('kind') == 'v'])
+    ties = len(result.get('ties') or []) - vt
+    for n, one, many in ((rect, u'inner hoop', u'inner hoops'), (vt, u'V-tie', u'V-ties'),
                          (ties, u'tie', u'ties')):
         if n:
             parts.append(u'%d %s' % (n, one if n == 1 else many))
