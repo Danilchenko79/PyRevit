@@ -21,7 +21,7 @@ class Spacing(unittest.TestCase):
 
     def test_guide_example(self):
         # guide, section 5: 400x600, D20 -> D8@250/100; D12 -> D8@175/100
-        self.assertEqual(c.design(RECT, 400, 600, 25, 20, 3, 4)['label'], u'Ø8@250/100')
+        self.assertEqual(c.design(RECT, 400, 600, 25, 20, 3, 4)['label'], u'Ø8@200/100')
         self.assertEqual(c.main_spacing(400, 12), 175)
         self.assertEqual(c.dense_spacing(250), 100)
         self.assertEqual(c.dense_spacing(175), 100)
@@ -221,7 +221,7 @@ class Alternate(unittest.TestCase):
         for s in solid:
             m = [a for a in alt if a['direction'] == s['direction']][0]
             self.assertAlmostEqual(s['at'] + m['at'], 400)          # the mirror bar
-        self.assertEqual(c.summary(r), u'Ø8@250/100; 2 ties (alternating)')
+        self.assertEqual(c.summary(r), u'Ø8@200/100; 2 ties (alternating)')
 
     def test_symmetric_face_has_no_alternate(self):
         r = c.design(RECT, 600, 600, 25, 16, 5, 5)
@@ -254,9 +254,9 @@ class ColumnParams(unittest.TestCase):
 
     def test_summary(self):
         self.assertEqual(c.summary(c.design(RECT, 800, 800, 25, 25, 4, 4)),
-                         u'Ø8@250/100; 2 inner hoops')
+                         u'Ø8@200/100; 2 inner hoops')
         self.assertEqual(c.summary(c.design(RECT, 1500, 600, 25, 20, 7, 3)),
-                         u'Ø8@250/100; 2 V-ties + 5 ties')
+                         u'Ø8@200/100; 2 V-ties + 5 ties')
         self.assertEqual(c.summary(c.design(RECT, 300, 300, 25, 12, 2, 2)), u'Ø8@175/100')
         self.assertEqual(c.summary({'label': None}), u'')
 

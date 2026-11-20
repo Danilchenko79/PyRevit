@@ -7,9 +7,10 @@ Per group (a row of the table):
   section     PEER_Column Section / Round2 / Round1 with code466 -> slots values
   tag         'Detail items_Tag Rebar' : 'Tag Rebar 2D10' (bars of the section)
   dimensions  b and h, text u'עמוד b/h' (cm), mark symbols PR_Column Number
-  bar list    to the right, one under the other, each with its tag - what the
-              schedules count: perimeter stirrup (Shape 52 / 60), inner hoops
-              (Shape 52, quantity), straight ties (Shape 62, quantity)
+  bar list    one row to the right of the section, each detail turned as it
+              lies in the section, its tag under it - what the schedules
+              count: perimeter stirrup (Shape 52 / 60), inner hoops (Shape 52,
+              quantity), straight ties (Shape 62, quantity; across b turned 90)
 The V-shaped tie has no 2D shape family yet: it is drawn in the section and
 reported, it is not in the bar list.
 """
@@ -43,8 +44,13 @@ MARK_DROP = 55.0
 MARK_STEP = 210.0
 MARK_START = 210.0
 LIST_GAP = 400.0          # section -> bar list
-LIST_ITEM_GAP = 250.0
-TAG_ROOM = 900.0
+LIST_ITEM_GAP = 300.0     # between the details of the row
+TAG_ROOM = 900.0          # a bar tag is about this wide
+TAG_DROP = 250.0          # tag head under the detail
+TAG_HEIGHT = 250.0
+ROUND_TAG_EXTRA = 300.0   # Shape 60 has its radius dimension under the arc
+TIE_WIDTH = 150.0
+DETAIL_MARGIN = 150.0     # the shape's own dimension texts
 GAP = 300.0
 
 REQUIRED = [SECTION_FAMILY[code466.RECT], SECTION_FAMILY[code466.ROUND2], SECTION_FAMILY[code466.ROUND1],
@@ -110,45 +116,65 @@ def activate(types):
             v.Activate()
 
 
+def _hoop_dims(hp):
+    """(Rebar_A along x, Rebar_B along y) of an inner hoop as it lies in the section."""
+    x1, y1, x2, y2 = hp['box']
+    small, big = sorted((hp['a'], hp['b']))
+    return (big, small) if abs(x2 - x1) >= abs(y2 - y1) else (small, big)
+
+
 def bar_list(result, g):
-    """What goes to the right of the section: [(kind, family key, params, qty, note)]."""
+    """What goes to the right of the section, each detail as it lies in the
+    section: [(kind, family key, params, qty, rotate 90)]. A tie across b
+    (horizontal) is the Shape 62 turned by 90 degrees."""
     shape, b, h, c = g['shape'], g['b'], g['h'], g.get('cover') or 25.0
-    st = result['stirrup']
     items = []
     if shape != code466.ROUND2:
         items.append(('stirrup', 'stirrup_' + shape,
-                      {'Rebar_A': b - 2 * c, 'Rebar_B': h - 2 * c}, 1, u''))
+                      {'Rebar_A': b - 2 * c, 'Rebar_B': h - 2 * c}, 1, False))
     hoops = {}
     for hp in result.get('hoops') or []:
         if hp['kind'] == 'rect':
-            k = (round(hp['a']), round(hp['b']))
+            k = tuple(round(v) for v in _hoop_dims(hp))
             hoops[k] = hoops.get(k, 0) + 1
     for (a, bb), n in sorted(hoops.items()):
-        items.append(('hoop', 'hoop', {'Rebar_A': float(a), 'Rebar_B': float(bb)}, n, u''))
+        items.append(('hoop', 'hoop', {'Rebar_A': float(a), 'Rebar_B': float(bb)}, n, False))
     ties = {}
     for t in result.get('ties') or []:
         if t.get('kind') == 'v' or t.get('alt'):
             continue
-        span = (h if t['direction'] == code466.VERTICAL else b) - 2 * c
-        ties[round(span)] = ties.get(round(span), 0) + 1
-    for span, n in sorted(ties.items()):
-        items.append(('tie', 'tie', {'Rebar_B': float(span)}, n, u''))
+        vertical = t['direction'] == code466.VERTICAL
+        span = (h if vertical else b) - 2 * c
+        k = (not vertical, round(span))
+        ties[k] = ties.get(k, 0) + 1
+    for (horizontal, span), n in sorted(ties.items()):
+        items.append(('tie', 'tie', {'Rebar_B': float(span)}, n, horizontal))
     return items
+
+
+def item_size(kind, prm, rotate):
+    """(width, height) of one detail on the view, mm, with its own dimension texts."""
+    if kind == 'tie':
+        w, h = TIE_WIDTH, prm['Rebar_B'] + DETAIL_MARGIN
+        return (h, w) if rotate else (w, h)
+    return prm['Rebar_A'] + DETAIL_MARGIN, prm['Rebar_B'] + DETAIL_MARGIN
 
 
 def extent(g, result):
     """{left, right, down, up} of one group's drawing from its insertion point
-    (bottom-left corner of the concrete), mm."""
+    (bottom-left corner of the concrete), mm. The details stand in one row to
+    the right of the section, top at the top of the concrete, each tag under
+    its detail."""
     b, h = g['b'], g['h']
     rows = grouping.mark_rows(grouping.marks_and_ranges(g['marks']))
     left = max(DIM_OFFSET + 100, max([MARK_START + sum(i['width'] for i in r) for r in rows] or [0]))
-    items = bar_list(result, g)
-    widest = max([max(p.get('Rebar_A', 0.0), p.get('Rebar_B', 0.0) if k == 'tie' else p.get('Rebar_A', 0.0))
-                  for k, _, p, _, _ in items] or [0.0])
-    right = b + LIST_GAP + widest + TAG_ROOM
-    tall = sum((p.get('Rebar_B', 0.0) if k != 'tie' else 150.0) + LIST_ITEM_GAP + 200 for k, _, p, _, _ in items)
+    right, low = b + LIST_GAP, 0.0
+    for kind, _, prm, _, rot in bar_list(result, g):
+        w, hh = item_size(kind, prm, rot)
+        right += max(w, TAG_ROOM) + LIST_ITEM_GAP
+        low = max(low, hh + TAG_DROP + TAG_HEIGHT + (ROUND_TAG_EXTRA if kind == 'stirrup' and g['shape'] == code466.ROUND1 else 0))
     up = h + 200
-    down = max(TEXT_DROP + MARK_DROP + MARK_STEP * max(1, len(rows)), tall - h)
+    down = max(TEXT_DROP + MARK_DROP + MARK_STEP * max(1, len(rows)), low - h)
     return {'left': left, 'right': right, 'down': down, 'up': up}
 
 
@@ -190,14 +216,40 @@ def _dim(doc, view, inst, a, b_, p0, p1, dim_type):
     return doc.Create.NewDimension(view, Line.CreateBound(p0, p1), arr)
 
 
-def _move_bbox_top_left(doc, view, el, x, y):
+def _lines_box(doc, view, el):
+    """(min x, min y, max x, max y) in feet of the VISIBLE lines of a detail on
+    the view. Its bounding box takes the hidden variants of the family too and
+    reaches far below the drawn shape."""
+    from Autodesk.Revit.DB import Curve, GeometryInstance, Options
+    o = Options()
+    o.View = view
+    pts = []
+
+    def walk(geo):
+        for g in geo:
+            if isinstance(g, GeometryInstance):
+                walk(g.GetInstanceGeometry())
+            elif isinstance(g, Curve):
+                for t in g.Tessellate():
+                    pts.append(t)
+    geo = el.get_Geometry(o)
+    if geo is not None:
+        walk(geo)
+    if not pts:
+        bb = el.get_BoundingBox(view)
+        return None if bb is None else (bb.Min.X, bb.Min.Y, bb.Max.X, bb.Max.Y)
+    return (min(q.X for q in pts), min(q.Y for q in pts), max(q.X for q in pts), max(q.Y for q in pts))
+
+
+def _move_top_left(doc, view, el, x, y):
+    """Visible lines of the detail: top-left corner to (x, y) mm."""
     doc.Regenerate()
-    bb = el.get_BoundingBox(view)
-    if bb is None:
+    box = _lines_box(doc, view, el)
+    if box is None:
         return None
-    ElementTransformUtils.MoveElement(doc, el.Id, XYZ(ft(x) - bb.Min.X, ft(y) - bb.Max.Y, 0))
+    ElementTransformUtils.MoveElement(doc, el.Id, XYZ(ft(x) - box[0], ft(y) - box[3], 0))
     doc.Regenerate()
-    return el.get_BoundingBox(view)
+    return _lines_box(doc, view, el)
 
 
 def draw_group(doc, view, g, result, values, origin, types, report):
@@ -233,18 +285,18 @@ def draw_group(doc, view, g, result, values, origin, types, report):
                     p.Set(1 if it['num_plus'] else 0)
                 x -= it['width']
             y -= MARK_STEP
-    # bar list
-    xs, ycur = x0 + b + LIST_GAP, y0 + h
-    st = result['stirrup']
-    for kind, key, prm, qty, note in bar_list(result, g):
+    # bar list: one row to the right, top at the top of the concrete,
+    # each detail as it lies in the section, its tag under it
+    xs, ytop = x0 + b + LIST_GAP, y0 + h
+    for kind, key, prm, qty, rot in bar_list(result, g):
         s = types.get(key)
         if s is None:
             report['notes'].append(u'%s: no family for the %s' % (u', '.join(g['marks']), kind))
             continue
-        el = doc.Create.NewFamilyInstance(XYZ(ft(xs), ft(ycur), 0), s, view)
+        el = doc.Create.NewFamilyInstance(XYZ(ft(xs), ft(ytop), 0), s, view)
         vals = dict(prm)
-        vals['Rebar_Diameter'] = st['dia']
-        vals['Rebar_Spacing'] = result['spacing'] or 200.0
+        vals['Rebar_Diameter'] = result['stirrup']['dia']
+        vals['Rebar_Spacing'] = result['spacing'] or code466.DEFAULT_SPACING
         _set(el, vals)
         if kind != 'stirrup' and qty:
             for k in ('Rebar_Quantity Text',):
@@ -257,12 +309,19 @@ def draw_group(doc, view, g, result, values, origin, types, report):
                     p.Set(int(qty)) if p.StorageType == StorageType.Integer else p.Set(float(qty))
                 except Exception:
                     pass
-        bb = _move_bbox_top_left(doc, view, el, xs, ycur)
-        if bb is not None and types['bar_tag'] is not None:
-            _tag(doc, view, el, types['bar_tag'], XYZ(bb.Max.X + ft(150), (bb.Min.Y + bb.Max.Y) / 2, 0))
-            ycur = bb.Min.Y * FT - LIST_ITEM_GAP
-        else:
-            ycur -= 300
+        if rot:
+            doc.Regenerate()
+            ElementTransformUtils.RotateElement(doc, el.Id, Line.CreateBound(XYZ(ft(xs), ft(ytop), 0),
+                                                                             XYZ(ft(xs), ft(ytop), 1)),
+                                                math.pi / 2.0)
+        box = _move_top_left(doc, view, el, xs, ytop)
+        w = item_size(kind, prm, rot)[0]
+        if box is not None:
+            w = (box[2] - box[0]) * FT
+            if types['bar_tag'] is not None:
+                drop = TAG_DROP + (ROUND_TAG_EXTRA if kind == 'stirrup' and g['shape'] == code466.ROUND1 else 0)
+                _tag(doc, view, el, types['bar_tag'], XYZ(box[0] + ft(100), box[1] - ft(drop), 0))
+        xs += max(w, TAG_ROOM) + LIST_ITEM_GAP
     if any(t.get('kind') == 'v' for t in result.get('ties') or []):
         report['notes'].append(u'%s: V-shaped tie drawn in the section, no shape family for the bar list'
                                % u', '.join(g['marks']))

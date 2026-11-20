@@ -15,7 +15,7 @@ from Autodesk.Revit.DB import (ElementId, FilteredElementCollector, TransactionG
                                ViewFamily, ViewFamilyType)
 from System.Collections.Generic import List
 
-from column_rebar import code466, revit_collect, revit_draw, revit_params, slots
+from column_rebar import code466, numbering, revit_collect, revit_draw, revit_params, slots
 from column_rebar.family_build import run as tx
 
 TITLE = u'Create Column (new)'
@@ -131,12 +131,12 @@ def run(doc, choice, families_folder, ask, require_families=True):
                 revit_draw.draw_group(doc, v, g, r, vals, p, types, report)
 
         def numbers():
-            try:
-                from Samples.Numeration import process_drafting_view
-            except Exception as ex:          # outside pyRevit (tests) the module may be missing
-                report['notes'].append(u'bar numbers not set: %s' % ex)
-                return
-            process_drafting_view(doc, st['v'])
+            doc.Regenerate()                 # Rebar_Length is a formula of the shape
+            n = numbering.number_view(doc, st['v'])
+            st['numbers'] = n
+            if n['written'] < n['details']:
+                report['notes'].append(u'bar numbers: %d of %d details have no Rebar_Number'
+                                       % (n['details'] - n['written'], n['details']))
 
         steps = [(u'parameters', params), (u'view', make_view), (u'drawing', draw), (u'numbers', numbers)]
         for name, fn in steps:
@@ -149,7 +149,7 @@ def run(doc, choice, families_folder, ask, require_families=True):
     finally:
         if tg.HasStarted() and not tg.HasEnded():
             tg.RollBack()
-    out.update(ok=True, drawn=len(todo), notes=report['notes'], view=st.get('v'))
+    out.update(ok=True, drawn=len(todo), notes=report['notes'], view=st.get('v'), numbers=st.get('numbers'))
     return out
 
 
@@ -157,6 +157,9 @@ def summary(out, view_name):
     if out['error']:
         return out['error']
     lines = [u'Drawn: %d group(s) on "%s".' % (out['drawn'], view_name)]
+    n = out.get('numbers')
+    if n:
+        lines.append(u'Bar numbers: %d positions on %d details of the view.' % (n['positions'], n['details']))
     if out['skipped']:
         lines.append(u'\nNot drawn (red):\n' + u'\n'.join(out['skipped']))
     if out['notes']:

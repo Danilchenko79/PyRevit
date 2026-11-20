@@ -53,6 +53,9 @@ STIRRUP_SERIES = (8.0, 10.0, 12.0, 14.0, 16.0)
 SPACING_MAX = 250.0
 SPACING_BAR_FACTOR = 16.0
 DENSE_FACTOR, DENSE_MAX = 0.6, 100.0
+# office default when the column has no spacing: 200 / 100 (user, 20.11.2026);
+# smaller only when SI 466 asks for it
+DEFAULT_SPACING, DEFAULT_DENSE = 200.0, 100.0
 SPACING_ROUND = 25.0
 WALL_RATIO, WALL_LONG_SIDE = 4.0, 800.0
 
@@ -638,12 +641,12 @@ def design(shape, b, h, cover, bar_dia, nb, nh=None, stirrup_dia=None,
 
     # 5. spacing along the column
     s_max = main_spacing(short, bar_dia) if bar_dia else floor_to(min(short, SPACING_MAX))
-    s = s_max if spacing is None else float(spacing)
+    s = min(s_max, DEFAULT_SPACING) if spacing is None else float(spacing)
     if s > min(short, SPACING_BAR_FACTOR * bar_dia, SPACING_MAX) + 1e-6:
         m.append(msg(RED, 'spacing', u'Stirrups every %d mm, at most %d here '
                      u'(smaller side, 16 bar diameters, 250).' % (s, s_max), CL_STIRRUP))
     s1_max = dense_spacing(s)
-    s1 = s1_max if dense is None else float(dense)
+    s1 = min(s1_max, DEFAULT_DENSE) if dense is None else float(dense)
     if s1 > min(DENSE_FACTOR * s, DENSE_MAX) + 1e-6:
         m.append(msg(RED, 'dense', u'Dense stirrups every %d mm, at most %d at joints and laps.'
                      % (s1, s1_max), CL_DENSE))
