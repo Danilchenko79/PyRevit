@@ -47,7 +47,7 @@ Revit **2024**, публиковать только из 2024. ID = имя фа�
 
 ## Проверки
 ```
-py -3 -m unittest discover -s lib/peer_library/tests     # 134 теста, в т.ч. клиент ↔ сервис (node)
+py -3 -m unittest discover -s lib/peer_library/tests     # 137 тестов, в т.ч. клиент ↔ сервис (node)
 node --test service/test                                  # 27 тестов сервиса
 ```
 Синтаксис IronPython и XAML — `ipy`-компиляция и `XamlReader` (см. историю сессии 20.11.2026).
@@ -129,11 +129,31 @@ sym = require.symbol(doc, u'PR_Wall2D_Edge', u'Type 1')   # затем sym.Activ
 | После обновления — уведомление с версией и заметкой выпуска; админу при старте — сколько заявок ждёт | `peer_update.run`, `access.background_work` |
 | Панель Library скрыта у пользователей, пока в библиотеке нет семейств (`access.library_ready`) | `access.py` |
 
-Выпуск (ключ админа этого пользователя Windows, не печатается; в пакет идут только закоммиченные файлы):
+Два издания, каждое — своё расширение и своя вкладка в Revit, могут стоять рядом:
+
+| | PEER | PEER_dev |
+|---|---|---|
+| Ветка | `main` | `dev` |
+| Канал на сервисе | `stable` | `beta` |
+| Папка / вкладка | `PEER.extension` / `PEER.tab` | `PEER_dev.extension` / `PEER_dev.tab` |
+| Установщик | `<сервис>/install` | `<сервис>/install?channel=beta` |
+
+Код один: при сборке dev-пакета `pack.build(channel='beta')` переименовывает папку вкладки и пишет
+`"edition": "dev"` в `version.json`; пути к окнам берутся через `version.tab_dir()`. Ключ, адрес сервиса и
+библиотека семейств у изданий общие. Каждое издание следит только за своим каналом; чужой пакет не примут ни
+обновление, ни установщик, ни `release.ps1 -Do promote`. PEER_dev рядом с PEER общие фоновые дела
+(телеметрия, шаблон, уведомления) оставляет PEER (`version.is_secondary`).
+
+Автовыпуск: `.github/workflows/release.yml` → `tools/release/ci_release.py`: пуш в `dev` → PEER_dev, пуш в
+`main` → PEER. Нужны секреты репозитория `PEER_URL` и `PEER_RELEASE_KEY` (ключ админа «для робота»); без них
+задание ничего не делает. Пуш, не меняющий файлов пакета, ничего не выпускает.
+
+Выпуск вручную (ключ админа этого пользователя Windows, не печатается; в пакет идут только закоммиченные файлы):
 ```
 powershell -ExecutionPolicy Bypass -File lib\peer_library\tools\release\release.ps1                      # что опубликовано
-... release.ps1 -Do ext -Note "что изменилось"                    # пакет HEAD + загрузчик той же версии -> beta
-... release.ps1 -Do promote -Version 2026.11.20.1 -Channel stable  # beta -> всем; так же откат на старую версию
+... release.ps1 -Do ext -Ref dev -Channel beta -Note "что изменилось"     # PEER_dev
+... release.ps1 -Do ext -Ref main -Channel stable -Note "что изменилось"  # PEER, всем
+... release.ps1 -Do promote -Version 2026.11.20.1 -Channel stable        # откат PEER на эту версию
 ... -Target production                                             # боевой сервис офиса вместо сервиса этого компьютера
 ```
 Свой компьютер на beta: `"channel": "beta"` в `%APPDATA%\PEER\library.json`. Журнал обновления —
