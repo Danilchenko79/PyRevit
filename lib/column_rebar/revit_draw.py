@@ -34,9 +34,10 @@ HOOP_FAMILY = u'PEER_Rebar_Shape 52'
 TIE_FAMILIES = (u'PEER_Rebar_Shape 62', u'PEER_Rebar Shape 62')
 NUMBER_FAMILY = u'PR_Column Number'
 COL_TAG = (u'Detail items_Tag Rebar', u'Tag Rebar 2∅10')
-BAR_TAG = (u'Detail items_Tag Rebar(Text Quantity)', u'Tag Rebar 2∅10@20 L=')
-# the same tag with the dense spacing after the main one: @20/10 (its label shows
-# Rebar_Stirrup Spacing Dense of the detail); used when the project has it
+# the details' tag (user 2026-11-21: 'take the other tag'): the plain Detail items_Tag Rebar shows
+# the count from the project parameter Rebar_Quantity (number, Detail Items in the office template)
+BAR_TAG = (u'Detail items_Tag Rebar', u'Tag Rebar 2∅10@20  L=')
+# the same tag with the dense spacing after the main one: @20/10; used when the project has it
 BAR_TAG_DENSE = u'Tag Rebar 2∅10@20/10 L='
 DENSE_GUID = '5242800f-7b14-44da-a656-3d6e2a183a5c'     # Rebar_Stirrup Spacing Dense
 TEXT_TYPE = u'Structural 3.5'

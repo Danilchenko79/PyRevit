@@ -9,7 +9,7 @@
 Shape 60 is a closed U (half circle at the bottom, flat top with the hook
 marks). Its labels, parameters (shared Rebar_*, Rebar_Stirrup Spacing Dense)
 and look stay; only the geometry changes:
-    64  the top line, the hook marks and the arc length label out; Rebar_B = overall (leg + A / 2)
+    64  the top line, the hook marks and the width label out; Rebar_B = overall (leg + A / 2)
     65  legs end at a new plane A / 2 under the top, a half circle on top;
         Rebar_B = overall, the leg label shows the straight part B - A
     75  legs, arcs and the leg / arc labels out, a full circle of diameter A;
@@ -116,10 +116,10 @@ def _legs(d):
 
 
 def _u(d, P):
-    """64: open U - no top line, no hook marks, no arc length label (user
-    2026-11-21: the width and the leg say it all)."""
+    """64: open U - no top line, no hook marks, no width label (user
+    2026-11-21: the arc length and the leg)."""
     d.delete(d.nested(u'TN_Re_Shape_01'))
-    d.delete(d.nested(u'Rebar_Dim Label_Round'))
+    d.delete(d.nested(u'Rebar_Dim Label', 'Rebar_A'))
     d.common(64)
 
 
@@ -244,42 +244,3 @@ def build(app, src, folder, shape):
 def build_all(app, src, folder):
     return dict((NAMES[s], build(app, src, folder, s)) for s in (64, 65, 75))
 
-
-QTY_TEXT = ('Rebar_Quantity Text', '9fd774e0-1a30-4bc0-8672-ecf64fa18113')   # as Shape 14 / 23 / 26
-
-
-def add_quantity_text(app, path, scratch):
-    """The shared instance parameter Rebar_Quantity Text (the tag 'Text
-    Quantity' writes it before the bar: 2D8@20) added to a detail family file,
-    saved in place. The user's shared parameter file setting is restored.
-    scratch: a folder for the temporary shared parameter file."""
-    from System import Guid
-    from Autodesk.Revit.DB import ExternalDefinitionCreationOptions, GroupTypeId, SpecTypeId
-    from peer_library import revit_family as rf
-    name, guid = QTY_TEXT
-    spf = os.path.join(scratch, 'qty_text_params.txt')
-    if os.path.exists(spf):
-        os.remove(spf)
-    open(spf, 'w').close()
-    old = app.SharedParametersFilename
-    fd = rf.open_quiet(app, path)
-    try:
-        app.SharedParametersFilename = spf
-        defs = app.OpenSharedParameterFile().Groups.Create('PEER').Definitions
-        o = ExternalDefinitionCreationOptions(name, SpecTypeId.String.Text)
-        o.GUID = Guid(guid)
-        ext = defs.Create(o)
-
-        def go():
-            if fd.FamilyManager.get_Parameter(name) is None:
-                fd.FamilyManager.AddParameter(ext, GroupTypeId.Text, True)
-            return True
-        res = run(fd, 'Rebar_Quantity Text', go)
-        if res[1] == 'Committed':
-            o2 = SaveAsOptions()
-            o2.OverwriteExistingFile = True
-            fd.SaveAs(path, o2)
-        return res
-    finally:
-        app.SharedParametersFilename = old
-        fd.Close(False)

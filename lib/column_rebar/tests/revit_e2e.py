@@ -32,10 +32,14 @@ WORK = r'C:\Users\user\Desktop\Families Dima\04 Rebar\2D Rebar\Column Reiforceme
 SHAPES = r'C:\Users\user\Desktop\Families Dima\04 Rebar\2D Rebar\Rebar shapes Family'
 # project parameters the office template has (same GUIDs as the families')
 PROJECT_PARAMS = [
-    ('Rebar_QuantityX', 'de7637e2-5111-4f6b-ba9d-b8394ea5d7c3', SpecTypeId.Number),
-    ('Rebar_QuantityY', '79cc3e37-3043-4df5-8f0d-fc304127fc48', SpecTypeId.Number),
-    ('Rebar_Diameter', '5498ba20-78b8-42d5-a4bf-f4ba6f5c16dd', SpecTypeId.BarDiameter),
-    ('PR_Level', None, SpecTypeId.String.Text),
+    ('Rebar_QuantityX', 'de7637e2-5111-4f6b-ba9d-b8394ea5d7c3', SpecTypeId.Number, BuiltInCategory.OST_StructuralColumns),
+    ('Rebar_QuantityY', '79cc3e37-3043-4df5-8f0d-fc304127fc48', SpecTypeId.Number, BuiltInCategory.OST_StructuralColumns),
+    ('Rebar_Diameter', '5498ba20-78b8-42d5-a4bf-f4ba6f5c16dd', SpecTypeId.BarDiameter, BuiltInCategory.OST_StructuralColumns),
+    ('PR_Level', None, SpecTypeId.String.Text, BuiltInCategory.OST_StructuralColumns),
+    # on Detail Items, as the office template: the count the bar tag shows
+    ('Rebar_Quantity', '9f1fd3ff-24b0-4862-b060-7e2af48108f4', SpecTypeId.Number, BuiltInCategory.OST_DetailComponents),
+    ('Rebar_Quantity Text', '9fd774e0-1a30-4bc0-8672-ecf64fa18113', SpecTypeId.String.Text,
+     BuiltInCategory.OST_DetailComponents),
 ]
 # (marks, family, b, h, qx, qy, dia) - qx / qy as the families keep them
 COLUMNS = [
@@ -63,9 +67,9 @@ def _bind_params(pd, folder):
         app.SharedParametersFilename = path
         f = app.OpenSharedParameterFile()
         g = f.Groups.Create('E2E')
-        cats = app.Create.NewCategorySet()
-        cats.Insert(pd.Settings.Categories.get_Item(BuiltInCategory.OST_StructuralColumns))
-        for name, guid, spec in PROJECT_PARAMS:
+        for name, guid, spec, cat in PROJECT_PARAMS:
+            cats = app.Create.NewCategorySet()
+            cats.Insert(pd.Settings.Categories.get_Item(cat))
             o = ExternalDefinitionCreationOptions(name, spec)
             o.GUID = System.Guid(guid) if guid else System.Guid(str(uuid.uuid4()))
             d = g.Definitions.Create(o)
