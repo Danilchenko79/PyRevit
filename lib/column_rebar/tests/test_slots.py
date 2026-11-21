@@ -53,6 +53,28 @@ class Slots(unittest.TestCase):
         r = c.design(c.ROUND2, 500, 1250, 25, 20, 3, 6, contour=c.CONTOUR_ONE)
         self.assertEqual(slots.params(r, 500, 1250, 25, 20, 3, 6, c.ROUND2)['Contour_Split'], 0)
 
+    def test_wide_v(self):
+        r = c.design(c.RECT, 600, 1500, 25, 20, 4, 7)
+        p = slots.params(r, 600, 1500, 25, 20, 4, 7)
+        self.assertEqual(on(p, 'V'), ['VB', 'VT'])
+        self.assertEqual((p['VB_Wide'], p['VT_Wide']), (1, 1))
+        cr = 25 + 8 + 10
+        step = (600 - 2 * cr) / 3.0
+        self.assertAlmostEqual(p['VB_E'], step)
+        self.assertAlmostEqual(p['VB_X'], 300)
+        self.assertEqual(p['VL_Wide'], 0)
+
+    def test_circle(self):
+        r = c.design(c.CIRCLE, 600, 600, 25, 20, 10)
+        p = slots.params(r, 600, 600, 25, 20, 10, 0, slots.CIRCLE)
+        self.assertEqual(p['Rebar_QuantityX'], 10)
+        self.assertNotIn('PR_Dimension_Height', p)
+        self.assertEqual([k for k in p if k.endswith('_Vis')], [])
+        self.assertEqual(slots.insertion(slots.CIRCLE, 600, 600), (300, 300))
+        pts = slots.family_bar_points(slots.CIRCLE, 600, 600, 25 + 8 + 10, 10, 0)
+        self.assertEqual(len(pts), 10)
+        self.assertAlmostEqual(pts[0][0], 600 - 43)
+
     def test_too_many(self):
         r = {'stirrup': {'dia': 8.0}, 'ties': [{'kind': 'straight', 'direction': 'vertical', 'at': 100.0}] * 13,
              'hoops': []}

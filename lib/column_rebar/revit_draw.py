@@ -26,9 +26,10 @@ from column_rebar import code466, grouping, revit_collect, revit_params, slots
 
 FT = 304.8
 SECTION_FAMILY = {code466.RECT: u'PEER_Column Section', code466.ROUND2: u'PEER_Column Section Round2',
-                  code466.ROUND1: u'PEER_Column Section Round1'}
+                  code466.ROUND1: u'PEER_Column Section Round1', code466.CIRCLE: u'PEER_Column Section Round'}
 STIRRUP_FAMILY = {code466.RECT: u'PEER_Rebar_Shape 52', code466.ROUND1: u'PEER_Rebar_Shape 60',
-                  code466.ROUND2: u'PEER_Rebar_Shape 65'}
+                  code466.ROUND2: u'PEER_Rebar_Shape 65', code466.CIRCLE: u'PEER_Rebar_Shape 75'}
+VTIE_FAMILY = u'PEER_Rebar_Shape 66'   # V-shaped tie (pointed or flat end) for the schedules
 U_FAMILY = u'PEER_Rebar_Shape 64'       # half-round U-bar of a rounded column (contour split)
 HOOP_FAMILY = u'PEER_Rebar_Shape 52'
 TIE_FAMILIES = (u'PEER_Rebar_Shape 62', u'PEER_Rebar Shape 62')
@@ -66,8 +67,9 @@ TOP_TIE_STEP = 300.0      # between several horizontal ties above
 TOP_TAG_GAP = 120.0       # tie -> its tag on the right
 
 REQUIRED = [SECTION_FAMILY[code466.RECT], SECTION_FAMILY[code466.ROUND2], SECTION_FAMILY[code466.ROUND1],
+            SECTION_FAMILY[code466.CIRCLE], STIRRUP_FAMILY[code466.CIRCLE],
             u'PEER_Rebar_Shape 52', u'PEER_Rebar_Shape 60', u'PEER_Rebar_Shape 62',
-            STIRRUP_FAMILY[code466.ROUND2], U_FAMILY, NUMBER_FAMILY]
+            STIRRUP_FAMILY[code466.ROUND2], U_FAMILY, VTIE_FAMILY, NUMBER_FAMILY]
 
 
 def next_x(x, w, rng, w2, rng2, kind2=None):
@@ -77,14 +79,15 @@ def next_x(x, w, rng, w2, rng2, kind2=None):
     - shorter and within the previous one's heights (an inner hoop beside the
       stirrup): a little inside, at its own height;
     - an inner hoop as tall as the previous one: a little inside and DROP_IN lower;
-    at least half of it stays out. Otherwise (full-height ties, a U-bar
-    reaching lower) it stands clear. Sides closer than EDGE_CLEAR would run together."""
+    at least half of it stays out. Everything else (ties, V-ties, U-bars)
+    stands clear. Sides closer than EDGE_CLEAR would run together."""
+    if kind2 != 'hoop':                  # only inner hoops go in (a V's flat end would lie on the stirrup)
+        return x + w + LIST_ITEM_GAP, 0.0
     inside = (rng2[0] >= rng[0] - 1.0 and rng2[1] <= rng[1] + 1.0 and
               (rng2[1] - rng2[0]) <= 0.75 * (rng[1] - rng[0]))
-    if inside or kind2 == 'hoop':
-        ov = min(OVERLAP * w, 0.5 * w2)
-        if ov >= EDGE_CLEAR:
-            return x + w - ov, (0.0 if inside else DROP_IN)
+    ov = min(OVERLAP * w, 0.5 * w2)
+    if ov >= EDGE_CLEAR:
+        return x + w - ov, (0.0 if inside else DROP_IN)
     return x + w + LIST_ITEM_GAP, 0.0
 
 
@@ -116,6 +119,7 @@ def find_types(doc):
         t['stirrup_' + shape] = symbol(doc, fam) if fam else None
     t['hoop'] = symbol(doc, HOOP_FAMILY)
     t['u_round'] = symbol(doc, U_FAMILY)
+    t['vtie'] = symbol(doc, VTIE_FAMILY)
     t['tie'] = None
     for fam in TIE_FAMILIES:
         t['tie'] = t['tie'] or symbol(doc, fam)
@@ -203,6 +207,27 @@ def bar_list(result, g):
         ties[k] = ties.get(k, 0) + 1
     for (horizontal, span), n in sorted(ties.items()):
         items.append(('tie', 'tie', {'Rebar_B': float(span)}, n, horizontal, None if horizontal else h - c))
+    # V-shaped ties (Shape 66): W across the end bars, depth from the face, out to out;
+    # the flat end round two bars E apart; one detail per size, as the first lies
+    vts, vorder = {}, []
+    for t in result.get('ties') or []:
+        if t.get('kind') != 'v' or t.get('alt'):
+            continue
+        p1, apex, p2 = t['points']
+        span = math.hypot(p2[0] - p1[0], p2[1] - p1[1])
+        depth = abs((p2[0] - p1[0]) * (apex[1] - p1[1]) - (p2[1] - p1[1]) * (apex[0] - p1[0])) / span
+        flat = t.get('flat')
+        e = math.hypot(flat[1][0] - flat[0][0], flat[1][1] - flat[0][1]) if flat else 0.0
+        k = (round(span + dl + 2 * dw), round(depth + dl + 2 * dw), 1 if flat else 0, round(e))
+        if k not in vts:
+            top = max(p1[1], p2[1], apex[1]) + dl / 2.0 + dw
+            vts[k] = [0, t['direction'] == code466.HORIZONTAL, top]
+            vorder.append(k)
+        vts[k][0] += 1
+    for k in vorder:
+        (w_, d_, wide, e), (n, rot, top) = k, vts[k]
+        items.append(('vtie', 'vtie', {'Rebar_A': float(w_), 'Rebar_B': float(d_), 'Wide': wide, 'E': float(e or 100)},
+                      n, rot, top))
     return items
 
 
@@ -211,7 +236,8 @@ def item_size(kind, prm, rotate):
     if kind == 'tie':
         w, h = TIE_WIDTH, prm['Rebar_B'] + DETAIL_MARGIN
         return (h, w) if rotate else (w, h)
-    return prm['Rebar_A'] + DETAIL_MARGIN, prm['Rebar_B'] + DETAIL_MARGIN
+    w, h = prm['Rebar_A'] + DETAIL_MARGIN, prm['Rebar_B'] + DETAIL_MARGIN
+    return (h, w) if rotate else (w, h)
 
 
 def on_top(kind, rotate):
@@ -344,7 +370,8 @@ def draw_group(doc, view, g, result, values, origin, types, report):
     x0, y0 = origin
     b, h = g['b'], g['h']
     sym = types[g['shape']]
-    inst = doc.Create.NewFamilyInstance(XYZ(ft(x0), ft(y0), 0), sym, view)
+    ix, iy = slots.insertion(g['shape'], b, h)          # the round family: origin at the centre
+    inst = doc.Create.NewFamilyInstance(XYZ(ft(x0 + ix), ft(y0 + iy), 0), sym, view)
     _set(inst, values)
     doc.Regenerate()
     # bars of the section: tag at the top right corner
@@ -354,7 +381,8 @@ def draw_group(doc, view, g, result, values, origin, types, report):
          XYZ(ft(x0 + b), ft(y0 - DIM_OFFSET), 0), types['dim'])
     _dim(doc, view, inst, 'Bottom', 'Top', XYZ(ft(x0 - DIM_OFFSET), ft(y0), 0),
          XYZ(ft(x0 - DIM_OFFSET), ft(y0 + h), 0), types['dim'])
-    txt = u'עמוד %d/%d' % (round(b / 10.0), round(h / 10.0))
+    txt = (u'עמוד Ø%d' % round(b / 10.0) if g['shape'] == code466.CIRCLE else
+           u'עמוד %d/%d' % (round(b / 10.0), round(h / 10.0)))
     TextNote.Create(doc, view.Id, XYZ(ft(x0), ft(y0 - TEXT_DROP), 0), txt, types['text'])
     # marks
     if types['number'] is not None:
@@ -390,7 +418,8 @@ def draw_group(doc, view, g, result, values, origin, types, report):
                 top, rng = top - dy, (rng[0] - dy, rng[1] - dy)
         s = types.get(key)
         if s is None:
-            report['notes'].append(u'%s: no family for the %s' % (u', '.join(g['marks']), kind))
+            if kind != 'vtie':                          # reported once below
+                report['notes'].append(u'%s: no family for the %s' % (u', '.join(g['marks']), kind))
             continue
         el = doc.Create.NewFamilyInstance(XYZ(ft(xs), ft(ytop), 0), s, view)
         vals = dict(prm)
@@ -441,8 +470,8 @@ def draw_group(doc, view, g, result, values, origin, types, report):
                     tag_min = tb.Max.X + ft(TAG_GAP)
             xs = box[0] * FT
         prev = (xs, w, rng)
-    if any(t.get('kind') == 'v' for t in result.get('ties') or []):
-        report['notes'].append(u'%s: V-shaped tie drawn in the section, no shape family for the bar list'
+    if types.get('vtie') is None and any(t.get('kind') == 'v' for t in result.get('ties') or []):
+        report['notes'].append(u'%s: V-shaped tie drawn in the section, no Shape 66 in the project for the bar list'
                                % u', '.join(g['marks']))
 
 

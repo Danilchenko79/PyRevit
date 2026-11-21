@@ -131,9 +131,11 @@ def check(case, inst, view, origin, result):
     if off:
         problems.append('hooks not on bars %d: %s' % (len(off), _fmt(off[:4])))
     straight = len([t for t in result['ties'] if t.get('kind') != 'v'])
-    vt = len([t for t in result['ties'] if t.get('kind') == 'v'])
-    if len(rings) != 2 * straight + 3 * vt:          # V: apex arc + two hooks
-        problems.append('hooks %d, expected %d (%d ties, %d V)' % (len(rings), 2 * straight + 3 * vt, straight, vt))
+    vt = len([t for t in result['ties'] if t.get('kind') == 'v' and not t.get('flat')])
+    vw = len([t for t in result['ties'] if t.get('kind') == 'v' and t.get('flat')])
+    want_r = 2 * straight + 3 * vt + 4 * vw            # V: apex arc + two hooks; flat end: two bends
+    if len(rings) != want_r:
+        problems.append('hooks %d, expected %d (%d ties, %d V, %d wide V)' % (len(rings), want_r, straight, vt, vw))
     tails = rings
     lines_all = lines
     # no line may run through a bar centre (user: 'lines through the bar centres look bad')
@@ -261,7 +263,8 @@ def run(app, folder, out_folder, only=None, pdf_name=None, images=False):
                     except ValueError as ex:
                         placed.append((c, None, (x, y), res, 'slots: %s' % ex))
                         continue
-                    inst = pd.Create.NewFamilyInstance(XYZ(x / FT, y / FT, 0), syms[shape], v)
+                    ix, iy = slots.insertion(shape, b, h)
+                    inst = pd.Create.NewFamilyInstance(XYZ((x + ix) / FT, (y + iy) / FT, 0), syms[shape], v)
                     _set(inst, vals)
                     placed.append((c, inst, (x, y), res, None))
                 views.append(v)

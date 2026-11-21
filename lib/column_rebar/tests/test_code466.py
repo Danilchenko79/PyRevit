@@ -243,6 +243,37 @@ class Contour(unittest.TestCase):
         self.assertEqual(c.contour_from_text(None), c.CONTOUR_SPLIT)
 
 
+class WideV(unittest.TestCase):
+    """User 2026-11-21: two middle bars on the short face of a pylon - one V
+    with a flat end round both (bend <= 135 deg)."""
+
+    def test_pylon_two_middle_bars(self):
+        r = c.design(c.RECT, 600, 1500, 25, 20, 4, 7)
+        v = [t for t in r['ties'] if t.get('kind') == 'v']
+        self.assertEqual(len(v), 2)
+        for t in v:
+            self.assertTrue(t.get('flat'))
+            self.assertLessEqual(t['apex_angle'], 135.0 + 1e-6)
+            (a1, a2) = t['flat']
+            self.assertAlmostEqual(a2[0] - a1[0], 170.0, places=0)      # the two middle bars
+        self.assertFalse(c.blocked(r))
+
+    def test_one_middle_bar_keeps_the_point(self):
+        r = c.design(c.RECT, 1500, 600, 25, 20, 7, 3)
+        v = [t for t in r['ties'] if t.get('kind') == 'v']
+        self.assertEqual(len(v), 2)
+        self.assertFalse(any(t.get('flat') for t in v))
+
+
+class Circle(unittest.TestCase):
+
+    def test_round_column(self):
+        r = c.design(c.CIRCLE, 600, 600, 25, 20, 10)
+        self.assertEqual(len(r['bars']), 10)
+        self.assertEqual((r['ties'], r['hoops']), ([], []))
+        self.assertFalse(c.blocked(r))
+
+
 class Alternate(unittest.TestCase):
     """User 2026-11-20: a face needing one of two symmetric bars held - the tie
     goes in turn on one and on the other (the mirror one drawn dashed)."""

@@ -8,7 +8,7 @@ RECT: nb / nh = bars along b / along h with the corners.
 Rounded: nb = bars on each end without the side bars, nh = bars on each long side.
 """
 
-RECT, ROUND1, ROUND2 = 'RECT', 'ROUND1', 'ROUND2'
+RECT, ROUND1, ROUND2, CIRCLE = 'RECT', 'ROUND1', 'ROUND2', 'CIRCLE'
 
 
 def _bars(side, cover, d, step, stirrup=8.0):
@@ -45,6 +45,10 @@ def cases():
         d = 20
         add('rect%dx%d' % (b, h), RECT, b, h, 25, d, _bars(b, 25, d, 170), _bars(h, 25, d, 170), {})
         add('rect%dx%d_rot' % (h, b), RECT, h, b, 25, d, _bars(h, 25, d, 170), _bars(b, 25, d, 170), {})
+
+    # 4a. pylons with two middle bars on the short face: V with a flat end (2026-11-21)
+    for b, h, n1, n2 in ((600, 1500, 4, 7), (1500, 600, 7, 4), (600, 1800, 4, 9), (700, 2000, 4, 10)):
+        add('vwide_%dx%d_%d_%d' % (b, h, n1, n2), RECT, b, h, 25, 20, n1, n2, {})
 
     # 5. covers and stirrups
     for cover in (20, 30, 40, 50):
@@ -86,6 +90,10 @@ def cases():
                          (500, 1500, 3, 7), (900, 1500, 6, 5)]:
         d = 20 if b <= 600 else 25
         add('r1_%dx%d_%d_%d' % (b, h, ne, nh), ROUND1, b, h, 25, d, ne, nh, {})
+    # 10. round columns (2026-11-21): diameters and bar counts
+    for dd, n, d in ((300, 6, 16), (400, 6, 20), (400, 8, 16), (500, 8, 20), (600, 10, 20), (800, 12, 25),
+                     (1000, 16, 25), (1200, 20, 25), (1500, 24, 32)):
+        add('round%d_%d' % (dd, n), CIRCLE, dd, dd, 25, d, n, 0, {})
     return out
 
 

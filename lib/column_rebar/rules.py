@@ -11,7 +11,7 @@ import math
 
 RECT, ROUND2, ROUND1 = 'RECT', 'ROUND2', 'ROUND1'
 SHAPES = (RECT, ROUND2, ROUND1)
-SHAPE_ORDER = {RECT: 0, ROUND2: 1, ROUND1: 2}
+SHAPE_ORDER = {RECT: 0, ROUND2: 1, ROUND1: 2, 'CIRCLE': 3}
 
 SOURCE_OLD_SCRIPT = u'old script'       # moved as it was, not checked
 SOURCE_OFFICE = u'office rule'          # said by the user

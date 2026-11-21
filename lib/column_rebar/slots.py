@@ -11,12 +11,21 @@ therefore snapped to the bars of the family's own layout.
 
 N_TIES, N_HOOPS = 12, 4
 MAX_ARC_BARS = 6          # Point+Radius draws 7+ wrong (7 -> 3 bars, 8 -> 6), checked 2026-11-20
-RECT, ROUND1, ROUND2 = 'RECT', 'ROUND1', 'ROUND2'
+RECT, ROUND1, ROUND2, CIRCLE = 'RECT', 'ROUND1', 'ROUND2', 'CIRCLE'
+MAX_RING_BARS = 24        # PEER_Column Section Round: places at most this many (family_section)
+
+
+def insertion(shape, b, h):
+    """Where the family's origin is from the bottom-left corner of the concrete
+    (the round column's family has its origin at the centre)."""
+    return (b / 2.0, b / 2.0) if shape == CIRCLE else (0.0, 0.0)
 
 
 def slot_names(shape=RECT):
     """[(slot, kind, direction)] the family of this shape has, in build order."""
     out = []
+    if shape == CIRCLE:
+        return out                 # the round stirrup holds every bar
     if shape == RECT:
         out += [('TieV%d' % i, 'tie', 'V') for i in range(1, N_TIES + 1)]
     out += [('TieH%d' % i, 'tie', 'H') for i in range(1, N_TIES + 1)]
@@ -52,6 +61,8 @@ def bar_lines(shape, b, h, cr, nb, nh):
     or the top corner (ROUND1)."""
     if shape == RECT:
         return family_bars(b, nb, cr), family_bars(h, nh, cr)
+    if shape == CIRCLE:
+        return [], []
     top = h - b / 2.0 if shape == ROUND2 else h - cr
     xs = family_bars(b, nb + 2, cr) if shape == ROUND1 else [cr, b - cr]
     return xs, _even(b / 2.0, top, nh)
@@ -60,6 +71,10 @@ def bar_lines(shape, b, h, cr, nb, nh):
 def family_bar_points(shape, b, h, cr, nb, nh):
     """Every bar axis the family draws, [(x, y)] mm from the bottom-left corner."""
     import math
+    if shape == CIRCLE:                                  # nb = all bars, the first on +x
+        r = b / 2.0 - cr
+        return [(b / 2.0 + r * math.cos(2 * math.pi * k / nb), b / 2.0 + r * math.sin(2 * math.pi * k / nb))
+                for k in range(nb)] if nb else []
     xs, ys = bar_lines(shape, b, h, cr, nb, nh)
     if shape == RECT:
         pts = [(x, cr) for x in xs] + [(x, h - cr) for x in xs]
@@ -93,6 +108,12 @@ def params(result, b, h, cover, bar_dia, nb, nh, shape=RECT):
         'PR_Dimension_Width': float(b), 'PR_Dimension_Height': float(h),
         'Cover': float(cover), 'Rebar_Diameter': float(bar_dia), 'Stirrup_Diameter': float(dw),
     }
+    if shape == CIRCLE:
+        if nb > MAX_RING_BARS:
+            raise ValueError('the round family draws at most %d bars, %d asked' % (MAX_RING_BARS, nb))
+        out['Rebar_QuantityX'] = float(nb)          # all the bars on the ring
+        out.pop('PR_Dimension_Height')     # the round family keeps it = the diameter (formula)
+        return out
     if shape == RECT:
         out['Rebar_QuantityX'], out['Rebar_QuantityY'] = max(0, nb - 2), max(0, nh - 2)
     else:
@@ -120,6 +141,7 @@ def params(result, b, h, cover, bar_dia, nb, nh, shape=RECT):
         else:
             out[name + '_W'], out[name + '_H'] = 200.0, 100.0
             out[name + ('_X' if d in ('B', 'T') else '_Y')] = (b if d in ('B', 'T') else h) / 2.0
+            out[name + '_Wide'], out[name + '_E'] = 0, 100.0      # flat end round two bars, E apart
 
     def take(prefix, count, what):
         for i in range(1, count + 1):
@@ -138,6 +160,9 @@ def params(result, b, h, cover, bar_dia, nb, nh, shape=RECT):
                 out[s + '_X'] = _snap(apex[0], xs)
                 out[s + '_W'] = abs(_snap(p2[0], xs) - _snap(p1[0], xs))
                 out[s + '_H'] = abs(_snap(p1[1], ys) - _snap(apex[1], ys))
+                if t.get('flat'):
+                    a1, a2 = (_snap(q[0], xs) for q in t['flat'])
+                    out[s + '_X'], out[s + '_E'], out[s + '_Wide'] = (a1 + a2) / 2.0, abs(a2 - a1), 1
             else:                                        # apex on the left / right face
                 s = 'VL' if apex[0] < b / 2.0 else 'VR'
                 if s not in have:
@@ -145,6 +170,9 @@ def params(result, b, h, cover, bar_dia, nb, nh, shape=RECT):
                 out[s + '_Y'] = _snap(apex[1], ys)
                 out[s + '_W'] = abs(_snap(p2[1], ys) - _snap(p1[1], ys))
                 out[s + '_H'] = abs(_snap(p1[0], xs) - _snap(apex[0], xs))
+                if t.get('flat'):
+                    a1, a2 = (_snap(q[1], ys) for q in t['flat'])
+                    out[s + '_Y'], out[s + '_E'], out[s + '_Wide'] = (a1 + a2) / 2.0, abs(a2 - a1), 1
             out[s + '_Vis'] = 1
         elif t['direction'] == 'vertical':
             s = take('TieV', N_TIES, 'a tie along h')

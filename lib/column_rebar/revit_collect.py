@@ -51,6 +51,8 @@ def column_shape(ctype):
         n = u''
     if u'rounded' in n:
         return code466.ROUND1 if u'one side' in n else code466.ROUND2
+    if u'round' in n or u'circular' in n:
+        return code466.CIRCLE                   # PEER-Concrete-Column-Round (2026-11-21)
     return code466.RECT
 
 
@@ -111,6 +113,10 @@ def read(doc, col):
     ctype = doc.GetElement(col.GetTypeId())
     b, h = section_size(col, ctype)
     shape = column_shape(ctype)
+    if shape == code466.CIRCLE:             # the round family keeps D (GeneralDepth = D)
+        d = (h or b or _double(ctype, 'GeneralDepth') or _double(ctype, 'D') or _double(col, 'D') or 0.0)
+        d = d * FT if d and d < 50 else d   # _double gives feet, section_size mm
+        b = h = d
     if shape != code466.RECT and h < b:
         b, h = h, b                      # rounded: b is the short side (diameter of the end)
     mp = col.LookupParameter(PARAM_MARK)
@@ -145,6 +151,8 @@ def design_args(g):
     shape = g['shape']
     if shape == code466.RECT:
         nb, nh = code466.from_old_counts(g['qb'], g['qh'])
+    elif shape == code466.CIRCLE:           # Rebar_QuantityX = all the bars on the ring
+        nb, nh = int(round(g['qb'])) or int(round(g['qh'])), 0
     else:
         nb, nh = int(round(g['qb'])), int(round(g['qh']))
     return dict(shape=shape, b=g['b'], h=g['h'], cover=g.get('cover') or 25.0,

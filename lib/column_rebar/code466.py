@@ -291,17 +291,34 @@ def _alternate(out, direction, pos, tied, singles, span, dw):
                                 'length': tie_cut_length(span, dw), 'alt': True})
 
 
-def v_base(mid, corner, other):
+def v_base(mid, corner, other, wide=False):
     """Index on the long faces where a V-shaped tie from the middle bar of a
     short face (at `mid` along it, `corner` from its end) may end: the first
     bar from that end at which the angle of the V is <= 135 degrees.
-    None if there is none before the middle of the long face."""
+    wide: the V has a flat end round two bars (`mid` = the one nearer this
+    end); the bend at each of them is 180 - atan(depth / half) <= 135, i.e.
+    depth >= half. None if there is none before the middle of the long face."""
     half = mid - corner
-    need = half / math.tan(math.radians(APEX_MAX / 2.0))
+    need = half if wide else half / math.tan(math.radians(APEX_MAX / 2.0))
     for idx in range(1, len(other) - 1):
         if other[idx] - other[0] >= need - 1e-6:
             return idx if other[idx] < other[-1 - idx] else None
     return None
+
+
+def v_tie_wide(a1, a2, p1, p2, dw, dl):
+    """A V-shaped tie with a flat end round two bars a1, a2 of a face (user
+    2026-11-21), legs to p1 (from a1) and p2 (from a2). 'points' keeps the
+    plain V's layout [p1, middle of the flat end, p2]; 'flat' = (a1, a2)."""
+    legs = math.hypot(a1[0] - p1[0], a1[1] - p1[1]) + math.hypot(a2[0] - p2[0], a2[1] - p2[1])
+    flat = math.hypot(a2[0] - a1[0], a2[1] - a1[1])
+    ux, uy = (a2[0] - a1[0]) / flat, (a2[1] - a1[1]) / flat
+    vx, vy = p1[0] - a1[0], p1[1] - a1[1]
+    # the angle at each bent bar, between the flat piece and the leg (<= 135, 466-2 28.6.2)
+    bend = math.degrees(math.acos(max(-1.0, min(1.0, (ux * vx + uy * vy) / math.hypot(vx, vy)))))
+    mid = ((a1[0] + a2[0]) / 2.0, (a1[1] + a2[1]) / 2.0)
+    return {'kind': 'v', 'points': [p1, mid, p2], 'flat': (a1, a2), 'apex_angle': bend, 'dia': dw,
+            'length': legs + flat + math.pi * (dl + dw) / 2.0 + TIE_HOOKS * dw}
 
 
 def v_tie(apex, p1, p2, dw, dl):
@@ -321,13 +338,21 @@ def _v_ties(out, direction, pos, other, k, corner, dw, dl, b, h):
     from that end; the straight tie between those two bars comes from the long
     faces (bar k is forced restrained there)."""
     mid = pos[len(pos) // 2]
+    wide = len(pos) % 2 == 0                    # two middle bars: the flat end (user 2026-11-21)
+    m1, m2 = pos[len(pos) // 2 - 1], pos[len(pos) // 2]
     n = len(other)
     for kk, end in ((k, other[0]), (n - 1 - k, other[-1])):
         x = other[kk]
         if direction == HORIZONTAL:             # short faces are left / right
-            t = v_tie((end, mid), (x, corner), (x, h - corner), dw, dl)
+            if wide:
+                t = v_tie_wide((end, m1), (end, m2), (x, corner), (x, h - corner), dw, dl)
+            else:
+                t = v_tie((end, mid), (x, corner), (x, h - corner), dw, dl)
         else:                                   # short faces are bottom / top
-            t = v_tie((mid, end), (corner, x), (b - corner, x), dw, dl)
+            if wide:
+                t = v_tie_wide((m1, end), (m2, end), (corner, x), (b - corner, x), dw, dl)
+            else:
+                t = v_tie((mid, end), (corner, x), (b - corner, x), dw, dl)
         t['direction'] = direction
         out['ties'].append(t)
 
@@ -643,15 +668,20 @@ def design(shape, b, h, cover, bar_dia, nb, nh=None, stirrup_dia=None,
             else:
                 sp, sr, lp, sdir = ph, rh, pb, HORIZONTAL
             inner_s = (sr or [])[1:-1]
-            if len(inner_s) == 1 and len(sp) % 2 == 1 and inner_s[0] == len(sp) // 2:
-                k = v_base(sp[len(sp) // 2], sp[0], lp)
-                if k is not None:
-                    forced = (k, len(lp) - 1 - k)
-                    if sdir == VERTICAL:
-                        rh = restrain_side(ph, forced)
-                    else:
-                        rb = restrain_side(pb, forced)
-                    out['_v'] = (sdir, k)
+            ns_ = len(sp)
+            k = None
+            if len(inner_s) == 1 and ns_ % 2 == 1 and inner_s[0] == ns_ // 2:
+                k = v_base(sp[ns_ // 2], sp[0], lp)
+            elif inner_s == [ns_ // 2 - 1, ns_ // 2] and ns_ % 2 == 0:
+                # two middle bars: one V with a flat end round both (user 2026-11-21)
+                k = v_base(sp[ns_ // 2 - 1], sp[0], lp, wide=True)
+            if k is not None:
+                forced = (k, len(lp) - 1 - k)
+                if sdir == VERTICAL:
+                    rh = restrain_side(ph, forced)
+                else:
+                    rb = restrain_side(pb, forced)
+                out['_v'] = (sdir, k)
         for pos, restr, side, name in ((pb, rb, b, u'b'), (ph, rh, h, u'h')):
             ok, need = _side_gap_ok(pos, bar_dia)
             if not ok:

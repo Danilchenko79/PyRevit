@@ -26,7 +26,7 @@ from pyrevit import forms
 from column_rebar import code466, grouping, revit_collect, sketch_wpf
 
 SHAPE_TEXT = {code466.RECT: u'Rectangular', code466.ROUND2: u'Rounded 2 ends',
-              code466.ROUND1: u'Rounded 1 end'}
+              code466.ROUND1: u'Rounded 1 end', code466.CIRCLE: u'Round'}
 MODES = [u'Auto', u'Ties', u'Hoops']
 # contour of a rounded column (code466.CONTOUR_*); a rectangular row shows nothing
 CONTOURS = [u'Hoop + U-bars', u'One stirrup']

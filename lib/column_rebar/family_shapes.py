@@ -5,6 +5,7 @@
     PEER_Rebar_Shape 64   half-round U-bar (open), the end of a rounded column
     PEER_Rebar_Shape 65   stirrup with half circles on both ends (stadium)
     PEER_Rebar_Shape 75   round stirrup (ring)
+    PEER_Rebar_Shape 66   V-shaped tie, the flat end round two bars by Wide / E
 
 Shape 60 is a closed U (half circle at the bottom, flat top with the hook
 marks). Its labels, parameters (shared Rebar_*, Rebar_Stirrup Spacing Dense)
@@ -30,11 +31,14 @@ from System.Collections.Generic import List
 
 from column_rebar.family_build import FT, run
 
-NAMES = {64: u'PEER_Rebar_Shape 64', 65: u'PEER_Rebar_Shape 65', 75: u'PEER_Rebar_Shape 75'}
+NAMES = {64: u'PEER_Rebar_Shape 64', 65: u'PEER_Rebar_Shape 65', 75: u'PEER_Rebar_Shape 75',
+         66: u'PEER_Rebar_Shape 66'}
 LENGTH = {
     64: 'roundup((Length_Round + 2 * Length_H) / 50 mm) * 50 mm',
     65: 'roundup((2 * Length_Round + 2 * Length_H + 20 * Rebar_Diameter) / 50 mm) * 50 mm',
     75: 'roundup((pi() * Rebar_A + 20 * Rebar_Diameter) / 50 mm) * 50 mm',
+    66: 'roundup((if(Wide, 2 * sqrt(((Rebar_A - E) / 2) ^ 2 + Rebar_B ^ 2) + E, '
+        '2 * sqrt((Rebar_A / 2) ^ 2 + Rebar_B ^ 2)) + 20 * Rebar_Diameter) / 50 mm) * 50 mm',
 }
 
 
@@ -212,15 +216,59 @@ def _ring(d, P):
     d.common(75)
 
 
-MAKERS = {64: _u, 65: _stadium, 75: _ring}
+def _vtie(d, P):
+    """66: V-shaped tie for the schedules (user 2026-11-21) - the section's own
+    nested PEER_Col_VTie inside: Rebar_A = W (across the end bars), Rebar_B =
+    depth, Wide (yes / no) + E: a flat end round two bars E apart. The apex at
+    the bottom plane, the legs up to the top."""
+    import clr
+    from Autodesk.Revit.DB import (BuiltInParameter, Family, FamilyInstanceReferenceType, GroupTypeId,
+                                   SpecTypeId)
+    fd, fm, fc, view = d.fd, d.fm, d.fc, d.view
+    d.delete(d.nested(u'TN_Re_Shape_01'))
+    d.delete(d.nested(u'Rebar_Dim Label_Round'))
+    d.delete(d.rebar_curves())
+    fd.Regenerate()
+    wide = fm.AddParameter('Wide', GroupTypeId.Geometry, SpecTypeId.Boolean.YesNo, True)
+    e = fm.AddParameter('E', GroupTypeId.Geometry, SpecTypeId.Length, True)
+    fm.Set(wide, 0)
+    fm.Set(e, 100 / FT)
+    rr = fm.AddParameter('Hook_R', GroupTypeId.Geometry, SpecTypeId.Length, True)
+    cc = fm.AddParameter('Hook_C', GroupTypeId.Geometry, SpecTypeId.Length, True)
+    fm.SetFormula(rr, 'Rebar_Diameter * 2')
+    fm.SetFormula(cc, 'Rebar_Diameter * 7')
+    fm.SetDescription(wide, u'Flat end round two bars (E apart) instead of the point.')
+    fm.SetDescription(e, u'Wide: between the two bars of the flat end.')
+    d.formula('Length_H', 'Rebar_B')                 # the leg label shows the depth
+    ref = clr.Reference[Family]()
+    fd.LoadFamily(d.vtie_path, ref)
+    fam = ref.Value
+    sym = fd.GetElement(list(fam.GetFamilySymbolIds())[0])
+    if not sym.IsActive:
+        sym.Activate()
+    x, y = P['cx'].BubbleEnd.X, P['bottom'].BubbleEnd.Y
+    inst = fc.NewFamilyInstance(XYZ(x, y, 0), sym, view)
+    fd.Regenerate()
+    lr = list(inst.GetReferences(FamilyInstanceReferenceType.CenterLeftRight))[0]
+    fbk = list(inst.GetReferences(FamilyInstanceReferenceType.CenterFrontBack))[0]
+    fc.NewAlignment(view, P['cx'].GetReference(), lr)
+    fc.NewAlignment(view, P['bottom'].GetReference(), fbk)
+    for child, host in (('W', 'Rebar_A'), ('H', 'Rebar_B'), ('R', 'Hook_R'), ('C', 'Hook_C'),
+                        ('Wide', 'Wide'), ('E', 'E')):
+        fm.AssociateElementParameterToFamilyParameter(inst.LookupParameter(child), fm.get_Parameter(host))
+    d.common(66)
 
 
-def build(app, src, folder, shape):
+MAKERS = {64: _u, 65: _stadium, 75: _ring, 66: _vtie}
+
+
+def build(app, src, folder, shape, vtie_path=None):
     """src: Shape 60 (with Rebar_Stirrup Spacing Dense). Saves folder/<NAMES[shape]>.rfa."""
     from peer_library import revit_family as rf
     fd = rf.open_quiet(app, src)
     try:
         d = _Doc(fd)
+        d.vtie_path = vtie_path
 
         def go():
             P = d.planes()

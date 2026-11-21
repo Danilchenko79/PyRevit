@@ -50,6 +50,9 @@ COLUMNS = [
     (['10'], 'R', 300, 300, 3, 3, 25),            # red: too much steel - must be skipped
     (['11', '12', '13'], 'O', 500, 1250, 3, 6, 20),
     (['16'], 'O', 600, 1200, 3, 4, 20),          # rounded, one stirrup along the outline (CONTOUR_ONE)
+    (['17', '18'], 'C', 500, 500, 8, 0, 20),     # round: Rebar_QuantityX = all the bars
+    (['19'], 'C', 800, 800, 12, 0, 25),
+    (['20'], 'R', 600, 1500, 2, 5, 20),          # pylon, two middle bars on the short face: wide V
     (['14'], 'R', 500, 700, 2, 3, 20),
     (['15'], 'R', 400, 400, 2, 2, 16),            # same as 1-4 - joins their group
     ([''], 'R', 400, 400, 2, 2, 16),              # no mark - not drawn
@@ -96,14 +99,17 @@ def run(app, folder, out_folder, extra=None):
 
         def setup():
             _bind_params(pd, out_folder)
-            for key, n in (('R', 'PEER-Concrete-Column-Rectangular'), ('O', 'PEER-Concrete-Column-Rectangular Rounded')):
+            for key, n in (('R', 'PEER-Concrete-Column-Rectangular'), ('O', 'PEER-Concrete-Column-Rectangular Rounded'),
+                           ('C', 'PEER-Concrete-Column-Round')):
                 r = clr.Reference[Family]()
                 pd.LoadFamily(os.path.join(LIB3D, n + '.rfa'), r)
                 fams[key] = r.Value
-            for f in [os.path.join(folder, n + u'.rfa') for n in revit_draw.SECTION_FAMILY.values()] +                     [_pick(extra, WORK, n) for n in (u'PEER_Rebar_Shape 52.rfa', u'PEER_Rebar_Shape 60.rfa',
-                                                     u'PEER_Rebar_Shape 62.rfa', u'PR_Column Number.rfa',
-                                                     u'PEER_Rebar_Shape 64.rfa', u'PEER_Rebar_Shape 65.rfa')] +                     [_pick(extra, SHAPES, n) for n in (u'Detail items_Tag Rebar.rfa',
-                                                       u'Detail items_Tag Rebar(Text Quantity).rfa')]:
+            details = (u'PEER_Rebar_Shape 52.rfa', u'PEER_Rebar_Shape 60.rfa', u'PEER_Rebar_Shape 62.rfa',
+                       u'PR_Column Number.rfa', u'PEER_Rebar_Shape 64.rfa', u'PEER_Rebar_Shape 65.rfa',
+                       u'PEER_Rebar_Shape 75.rfa', u'PEER_Rebar_Shape 66.rfa')
+            tags = (u'Detail items_Tag Rebar.rfa', u'Detail items_Tag Rebar(Text Quantity).rfa')
+            for f in [os.path.join(folder, n + u'.rfa') for n in revit_draw.SECTION_FAMILY.values()] + \
+                    [_pick(extra, WORK, n) for n in details] + [_pick(extra, SHAPES, n) for n in tags]:
                 if not os.path.exists(f):
                     lines.append(u'no family file: %s' % os.path.basename(f))
                     continue
@@ -116,8 +122,11 @@ def run(app, folder, out_folder, extra=None):
                 if tk not in types:
                     base = pd.GetElement(list(fams[key].GetFamilySymbolIds())[0])
                     t = base.Duplicate('%dx%d' % (b, h))
-                    t.LookupParameter('GeneralWidth').Set(b / FT)
-                    t.LookupParameter('GeneralDepth').Set(h / FT)
+                    if key == 'C':
+                        t.LookupParameter('D').Set(b / FT)
+                    else:
+                        t.LookupParameter('GeneralWidth').Set(b / FT)
+                        t.LookupParameter('GeneralDepth').Set(h / FT)
                     t.Activate()
                     types[tk] = t
                 for m in marks:

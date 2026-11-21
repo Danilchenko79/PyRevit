@@ -131,6 +131,36 @@ def svg(result, b, h=None, cover=25.0, bar_dia=16.0, size=260.0, margin=56.0):
         R = dl / 2.0 + dw / 2.0
         C = max(50.0 + 2 * dw, 7.0 * dw)
         dash = ' stroke-dasharray="3 2"' if t.get('alt') else ''   # placed in turn with the mirror tie
+        if t.get('kind') == 'v' and t.get('flat'):
+            # V with a flat end round two bars (user 2026-11-21): a bend round each,
+            # the flat piece behind them, legs and hooks as the plain V
+            p1, _, p2 = t['points']
+            A1, A2 = t['flat']
+            fl = math.hypot(A2[0] - A1[0], A2[1] - A1[1])
+            f = ((A2[0] - A1[0]) / fl, (A2[1] - A1[1]) / fl)
+            nb = (-f[1], f[0])
+            if nb[0] * (p1[0] - A1[0]) + nb[1] * (p1[1] - A1[1]) > 0:
+                nb = (f[1], -f[0])                         # behind the bars, away from the legs
+            poly([(A1[0] + R * nb[0], A1[1] + R * nb[1]), (A2[0] + R * nb[0], A2[1] + R * nb[1])], w)
+            for E, A, other in ((p1, A1, A2), (p2, A2, A1)):
+                L = math.hypot(E[0] - A[0], E[1] - A[1])
+                u = ((E[0] - A[0]) / L, (E[1] - A[1]) / L)
+                n = (-u[1], u[0])
+                if n[0] * (other[0] - A[0]) + n[1] * (other[1] - A[1]) > 0:
+                    n = (u[1], -u[0])                      # the outside of the V
+                b0, b1 = math.atan2(nb[1], nb[0]), math.atan2(n[1], n[0])
+                dd = (b1 - b0 + math.pi) % (2 * math.pi) - math.pi
+                poly(arc(A, R, b0, b0 + dd), w)
+                st_ = (A[0] + R * n[0], A[1] + R * n[1])
+                en_ = (E[0] + R * n[0], E[1] + R * n[1])
+                an = math.atan2(n[1], n[0])
+                au = math.atan2(u[1], u[0])
+                dd = math.pi if math.cos(an + math.pi / 2 - au) > 0 else -math.pi
+                hook = arc(E, R, an, an + dd)
+                back = hook[-1]
+                ret = (back[0] - C * u[0], back[1] - C * u[1])
+                poly([st_, en_] + hook[1:] + [ret], w)
+            continue
         if t.get('kind') == 'v':
             p1, A, p2 = t['points']
             pts_all = []
