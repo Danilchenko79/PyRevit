@@ -222,8 +222,8 @@ def _vtie(d, P):
     depth, Wide (yes / no) + E: a flat end round two bars E apart. The apex at
     the bottom plane, the legs up to the top."""
     import clr
-    from Autodesk.Revit.DB import (BuiltInParameter, Family, FamilyInstanceReferenceType, GroupTypeId,
-                                   SpecTypeId)
+    from Autodesk.Revit.DB import (BuiltInParameter, ElementTransformUtils, Family, FamilyInstanceReferenceType,
+                                   GroupTypeId, SpecTypeId)
     fd, fm, fc, view = d.fd, d.fm, d.fc, d.view
     d.delete(d.nested(u'TN_Re_Shape_01'))
     d.delete(d.nested(u'Rebar_Dim Label_Round'))
@@ -239,7 +239,46 @@ def _vtie(d, P):
     fm.SetFormula(cc, 'Rebar_Diameter * 7')
     fm.SetDescription(wide, u'Flat end round two bars (E apart) instead of the point.')
     fm.SetDescription(e, u'Wide: between the two bars of the flat end.')
-    d.formula('Length_H', 'Rebar_B')                 # the leg label shows the depth
+    # labels (user 2026-11-21): no width on top, no depth on the side; the width of the
+    # flat end E under it (Wide only). The leg length goes along the leg - the drawing
+    # writes it (a label cannot turn with a parameter in a detail family).
+    d.delete(d.nested(u'Rebar_Dim Label', 'Length_H'))
+    lab = d.nested(u'Rebar_Dim Label', 'Rebar_A')[0]
+    from Autodesk.Revit.DB import Dimension, Line as DL, ReferenceArray
+    top_id = P['top'].Id
+    yref = None
+    for dm in list(FilteredElementCollector(fd).OfClass(Dimension)):
+        refs = list(dm.References)
+        ids = [r.ElementId for r in refs]
+        if lab.Id in ids and top_id in ids:
+            yref = [r for r in refs if r.ElementId == lab.Id][0].ConvertToStableRepresentation(fd)
+            fd.Delete(dm.Id)
+    fd.Regenerate()
+    yb = P['bottom'].BubbleEnd.Y
+    gap = 120.0 / FT
+    pe = fc.NewReferencePlane(XYZ(-1, yb - gap, 0), XYZ(1, yb - gap, 0), XYZ(0, 0, 1), view)
+    pe.Name = u'E label'
+    fd.Regenerate()
+    ra = ReferenceArray()
+    ra.Append(P['bottom'].GetReference())
+    ra.Append(pe.GetReference())
+    dm = fc.NewDimension(view, DL.CreateBound(XYZ(P['right'].BubbleEnd.X + 0.6, 0, 0),
+                                              XYZ(P['right'].BubbleEnd.X + 0.6, 1, 0)), ra)
+    dm.IsLocked = True
+    ElementTransformUtils.MoveElement(fd, lab.Id, XYZ(0, yb - gap - lab.Location.Point.Y, 0))
+    fd.Regenerate()
+    from Autodesk.Revit.DB import Reference
+    aref = Reference.ParseFromStableRepresentation(fd, yref)
+    ra = ReferenceArray()
+    ra.Append(pe.GetReference())
+    ra.Append(aref)
+    dm = fc.NewDimension(view, DL.CreateBound(XYZ(P['right'].BubbleEnd.X + 0.8, 0, 0),
+                                              XYZ(P['right'].BubbleEnd.X + 0.8, 1, 0)), ra)
+    dm.IsLocked = True
+    vis_e = fm.AddParameter('Vis_E', GroupTypeId.Graphics, SpecTypeId.Boolean.YesNo, True)
+    fm.SetFormula(vis_e, 'and(Rebar_Vis Dims, Wide)')
+    fm.AssociateElementParameterToFamilyParameter(lab.LookupParameter('L'), e)
+    fm.AssociateElementParameterToFamilyParameter(lab.LookupParameter('Visible'), vis_e)
     ref = clr.Reference[Family]()
     fd.LoadFamily(d.vtie_path, ref)
     fam = ref.Value

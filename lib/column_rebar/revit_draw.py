@@ -354,6 +354,84 @@ def _lines_box(doc, view, el):
     return (min(q.X for q in pts), min(q.Y for q in pts), max(q.X for q in pts), max(q.Y for q in pts))
 
 
+LABEL_TEXT = (u'TN_CalibriL_Structural', 2.0)          # the shapes' labels (Rebar_Dim Label: L-Label_2.0mm)
+LABEL_TEXT_TYPE = u'PEER Rebar Label 2.0mm'
+
+
+def _small_text(doc):
+    """A text type as the shapes' labels: font TN_CalibriL_Structural, 2.0 mm,
+    transparent. Taken from the project, else made once (LABEL_TEXT_TYPE) from
+    the default text type - inside the caller's transaction."""
+    font, size = LABEL_TEXT
+    for t in FilteredElementCollector(doc).OfClass(TextNoteType):
+        f = t.get_Parameter(BuiltInParameter.TEXT_FONT)
+        z = t.get_Parameter(BuiltInParameter.TEXT_SIZE)
+        if f is not None and z is not None and f.AsString() == font and abs(z.AsDouble() * FT - size) < 0.05:
+            return size, t.Id
+    base = doc.GetElement(doc.GetDefaultElementTypeId(ElementTypeGroup.TextNoteType))
+    t = base.Duplicate(LABEL_TEXT_TYPE)
+    t.get_Parameter(BuiltInParameter.TEXT_FONT).Set(font)
+    t.get_Parameter(BuiltInParameter.TEXT_SIZE).Set(size / FT)
+    for bip, v in ((BuiltInParameter.TEXT_WIDTH_SCALE, 1.0), (BuiltInParameter.TEXT_BACKGROUND, 1)):
+        p = t.get_Parameter(bip)
+        if p is not None and not p.IsReadOnly:
+            p.Set(v)
+    return size, t.Id
+
+
+def _leg_text(doc, view, el, prm):
+    """The length of a V-tie's leg written along its left leg, outside (user
+    2026-11-21: 'the diagonal along it'): cm, as the shapes' labels."""
+    from Autodesk.Revit.DB import Curve, GeometryInstance, Options, TextNoteOptions, HorizontalTextAlignment
+    o = Options()
+    o.View = view
+    lines = []
+
+    def walk(geo):
+        for g_ in geo:
+            if isinstance(g_, GeometryInstance):
+                walk(g_.GetInstanceGeometry())
+            elif isinstance(g_, Line) and g_.Length * FT > 60:
+                lines.append(g_)
+    geo = el.get_Geometry(o)
+    if geo is None:
+        return None
+    walk(geo)
+    if not lines:
+        return None
+    pts = [q for ln in lines for q in (ln.GetEndPoint(0), ln.GetEndPoint(1))]
+    cx = sum(q.X for q in pts) / len(pts)
+    cy = sum(q.Y for q in pts) / len(pts)
+    longest = max(ln.Length for ln in lines)
+    legs = [ln for ln in lines if ln.Length > 0.6 * longest]
+    leg = min(legs, key=lambda ln: (ln.GetEndPoint(0).X + ln.GetEndPoint(1).X))
+    a, b_ = leg.GetEndPoint(0), leg.GetEndPoint(1)
+    dx, dy = b_.X - a.X, b_.Y - a.Y
+    L = math.hypot(dx, dy)
+    ang = math.atan2(dy, dx)
+    if ang > math.pi / 2:
+        ang -= math.pi
+    elif ang <= -math.pi / 2:
+        ang += math.pi
+    mx, my = (a.X + b_.X) / 2.0, (a.Y + b_.Y) / 2.0
+    nx, ny = -dy / L, dx / L
+    if nx * (mx - cx) + ny * (my - cy) < 0:
+        nx, ny = -nx, -ny                               # away from the middle of the V
+    size_mm, tid = _small_text(doc)
+    th = size_mm * (view.Scale or 25) / FT              # text height on the view, feet
+    off = ft(80)
+    ux, uy = -math.sin(ang), math.cos(ang)              # 'up' of the text
+    # the middle of the text off the leg by off + half its height, outside; the
+    # point of a text is the top middle, so half the height up from there
+    cxt, cyt = mx + nx * (off + th / 2.0), my + ny * (off + th / 2.0)
+    px, py = cxt + ux * th / 2.0, cyt + uy * th / 2.0
+    leg_mm = math.hypot((prm['Rebar_A'] - (prm['E'] if prm.get('Wide') else 0.0)) / 2.0, prm['Rebar_B'])
+    opts = TextNoteOptions(tid)
+    opts.Rotation = ang
+    opts.HorizontalAlignment = HorizontalTextAlignment.Center
+    return TextNote.Create(doc, view.Id, XYZ(px, py, 0), u'%d' % round(leg_mm / 10.0), opts)
+
+
 def _move_top_left(doc, view, el, x, y):
     """Visible lines of the detail: top-left corner to (x, y) mm."""
     doc.Regenerate()
@@ -455,6 +533,11 @@ def draw_group(doc, view, g, result, values, origin, types, report):
                 ytie += bh + TOP_TIE_STEP
             continue
         box = _move_top_left(doc, view, el, xs, y0 + (top if top is not None else h))
+        if kind == 'vtie' and box is not None:
+            try:
+                _leg_text(doc, view, el, prm)
+            except Exception as ex:
+                report['notes'].append(u'%s: V-tie leg length not written: %s' % (u', '.join(g['marks']), ex))
         w = item_size(kind, prm, rot)[0]
         if box is not None:
             w = (box[2] - box[0]) * FT
