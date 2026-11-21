@@ -30,7 +30,6 @@ SECTION_FAMILY = {code466.RECT: u'PEER_Column Section', code466.ROUND2: u'PEER_C
 STIRRUP_FAMILY = {code466.RECT: u'PEER_Rebar_Shape 52', code466.ROUND1: u'PEER_Rebar_Shape 60',
                   code466.ROUND2: u'PEER_Rebar_Shape 65'}
 U_FAMILY = u'PEER_Rebar_Shape 64'       # half-round U-bar of a rounded column (contour split)
-ROUND_KEYS = ('u_round', 'stirrup_' + code466.ROUND1, 'stirrup_' + code466.ROUND2)  # arc label under
 HOOP_FAMILY = u'PEER_Rebar_Shape 52'
 TIE_FAMILIES = (u'PEER_Rebar_Shape 62', u'PEER_Rebar Shape 62')
 NUMBER_FAMILY = u'PR_Column Number'
@@ -50,11 +49,14 @@ MARK_DROP = 55.0
 MARK_STEP = 210.0
 MARK_START = 210.0
 LIST_GAP = 300.0          # section -> bar list
+OVERLAP = 0.4             # a detail may go this part of the previous one's width into it (user 2026-11-21)
+DROP_IN = 150.0           # ... and this lower when it is as tall as the previous one
+EDGE_CLEAR = 50.0         # ... but its side never within this of the other's side (lines run together)
+TAG_GAP = 100.0           # between the tags on the tag line
+TAG_LINE = 40.0           # tag line: on the section title line (TEXT_DROP), this lower
 LIST_ITEM_GAP = 150.0     # between the details of the row (detail or its tag, whichever is wider)
 TAG_ROOM = 500.0          # a bar tag is about this wide (the drawing measures the real one)
-TAG_DROP = 250.0          # tag head under the detail
 TAG_HEIGHT = 250.0
-ROUND_TAG_EXTRA = 300.0   # Shape 60 has its radius dimension under the arc
 TIE_WIDTH = 150.0
 DETAIL_MARGIN = 60.0      # the shape's own dimension texts (width: they stand left, in the gap)
 GAP = 300.0
@@ -65,6 +67,24 @@ TOP_TAG_GAP = 120.0       # tie -> its tag on the right
 REQUIRED = [SECTION_FAMILY[code466.RECT], SECTION_FAMILY[code466.ROUND2], SECTION_FAMILY[code466.ROUND1],
             u'PEER_Rebar_Shape 52', u'PEER_Rebar_Shape 60', u'PEER_Rebar_Shape 62',
             STIRRUP_FAMILY[code466.ROUND2], U_FAMILY, NUMBER_FAMILY]
+
+
+def next_x(x, w, rng, w2, rng2, kind2=None):
+    """(left, drop) of the next detail (w2 wide, heights rng2 = (bottom, top)
+    in the section) after one at x, w wide, heights rng; mm. User 2026-11-21:
+    'the detail a little inside and a little lower - then all is clear':
+    - shorter and within the previous one's heights (an inner hoop beside the
+      stirrup): a little inside, at its own height;
+    - an inner hoop as tall as the previous one: a little inside and DROP_IN lower;
+    at least half of it stays out. Otherwise (full-height ties, a U-bar
+    reaching lower) it stands clear. Sides closer than EDGE_CLEAR would run together."""
+    inside = (rng2[0] >= rng[0] - 1.0 and rng2[1] <= rng[1] + 1.0 and
+              (rng2[1] - rng2[0]) <= 0.75 * (rng[1] - rng[0]))
+    if inside or kind2 == 'hoop':
+        ov = min(OVERLAP * w, 0.5 * w2)
+        if ov >= EDGE_CLEAR:
+            return x + w - ov, (0.0 if inside else DROP_IN)
+    return x + w + LIST_ITEM_GAP, 0.0
 
 
 def ft(mm):
@@ -138,19 +158,26 @@ def _hoop_dims(hp):
 
 def bar_list(result, g):
     """What goes to the right of the section, each detail as it lies in the
-    section: [(kind, family key, params, qty, rotate 90)]. A tie across b
-    (horizontal) is the Shape 62 turned by 90 degrees."""
+    section: [(kind, family key, params, qty, rotate 90, top)]. top - the top
+    of the bar in the section, mm from the bottom of the concrete: the detail
+    stands at that height (user 2026-11-21: 'where it is in the section').
+    A tie across b (horizontal) is the Shape 62 turned by 90 degrees (above
+    the section, top None)."""
     shape, b, h, c = g['shape'], g['b'], g['h'], g.get('cover') or 25.0
-    items = []
+    dl = g.get('dia') or 16.0
     st = result.get('stirrup') or {}
+    dw = st.get('dia') or 8.0
+    R = b / 2.0
+    items = []
     if st.get('contour') == code466.CONTOUR_SPLIT:
-        # rounded, split: the rect hoop over the straight part + the U-bar(s), arc down
+        # rounded, split: the rect hoop over the straight part + the U-bar (bottom one, arc down)
         r_, u = st['rect'], st['u']
-        items.append(('stirrup', 'hoop', {'Rebar_A': r_['a'], 'Rebar_B': r_['b']}, 1, False))
-        items.append(('u', 'u_round', {'Rebar_A': u['a'], 'Rebar_B': u['b']}, u['count'], False))
+        top = (h - R + dl / 2.0 + dw) if shape == code466.ROUND2 else h - c
+        items.append(('stirrup', 'hoop', {'Rebar_A': r_['a'], 'Rebar_B': r_['b']}, 1, False, top))
+        items.append(('u', 'u_round', {'Rebar_A': u['a'], 'Rebar_B': u['b']}, u['count'], False, R + u['leg']))
     else:
         items.append(('stirrup', 'stirrup_' + shape,
-                      {'Rebar_A': b - 2 * c, 'Rebar_B': h - 2 * c}, 1, False))
+                      {'Rebar_A': b - 2 * c, 'Rebar_B': h - 2 * c}, 1, False, h - c))
     # one detail per hoop size: the same hoop standing and lying is one bar
     # (one number), drawn as the first of them lies in the section
     hoops, order = {}, []
@@ -159,12 +186,12 @@ def bar_list(result, g):
             ab = tuple(round(v) for v in _hoop_dims(hp))
             k = tuple(sorted(ab))
             if k not in hoops:
-                hoops[k] = [ab, 0]
+                hoops[k] = [ab, 0, max(hp['box'][1], hp['box'][3]) + dl / 2.0 + dw]
                 order.append(k)
             hoops[k][1] += 1
     for k in sorted(order):
-        (a, bb), n = hoops[k]
-        items.append(('hoop', 'hoop', {'Rebar_A': float(a), 'Rebar_B': float(bb)}, n, False))
+        (a, bb), n, top = hoops[k]
+        items.append(('hoop', 'hoop', {'Rebar_A': float(a), 'Rebar_B': float(bb)}, n, False, top))
     ties = {}
     for t in result.get('ties') or []:
         if t.get('kind') == 'v' or t.get('alt'):
@@ -174,7 +201,7 @@ def bar_list(result, g):
         k = (not vertical, round(span))
         ties[k] = ties.get(k, 0) + 1
     for (horizontal, span), n in sorted(ties.items()):
-        items.append(('tie', 'tie', {'Rebar_B': float(span)}, n, horizontal))
+        items.append(('tie', 'tie', {'Rebar_B': float(span)}, n, horizontal, None if horizontal else h - c))
     return items
 
 
@@ -195,14 +222,16 @@ def on_top(kind, rotate):
 def extent(g, result):
     """{left, right, down, up} of one group's drawing from its insertion point
     (bottom-left corner of the concrete), mm. The details stand in one row to
-    the right of the section, top at the top of the concrete, each tag under
-    its detail."""
+    the right of the section, each at its height in the section, a little into
+    each other; their tags on the title line."""
     b, h = g['b'], g['h']
     rows = grouping.mark_rows(grouping.marks_and_ranges(g['marks']))
     left = max(DIM_OFFSET + 100, max([MARK_START + sum(i['width'] for i in r) for r in rows] or [0]))
-    right, low, up = b, 0.0, h + 200
-    i, top = 0, h + TOP_TIE_GAP
-    for kind, key, prm, _, rot in bar_list(result, g):
+    right, up = b, h + 200
+    i, top, tag_r = 0, h + TOP_TIE_GAP, b + LIST_GAP
+    x = b + LIST_GAP
+    prev = None
+    for kind, key, prm, _, rot, ttop in bar_list(result, g):
         w, hh = item_size(kind, prm, rot)
         if on_top(kind, rot):
             top += hh
@@ -210,10 +239,15 @@ def extent(g, result):
             right = max(right, (b + w) / 2.0 + TOP_TAG_GAP + TAG_ROOM)
             top += TOP_TIE_STEP
             continue
-        right += (LIST_GAP if i == 0 else LIST_ITEM_GAP) + max(w, TAG_ROOM)
+        rng = (ttop - hh, ttop)
+        if prev is not None:
+            x, dy = next_x(prev[0], prev[1], prev[2], w, rng, kind)
+            rng = (rng[0] - dy, rng[1] - dy)
+        tag_r = max(tag_r, x) + TAG_ROOM + TAG_GAP
+        right = max(right, x + w, tag_r)
+        prev = (x, w, rng)
         i += 1
-        low = max(low, hh + TAG_DROP + TAG_HEIGHT + (ROUND_TAG_EXTRA if key in ROUND_KEYS else 0))
-    down = max(TEXT_DROP + MARK_DROP + MARK_STEP * max(1, len(rows)), low - h)
+    down = TEXT_DROP + MARK_DROP + MARK_STEP * max(1, len(rows))
     return {'left': left, 'right': right, 'down': down, 'up': up}
 
 
@@ -337,12 +371,22 @@ def draw_group(doc, view, g, result, values, origin, types, report):
                     p.Set(1 if it['num_plus'] else 0)
                 x -= it['width']
             y -= MARK_STEP
-    # bar list: one row to the right, top at the top of the concrete,
-    # each detail as it lies in the section, its tag under it
+    # bar list: one row to the right, each detail as it lies in the section and
+    # at its height there, a little into the next one (OVERLAP); the tags on
+    # one line with the section title, in the order of the details
     xs, ytop = x0 + b + LIST_GAP, y0 + h
     ytie = y0 + h + TOP_TIE_GAP
-    row_tags, row_low = [], ft(y0 + h)
-    for kind, key, prm, qty, rot in bar_list(result, g):
+    tag_y = ft(y0 - TEXT_DROP - TAG_LINE)
+    tag_min = None                                   # feet: the next tag starts right of it
+    prev = None                                      # (x, w, heights) of the last detail of the row, mm
+    for kind, key, prm, qty, rot, top in bar_list(result, g):
+        if not on_top(kind, rot):
+            w_, h_ = item_size(kind, prm, rot)
+            rng = (top - h_, top)
+            if prev is not None:
+                nx, dy = next_x(prev[0] - x0, prev[1], prev[2], w_, rng, kind)
+                xs = x0 + nx
+                top, rng = top - dy, (rng[0] - dy, rng[1] - dy)
         s = types.get(key)
         if s is None:
             report['notes'].append(u'%s: no family for the %s' % (u', '.join(g['marks']), kind))
@@ -353,6 +397,7 @@ def draw_group(doc, view, g, result, values, origin, types, report):
         vals['Rebar_Spacing'] = result['spacing'] or code466.DEFAULT_SPACING
         _set(el, vals)
         dense_ok = _set_dense(el, result.get('dense'))
+        tt = types['bar_tag_dense'] if dense_ok and types.get('bar_tag_dense') is not None else types['bar_tag']
         if kind != 'stirrup' and qty:
             for k in ('Rebar_Quantity Text',):
                 p = el.LookupParameter(k)
@@ -375,33 +420,26 @@ def draw_group(doc, view, g, result, values, origin, types, report):
             if bx is not None:
                 bw, bh = (bx[2] - bx[0]) * FT, (bx[3] - bx[1]) * FT
                 bx = _move_top_left(doc, view, el, x0 + (b - bw) / 2.0, ytie + bh)
-                if bx is not None and types['bar_tag'] is not None:
-                    tt = types['bar_tag_dense'] if dense_ok and types.get('bar_tag_dense') is not None                         else types['bar_tag']
+                if bx is not None and tt is not None:
                     _tag(doc, view, el, tt, XYZ(bx[2] + ft(TOP_TAG_GAP + 100), (bx[1] + bx[3]) / 2.0, 0))
                 ytie += bh + TOP_TIE_STEP
             continue
-        box = _move_top_left(doc, view, el, xs, ytop)
+        box = _move_top_left(doc, view, el, xs, y0 + (top if top is not None else h))
         w = item_size(kind, prm, rot)[0]
         if box is not None:
             w = (box[2] - box[0]) * FT
-            if types['bar_tag'] is not None:
-                drop = TAG_DROP + (ROUND_TAG_EXTRA if key in ROUND_KEYS else 0)
-                tt = types['bar_tag_dense'] if dense_ok and types.get('bar_tag_dense') is not None else types['bar_tag']
-                tag = _tag(doc, view, el, tt, XYZ(box[0] + ft(100), box[1] - ft(drop), 0))
-                row_tags.append((tag, drop))
-                row_low = min(row_low, box[1])
+            if tt is not None:
+                tag = _tag(doc, view, el, tt, XYZ(box[0] + ft(100), tag_y, 0))
                 doc.Regenerate()
                 tb = tag.get_BoundingBox(view)
                 if tb is not None:
-                    w = max(w, (tb.Max.X - box[0]) * FT)
-                else:
-                    w = max(w, TAG_ROOM)
-        xs += w + LIST_ITEM_GAP
-    # the tags of the row on one line, under the lowest detail
-    drop = max([d_ for _, d_ in row_tags] or [0.0])
-    for tag, _ in row_tags:
-        p = tag.TagHeadPosition
-        tag.TagHeadPosition = XYZ(p.X, row_low - ft(drop), p.Z)
+                    if tag_min is not None and tb.Min.X < tag_min:
+                        ElementTransformUtils.MoveElement(doc, tag.Id, XYZ(tag_min - tb.Min.X, 0, 0))
+                        doc.Regenerate()
+                        tb = tag.get_BoundingBox(view)
+                    tag_min = tb.Max.X + ft(TAG_GAP)
+            xs = box[0] * FT
+        prev = (xs, w, rng)
     if any(t.get('kind') == 'v' for t in result.get('ties') or []):
         report['notes'].append(u'%s: V-shaped tie drawn in the section, no shape family for the bar list'
                                % u', '.join(g['marks']))
