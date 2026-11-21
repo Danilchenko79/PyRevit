@@ -56,6 +56,9 @@ ROUND_TAG_EXTRA = 300.0   # Shape 60 has its radius dimension under the arc
 TIE_WIDTH = 150.0
 DETAIL_MARGIN = 60.0      # the shape's own dimension texts (width: they stand left, in the gap)
 GAP = 300.0
+TOP_TIE_GAP = 400.0       # horizontal tie above the section: concrete top -> tie (column tag between)
+TOP_TIE_STEP = 300.0      # between several horizontal ties above
+TOP_TAG_GAP = 120.0       # tie -> its tag on the right
 
 REQUIRED = [SECTION_FAMILY[code466.RECT], SECTION_FAMILY[code466.ROUND2], SECTION_FAMILY[code466.ROUND1],
             u'PEER_Rebar_Shape 52', u'PEER_Rebar_Shape 60', u'PEER_Rebar_Shape 62', NUMBER_FAMILY]
@@ -137,12 +140,19 @@ def bar_list(result, g):
     if shape != code466.ROUND2:
         items.append(('stirrup', 'stirrup_' + shape,
                       {'Rebar_A': b - 2 * c, 'Rebar_B': h - 2 * c}, 1, False))
-    hoops = {}
+    # one detail per hoop size: the same hoop standing and lying is one bar
+    # (one number), drawn as the first of them lies in the section
+    hoops, order = {}, []
     for hp in result.get('hoops') or []:
         if hp['kind'] == 'rect':
-            k = tuple(round(v) for v in _hoop_dims(hp))
-            hoops[k] = hoops.get(k, 0) + 1
-    for (a, bb), n in sorted(hoops.items()):
+            ab = tuple(round(v) for v in _hoop_dims(hp))
+            k = tuple(sorted(ab))
+            if k not in hoops:
+                hoops[k] = [ab, 0]
+                order.append(k)
+            hoops[k][1] += 1
+    for k in sorted(order):
+        (a, bb), n = hoops[k]
         items.append(('hoop', 'hoop', {'Rebar_A': float(a), 'Rebar_B': float(bb)}, n, False))
     ties = {}
     for t in result.get('ties') or []:
@@ -165,6 +175,12 @@ def item_size(kind, prm, rotate):
     return prm['Rebar_A'] + DETAIL_MARGIN, prm['Rebar_B'] + DETAIL_MARGIN
 
 
+def on_top(kind, rotate):
+    """A tie across b (horizontal in the section) is drawn above the section,
+    centred over it, as it lies there; the rest go in the row to the right."""
+    return kind == 'tie' and rotate
+
+
 def extent(g, result):
     """{left, right, down, up} of one group's drawing from its insertion point
     (bottom-left corner of the concrete), mm. The details stand in one row to
@@ -173,12 +189,19 @@ def extent(g, result):
     b, h = g['b'], g['h']
     rows = grouping.mark_rows(grouping.marks_and_ranges(g['marks']))
     left = max(DIM_OFFSET + 100, max([MARK_START + sum(i['width'] for i in r) for r in rows] or [0]))
-    right, low = b, 0.0
-    for i, (kind, _, prm, _, rot) in enumerate(bar_list(result, g)):
+    right, low, up = b, 0.0, h + 200
+    i, top = 0, h + TOP_TIE_GAP
+    for kind, _, prm, _, rot in bar_list(result, g):
         w, hh = item_size(kind, prm, rot)
+        if on_top(kind, rot):
+            top += hh
+            up = max(up, top + TAG_HEIGHT)
+            right = max(right, (b + w) / 2.0 + TOP_TAG_GAP + TAG_ROOM)
+            top += TOP_TIE_STEP
+            continue
         right += (LIST_GAP if i == 0 else LIST_ITEM_GAP) + max(w, TAG_ROOM)
+        i += 1
         low = max(low, hh + TAG_DROP + TAG_HEIGHT + (ROUND_TAG_EXTRA if kind == 'stirrup' and g['shape'] == code466.ROUND1 else 0))
-    up = h + 200
     down = max(TEXT_DROP + MARK_DROP + MARK_STEP * max(1, len(rows)), low - h)
     return {'left': left, 'right': right, 'down': down, 'up': up}
 
@@ -306,6 +329,8 @@ def draw_group(doc, view, g, result, values, origin, types, report):
     # bar list: one row to the right, top at the top of the concrete,
     # each detail as it lies in the section, its tag under it
     xs, ytop = x0 + b + LIST_GAP, y0 + h
+    ytie = y0 + h + TOP_TIE_GAP
+    row_tags, row_low = [], ft(y0 + h)
     for kind, key, prm, qty, rot in bar_list(result, g):
         s = types.get(key)
         if s is None:
@@ -333,6 +358,17 @@ def draw_group(doc, view, g, result, values, origin, types, report):
             ElementTransformUtils.RotateElement(doc, el.Id, Line.CreateBound(XYZ(ft(xs), ft(ytop), 0),
                                                                              XYZ(ft(xs), ft(ytop), 1)),
                                                 math.pi / 2.0)
+        if on_top(kind, rot):
+            doc.Regenerate()
+            bx = _lines_box(doc, view, el)
+            if bx is not None:
+                bw, bh = (bx[2] - bx[0]) * FT, (bx[3] - bx[1]) * FT
+                bx = _move_top_left(doc, view, el, x0 + (b - bw) / 2.0, ytie + bh)
+                if bx is not None and types['bar_tag'] is not None:
+                    tt = types['bar_tag_dense'] if dense_ok and types.get('bar_tag_dense') is not None                         else types['bar_tag']
+                    _tag(doc, view, el, tt, XYZ(bx[2] + ft(TOP_TAG_GAP + 100), (bx[1] + bx[3]) / 2.0, 0))
+                ytie += bh + TOP_TIE_STEP
+            continue
         box = _move_top_left(doc, view, el, xs, ytop)
         w = item_size(kind, prm, rot)[0]
         if box is not None:
@@ -341,6 +377,8 @@ def draw_group(doc, view, g, result, values, origin, types, report):
                 drop = TAG_DROP + (ROUND_TAG_EXTRA if kind == 'stirrup' and g['shape'] == code466.ROUND1 else 0)
                 tt = types['bar_tag_dense'] if dense_ok and types.get('bar_tag_dense') is not None else types['bar_tag']
                 tag = _tag(doc, view, el, tt, XYZ(box[0] + ft(100), box[1] - ft(drop), 0))
+                row_tags.append((tag, drop))
+                row_low = min(row_low, box[1])
                 doc.Regenerate()
                 tb = tag.get_BoundingBox(view)
                 if tb is not None:
@@ -348,6 +386,10 @@ def draw_group(doc, view, g, result, values, origin, types, report):
                 else:
                     w = max(w, TAG_ROOM)
         xs += w + LIST_ITEM_GAP
+    # the tags of the row on one line, under the lowest detail
+    for tag, drop in row_tags:
+        p = tag.TagHeadPosition
+        tag.TagHeadPosition = XYZ(p.X, row_low - ft(drop), p.Z)
     if any(t.get('kind') == 'v' for t in result.get('ties') or []):
         report['notes'].append(u'%s: V-shaped tie drawn in the section, no shape family for the bar list'
                                % u', '.join(g['marks']))
