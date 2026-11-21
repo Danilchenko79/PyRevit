@@ -47,14 +47,14 @@ TEXT_DROP = 365.8
 MARK_DROP = 55.0
 MARK_STEP = 210.0
 MARK_START = 210.0
-LIST_GAP = 400.0          # section -> bar list
-LIST_ITEM_GAP = 300.0     # between the details of the row
-TAG_ROOM = 900.0          # a bar tag is about this wide
+LIST_GAP = 300.0          # section -> bar list
+LIST_ITEM_GAP = 150.0     # between the details of the row (detail or its tag, whichever is wider)
+TAG_ROOM = 500.0          # a bar tag is about this wide (the drawing measures the real one)
 TAG_DROP = 250.0          # tag head under the detail
 TAG_HEIGHT = 250.0
 ROUND_TAG_EXTRA = 300.0   # Shape 60 has its radius dimension under the arc
 TIE_WIDTH = 150.0
-DETAIL_MARGIN = 150.0     # the shape's own dimension texts
+DETAIL_MARGIN = 60.0      # the shape's own dimension texts (width: they stand left, in the gap)
 GAP = 300.0
 
 REQUIRED = [SECTION_FAMILY[code466.RECT], SECTION_FAMILY[code466.ROUND2], SECTION_FAMILY[code466.ROUND1],
@@ -173,10 +173,10 @@ def extent(g, result):
     b, h = g['b'], g['h']
     rows = grouping.mark_rows(grouping.marks_and_ranges(g['marks']))
     left = max(DIM_OFFSET + 100, max([MARK_START + sum(i['width'] for i in r) for r in rows] or [0]))
-    right, low = b + LIST_GAP, 0.0
-    for kind, _, prm, _, rot in bar_list(result, g):
+    right, low = b, 0.0
+    for i, (kind, _, prm, _, rot) in enumerate(bar_list(result, g)):
         w, hh = item_size(kind, prm, rot)
-        right += max(w, TAG_ROOM) + LIST_ITEM_GAP
+        right += (LIST_GAP if i == 0 else LIST_ITEM_GAP) + max(w, TAG_ROOM)
         low = max(low, hh + TAG_DROP + TAG_HEIGHT + (ROUND_TAG_EXTRA if kind == 'stirrup' and g['shape'] == code466.ROUND1 else 0))
     up = h + 200
     down = max(TEXT_DROP + MARK_DROP + MARK_STEP * max(1, len(rows)), low - h)
@@ -340,8 +340,14 @@ def draw_group(doc, view, g, result, values, origin, types, report):
             if types['bar_tag'] is not None:
                 drop = TAG_DROP + (ROUND_TAG_EXTRA if kind == 'stirrup' and g['shape'] == code466.ROUND1 else 0)
                 tt = types['bar_tag_dense'] if dense_ok and types.get('bar_tag_dense') is not None else types['bar_tag']
-                _tag(doc, view, el, tt, XYZ(box[0] + ft(100), box[1] - ft(drop), 0))
-        xs += max(w, TAG_ROOM) + LIST_ITEM_GAP
+                tag = _tag(doc, view, el, tt, XYZ(box[0] + ft(100), box[1] - ft(drop), 0))
+                doc.Regenerate()
+                tb = tag.get_BoundingBox(view)
+                if tb is not None:
+                    w = max(w, (tb.Max.X - box[0]) * FT)
+                else:
+                    w = max(w, TAG_ROOM)
+        xs += w + LIST_ITEM_GAP
     if any(t.get('kind') == 'v' for t in result.get('ties') or []):
         report['notes'].append(u'%s: V-shaped tie drawn in the section, no shape family for the bar list'
                                % u', '.join(g['marks']))
