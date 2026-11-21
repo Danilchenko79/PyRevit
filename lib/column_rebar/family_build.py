@@ -303,6 +303,43 @@ def build_round_hoop(app, folder, both_ends):
         b.close()
 
 
+def build_u_hoop(app, folder):
+    """PEER_Col_URound: half-round U-bar on the round end of a rounded column
+    (user 2026-11-21), origin = centre of its half circle, the arc below, the
+    legs up. A - between the bar axes across, O - bar axis to the U axis,
+    Leg - straight leg from the arc centre line. Rr = A / 2 + O."""
+    b = Builder(app)
+    name = 'PEER_Col_URound'
+    try:
+        def go():
+            b.ensure_type('U')
+            A, L, O = b.param('A'), b.param('Leg'), b.param('O')
+            Rr = b.param('Rr')
+            W = b.param('Wo')
+            a, ll, o = 400.0, 320.0, 22.0
+            b.fm.Set(A, a / FT)
+            b.fm.Set(O, o / FT)
+            b.fm.Set(L, ll / FT)
+            b.fm.SetFormula(Rr, 'A / 2 + O')
+            b.fm.SetFormula(W, 'A + 2 * O')
+            r = a / 2 + o
+            xl = b.plane('Left', True, -r)
+            xr = b.plane('Right', True, r)
+            yt = b.plane('Leg End', False, ll)
+            b.dim([xl.GetReference(), b.cx.GetReference(), xr.GetReference()], True, -r - 150, None, equal=True)
+            b.dim([xl.GetReference(), xr.GetReference()], True, -r - 250, W)
+            b.dim([b.cy.GetReference(), yt.GetReference()], False, r + 150, L)
+            b.arc((0, 0), r, math.pi, 2 * math.pi, b.cx, b.cy, Rr)
+            b.line((-r, 0), (-r, ll), [xl, b.cy], [xl, yt])
+            b.line((r, 0), (r, ll), [xr, b.cy], [xr, yt])
+        res = run(b.fd, name, go)
+        if res[1] == 'Committed':
+            b.save(os.path.join(folder, name + '.rfa'))
+        return res
+    finally:
+        b.close()
+
+
 def flex(app, path, values):
     """Opens a built family, sets each {param: mm} in a rolled-back
     transaction and returns the curves: [(values, [('line', p0, p1) |

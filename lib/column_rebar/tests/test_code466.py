@@ -209,6 +209,40 @@ class Rounded(unittest.TestCase):
         self.assertAlmostEqual(r['rho'], 12 * 3.141592653589793 * 100 / ac)
 
 
+class Contour(unittest.TestCase):
+    """User 2026-11-21: a rounded column - a rect hoop over the straight part +
+    half-round U-bars (default), or one stirrup along the outline."""
+
+    def test_round2_split_default(self):
+        r = c.design(c.ROUND2, 500, 1250, 25, 20, 3, 6)
+        st = r['stirrup']
+        self.assertEqual(st['contour'], c.CONTOUR_SPLIT)
+        self.assertEqual((st['rect']['a'], st['rect']['b']), (450, 750 + 20 + 16))
+        self.assertEqual((st['u']['leg'], st['u']['count'], st['u']['b']), (320, 2, 320 + 225))
+        self.assertAlmostEqual(st['length'], st['rect']['length'] + 2 * st['u']['length'])
+        self.assertEqual(codes(r, YELLOW), [])
+
+    def test_one_keeps_the_outline(self):
+        r = c.design(c.ROUND2, 500, 1250, 25, 20, 3, 6, contour=c.CONTOUR_ONE)
+        self.assertEqual(r['stirrup']['contour'], c.CONTOUR_ONE)
+        self.assertNotIn('u', r['stirrup'])
+
+    def test_round1_one_u(self):
+        r = c.design(c.ROUND1, 400, 800, 25, 20, 1, 3)
+        u = r['stirrup']['u']
+        self.assertEqual((u['count'], u['leg']), (1, 320))
+        self.assertAlmostEqual(r['stirrup']['rect']['b'], 800 - 200 - 25 + 10 + 8)
+
+    def test_short_straight_part_warns(self):
+        r = c.design(c.ROUND2, 600, 700, 25, 20, 3, 2)
+        self.assertEqual(r['stirrup']['u']['leg'], 100)
+        self.assertIn('u_leg', codes(r, YELLOW))
+
+    def test_from_text(self):
+        self.assertEqual(c.contour_from_text(u'One'), c.CONTOUR_ONE)
+        self.assertEqual(c.contour_from_text(None), c.CONTOUR_SPLIT)
+
+
 class Alternate(unittest.TestCase):
     """User 2026-11-20: a face needing one of two symmetric bars held - the tie
     goes in turn on one and on the other (the mirror one drawn dashed)."""

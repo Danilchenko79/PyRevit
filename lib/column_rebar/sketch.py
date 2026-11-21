@@ -71,7 +71,26 @@ def svg(result, b, h=None, cover=25.0, bar_dia=16.0, size=260.0, margin=56.0):
         w = max(1.2, dw * k)
         off = cover + dw / 2.0
         r = code466.mandrel(dw) / 2.0 + dw / 2.0
-        if rounded:
+        if rounded and st.get('contour') == code466.CONTOUR_SPLIT:
+            # rectangular hoop over the straight part + half-round U-bar(s) on the round end(s)
+            R, rr = b / 2.0, b / 2.0 - off
+            y0 = R - bar_dia / 2.0 - dw / 2.0
+            y1 = (h - R + bar_dia / 2.0 + dw / 2.0) if result['shape'] == code466.ROUND2 else h - off
+            out.append('<rect x="%s" y="%s" width="%s" height="%s" rx="%s" fill="none" stroke="%s" '
+                       'stroke-width="%s"/>' % (_n(X(off)), _n(Y(y1)), _n((b - 2 * off) * k), _n((y1 - y0) * k),
+                                                _n(r * k), STIRRUP, _n(w)))
+            # the U-bar a stirrup diameter outside the hoop, so the lap reads as two lines
+            leg, uo = st['u']['leg'], off - dw
+            rr = b / 2.0 - uo
+            ends = [(R, 1)] + ([(h - R, -1)] if result['shape'] == code466.ROUND2 else [])
+            for yc, sgn in ends:
+                ye = yc + sgn * leg
+                out.append('<path d="M %s %s L %s %s A %s %s 0 0 %d %s %s L %s %s" fill="none" stroke="%s" '
+                           'stroke-width="%s" stroke-linejoin="round"/>'
+                           % (_n(X(uo)), _n(Y(ye)), _n(X(uo)), _n(Y(yc)), _n(rr * k), _n(rr * k),
+                              0 if sgn > 0 else 1, _n(X(b - uo)), _n(Y(yc)), _n(X(b - uo)), _n(Y(ye)),
+                              STIRRUP, _n(w)))
+        elif rounded:
             out.append('<path d="%s" fill="none" stroke="%s" stroke-width="%s" stroke-linejoin="round"/>'
                        % (outline(off), STIRRUP, _n(w)))
         elif circle:

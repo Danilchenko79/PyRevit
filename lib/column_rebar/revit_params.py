@@ -9,6 +9,8 @@ Decided with the user 2026-11-20 (docs/COLUMNS.md, item 9):
         Rebar_Stirrup Spacing        main spacing S
         Rebar_Stirrup Spacing Dense  spacing at joints and laps S1
         Rebar_Transverse             Auto / Ties / Hoops
+        Rebar_Contour                rounded columns: Split (rect hoop + half-round
+                                     U-bars, default) / One (one stirrup)
         Rebar_Stirrup Label          written by the program (D8@250/100; ...)
 Existing ones read as before: Rebar_Diameter, Rebar_QuantityX / Y (bars without
 the 4 corners, old legend). The section size is read by the button.
@@ -28,14 +30,16 @@ STIRRUP_DIA = 'Rebar_Stirrup Diameter'
 SPACING = 'Rebar_Stirrup Spacing'
 SPACING_DENSE = 'Rebar_Stirrup Spacing Dense'
 TRANSVERSE = 'Rebar_Transverse'
+CONTOUR = 'Rebar_Contour'
 LABEL = 'Rebar_Stirrup Label'
-NEW = (STIRRUP_DIA, SPACING, SPACING_DENSE, TRANSVERSE, LABEL)
+NEW = (STIRRUP_DIA, SPACING, SPACING_DENSE, TRANSVERSE, CONTOUR, LABEL)
 
 GUIDS = {
     STIRRUP_DIA: 'eabbe27a-6c9b-4568-abce-26ebfa280a92',
     SPACING: 'f5a2ac2a-0bc5-4fe8-b5bf-a546cdcd84bd',
     SPACING_DENSE: '5242800f-7b14-44da-a656-3d6e2a183a5c',
     TRANSVERSE: 'c957aee7-2732-4d5a-9bf4-bbe0c56b9518',
+    CONTOUR: '1bea5816-4d87-40ce-839a-90bef83e630d',
     LABEL: '7e4d7dc1-43ad-4fca-afd0-318c4ff320ea',
     # existing shared parameters
     'Rebar_Diameter': '5498ba20-78b8-42d5-a4bf-f4ba6f5c16dd',
@@ -127,6 +131,7 @@ def read_column(doc, col):
     qx = param(col, 'Rebar_QuantityX')
     qy = param(col, 'Rebar_QuantityY')
     tr = param(col, TRANSVERSE)
+    ct = param(col, CONTOUR)
     nb = nh = None
     if qx is not None and qx.HasValue and qy is not None and qy.HasValue:
         nb, nh = code466.from_old_counts(int(round(qx.AsDouble())), int(round(qy.AsDouble())))
@@ -139,6 +144,7 @@ def read_column(doc, col):
         'spacing': _num(col, SPACING),
         'dense': _num(col, SPACING_DENSE),
         'transverse': code466.mode_from_text(tr.AsString() if tr is not None else None),
+        'contour': code466.contour_from_text(ct.AsString() if ct is not None else None),
     }
 
 

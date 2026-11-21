@@ -87,7 +87,7 @@ def group_key(c):
 
 # Item 9: what the 3D column carries besides the bars - a column with another
 # value is another row (decision A).
-EXTRA = ('cover', 'stirrup_dia', 'spacing', 'dense', 'transverse')
+EXTRA = ('cover', 'stirrup_dia', 'spacing', 'dense', 'transverse', 'contour')
 
 
 def extra_key(c):

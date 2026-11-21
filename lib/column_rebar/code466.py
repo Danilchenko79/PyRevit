@@ -73,6 +73,15 @@ APEX_MAX = 135.0                # angle of a hoop at a restrained bar, 466-2 28.
 TIE_HOOKS = 20.0                # both 135 deg hooks of a tie, in tie diameters   [estimate]
 HOOP_HOOKS = 20.0               # hooks of a closed hoop (Shape 52: + 20 D)
 
+# Contour of a rounded column (user 2026-11-21), chosen per row in the window:
+#   SPLIT (default)  a rectangular hoop over the straight part (round to round
+#                    end) + a half-round U-bar on each rounded end, its legs
+#                    lapping the hoop by U_LAP stirrup diameters (rounded up
+#                    to 10, at most the straight part);
+#   ONE              one stirrup along the whole outline.
+CONTOUR_SPLIT, CONTOUR_ONE = 'split', 'one'
+U_LAP = 40.0
+
 
 def msg(level, code, text, clause, where=None):
     """where: 'b' / 'h' - the side of the section the message is about."""
@@ -91,6 +100,10 @@ def stirrup_dia_min(bar_dia):
         if d >= need - 1e-9:
             return d
     return STIRRUP_SERIES[-1]
+
+
+def ceil_to(value, step):
+    return math.ceil(value / float(step) - 1e-9) * step
 
 
 def floor_to(value, step=SPACING_ROUND):
@@ -453,6 +466,37 @@ def _rounded(out, shape, b, h, cover, dw, dl, ne, ns, mode):
         _mirror_y(out, h)
 
 
+def _split_contour(out, shape, b, h, cover, dw, dl):
+    """Contour of a rounded column as a rectangular hoop + half-round U-bars
+    (CONTOUR_SPLIT). Sizes out to out of the bar, as Shape 52 / 60:
+      rect  a = b - 2c across; b = over the side bars from the bottom tangent
+            row (y = R) to the top tangent row (ROUND2) or the flat end (ROUND1)
+      u     a = b - 2c; leg = straight part from the arc centre line;
+            b = leg + a / 2 (overall, as Shape 60); count 2 (ROUND2) / 1
+    Final orientation: the round end of ROUND1 at the bottom."""
+    st = out['stirrup']
+    m = out['messages']
+    R = b / 2.0
+    sa = b - 2.0 * cover
+    if shape == ROUND2:
+        rb = (h - 2.0 * R) + dl + 2.0 * dw
+        room = h - b
+    else:
+        rb = h - R - cover + dl / 2.0 + dw
+        room = h - R - cover
+    lap = ceil_to(U_LAP * dw, 10.0)
+    leg = min(lap, floor_to(room, 10.0))
+    if leg < lap - 1e-6:
+        m.append(msg(YELLOW, 'u_leg', u'Half-round U-bar legs %d mm: the straight part is shorter '
+                     u'than the %d mm lap (%dD). Check the lap or take one stirrup along the outline.'
+                     % (leg, lap, U_LAP), CL_STIRRUP, u'h'))
+    ends = 2 if shape == ROUND2 else 1
+    rect = {'a': sa, 'b': rb, 'length': 2.0 * (sa + rb) + HOOP_HOOKS * dw}
+    u = {'a': sa, 'leg': leg, 'b': leg + sa / 2.0, 'count': ends,
+         'length': math.pi * (sa - dw) / 2.0 + 2.0 * leg}
+    st.update(contour=CONTOUR_SPLIT, rect=rect, u=u, length=rect['length'] + ends * u['length'])
+
+
 def _mirror_y(out, h):
     """ROUND1 is worked out with the round end on top; the family has it at the
     bottom (flat end on top) - mirror every y."""
@@ -469,12 +513,13 @@ def _mirror_y(out, h):
 
 
 def design(shape, b, h, cover, bar_dia, nb, nh=None, stirrup_dia=None,
-           spacing=None, dense=None, transverse=None):
+           spacing=None, dense=None, transverse=None, contour=None):
     """Section by the guide. RECT: nb / nh = bars along b / along h, corners
     in both. CIRCLE: b = diameter, nb = all bars, nh unused.
     stirrup_dia, spacing, dense: user overrides (checked, not replaced).
     transverse: AUTO (default), TIES or HOOPS - how restrained inner bars
-    are held (see TRANSVERSE rule above)."""
+    are held (see TRANSVERSE rule above).
+    contour: CONTOUR_SPLIT (default) or CONTOUR_ONE for ROUND1 / ROUND2."""
     out = {'shape': shape, 'messages': [], 'bars': [], 'restrained': [],
            'stirrup': None, 'ties': [], 'hoops': [], 'spacing': None, 'dense': None,
            'label': None, 'rho': None, 'set_length': None, 'transverse': None}
@@ -559,10 +604,12 @@ def design(shape, b, h, cover, bar_dia, nb, nh=None, stirrup_dia=None,
     else:
         per = 2.0 * (sa + sb)
     out['stirrup'] = {'shape': shape, 'dia': stirrup_dia, 'a': sa, 'b': sb,
-                      'length': per + HOOP_HOOKS * stirrup_dia}
+                      'length': per + HOOP_HOOKS * stirrup_dia, 'contour': CONTOUR_ONE}
 
     if shape in ROUNDED:
         _rounded(out, shape, b, h, cover, stirrup_dia, bar_dia, nb, nh, transverse)
+        if (contour or CONTOUR_SPLIT) == CONTOUR_SPLIT:
+            _split_contour(out, shape, b, h, cover, stirrup_dia, bar_dia)
         out['set_length'] = (out['stirrup']['length'] + sum(t['length'] for t in out['ties'] if not t.get('alt'))
                              + sum(x['length'] for x in out['hoops']))
     elif shape == CIRCLE:
@@ -682,6 +729,12 @@ def mode_from_text(text):
     if t.startswith(u'hoop'):
         return HOOPS
     return AUTO
+
+
+def contour_from_text(text):
+    """Rebar_Contour value -> CONTOUR_SPLIT / CONTOUR_ONE (empty or unknown -> SPLIT)."""
+    t = (text or u'').strip().lower()
+    return CONTOUR_ONE if t.startswith(u'one') else CONTOUR_SPLIT
 
 
 def blocked(result):

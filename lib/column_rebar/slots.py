@@ -100,6 +100,10 @@ def params(result, b, h, cover, bar_dia, nb, nh, shape=RECT):
             raise ValueError('the family draws at most %d bars on a round end (old nested '
                              'Point+Radius), %d asked' % (MAX_ARC_BARS, nb))
         out['Rebar_QuantityX'], out['Rebar_QuantityY'] = nb, nh
+        # contour: one stirrup, or a rect hoop + half-round U-bars (legs from the arc centre)
+        split = bool(st and st.get('contour') == 'split')
+        out['Contour_Split'] = 1 if split else 0
+        out['U_Leg'] = float(st['u']['leg']) if split else 100.0
     have = set()
     for name, kind, d in slot_names(shape):         # every slot off, somewhere harmless
         have.add(name)

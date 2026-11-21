@@ -185,6 +185,33 @@ def build(app, src, folder, shape=RECT):
                 st = H.place(rh, w / 2, w / 2, 0, mid, arc0)
                 H.link(st, 'A', bars_b)
                 H.link(st, 'L', arc_l)
+                # contour split (user 2026-11-21): a rect hoop over the straight part +
+                # half-round U-bar(s), a stirrup diameter outside the hoop (the lap reads
+                # as two lines); the one-piece stirrup above only when not split
+                yes = SpecTypeId.Boolean.YesNo
+                split = H.P('Contour_Split', yes, value=1)
+                one = H.P('Contour_One', yes, formula='not(Contour_Split)')
+                H.visible(st, one)
+                u_leg = H.P('U_Leg', value=320 / FT)
+                u_o = H.P('U_O', formula='Hoop_O + Stirrup_Diameter')
+                rect_b = H.P('Rect_B', formula=('PR_Dimension_Height - PR_Dimension_Width' if shape == ROUND2 else
+                                                'PR_Dimension_Height - PR_Dimension_Width / 2 - CoverR'))
+                rh2 = H.place(hoop, c, w / 2, 0, bl, arc0)
+                H.link(rh2, 'A', bars_b)
+                H.link(rh2, 'B', rect_b)
+                H.link(rh2, 'O', ho)
+                H.visible(rh2, split)
+                uf = _load(fd, os.path.join(folder, 'PEER_Col_URound.rfa'))
+                ends = [(w / 2, 0, arc0)]
+                if shape == ROUND2:
+                    arc1 = H.plane('Arc Top', False, h - w / 2, top, half)
+                    ends.append((h - w / 2, 180, arc1))
+                for y_, ang, pl_ in ends:
+                    u = H.place(uf, w / 2, y_, ang, mid, pl_)
+                    H.link(u, 'A', bars_b)
+                    H.link(u, 'O', u_o)
+                    H.link(u, 'Leg', u_leg)
+                    H.visible(u, split)
             H.link(st, 'O', ho)
             # 5. slots
             yes = SpecTypeId.Boolean.YesNo

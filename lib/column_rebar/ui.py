@@ -28,6 +28,18 @@ from column_rebar import code466, grouping, revit_collect, sketch_wpf
 SHAPE_TEXT = {code466.RECT: u'Rectangular', code466.ROUND2: u'Rounded 2 ends',
               code466.ROUND1: u'Rounded 1 end'}
 MODES = [u'Auto', u'Ties', u'Hoops']
+# contour of a rounded column (code466.CONTOUR_*); a rectangular row shows nothing
+CONTOURS = [u'Hoop + U-bars', u'One stirrup']
+
+
+def contour_text(g):
+    if g['shape'] not in code466.ROUNDED:
+        return u''
+    return CONTOURS[1] if g.get('contour') == code466.CONTOUR_ONE else CONTOURS[0]
+
+
+def contour_of(text):
+    return code466.CONTOUR_ONE if (text or u'') == CONTOURS[1] else code466.CONTOUR_SPLIT
 _bc = BrushConverter()
 COLORS = {code466.RED: u'#B02020', code466.YELLOW: u'#8A6000'}
 
@@ -60,6 +72,7 @@ class ColumnWindow(forms.WPFWindow):
         self.tb_view.Text = settings.get('view', u'Column 150')
         self.tb_width.Text = u'{0}'.format(settings.get('width_cm', 59.4))
         self.col_mode.ItemsSource = MODES
+        self.col_contour.ItemsSource = CONTOURS
         for lv in source.levels():
             self.cb_level.Items.Add(lv)
         last = settings.get('level')
@@ -85,7 +98,7 @@ class ColumnWindow(forms.WPFWindow):
 
     def fill(self):
         dt = DataTable()
-        for c in ('Idx', 'ShapeText', 'Marks', 'Size', 'Dia', 'Qb', 'Qh', 'Stirrup', 'Mode', 'Result', 'Status'):
+        for c in ('Idx', 'ShapeText', 'Marks', 'Size', 'Dia', 'Qb', 'Qh', 'Stirrup', 'Mode', 'Contour', 'Result', 'Status'):
             dt.Columns.Add(c)
         for i, (g, r) in enumerate(zip(self.groups, self.results)):
             row = dt.NewRow()
@@ -98,6 +111,7 @@ class ColumnWindow(forms.WPFWindow):
             row['Qh'] = u'%d' % round(g['qh'])
             row['Stirrup'] = u'%g' % g['stirrup_dia'] if g.get('stirrup_dia') else u''
             row['Mode'] = (g.get('transverse') or u'auto').capitalize()
+            row['Contour'] = contour_text(g)
             self._result_cells(row, r)
             dt.Rows.Add(row)
         self.table = dt
@@ -167,6 +181,10 @@ class ColumnWindow(forms.WPFWindow):
         g['qh'] = float(int(_num(row['Qh'], g['qh']) or 0))
         g['stirrup_dia'] = _num(row['Stirrup'], None)
         g['transverse'] = (u'{0}'.format(row['Mode'] or u'Auto')).lower()
+        if g['shape'] in code466.ROUNDED:
+            g['contour'] = contour_of(u'{0}'.format(row['Contour'] or u''))
+        else:
+            row['Contour'] = u''
         self.results[i] = r = revit_collect.design(g)
         self._result_cells(row, r)
         self.show(i)

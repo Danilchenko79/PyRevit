@@ -28,7 +28,9 @@ FT = 304.8
 SECTION_FAMILY = {code466.RECT: u'PEER_Column Section', code466.ROUND2: u'PEER_Column Section Round2',
                   code466.ROUND1: u'PEER_Column Section Round1'}
 STIRRUP_FAMILY = {code466.RECT: u'PEER_Rebar_Shape 52', code466.ROUND1: u'PEER_Rebar_Shape 60',
-                  code466.ROUND2: None}
+                  code466.ROUND2: u'PEER_Rebar_Shape 65'}
+U_FAMILY = u'PEER_Rebar_Shape 64'       # half-round U-bar of a rounded column (contour split)
+ROUND_KEYS = ('u_round', 'stirrup_' + code466.ROUND1, 'stirrup_' + code466.ROUND2)  # arc label under
 HOOP_FAMILY = u'PEER_Rebar_Shape 52'
 TIE_FAMILIES = (u'PEER_Rebar_Shape 62', u'PEER_Rebar Shape 62')
 NUMBER_FAMILY = u'PR_Column Number'
@@ -61,7 +63,8 @@ TOP_TIE_STEP = 300.0      # between several horizontal ties above
 TOP_TAG_GAP = 120.0       # tie -> its tag on the right
 
 REQUIRED = [SECTION_FAMILY[code466.RECT], SECTION_FAMILY[code466.ROUND2], SECTION_FAMILY[code466.ROUND1],
-            u'PEER_Rebar_Shape 52', u'PEER_Rebar_Shape 60', u'PEER_Rebar_Shape 62', NUMBER_FAMILY]
+            u'PEER_Rebar_Shape 52', u'PEER_Rebar_Shape 60', u'PEER_Rebar_Shape 62',
+            STIRRUP_FAMILY[code466.ROUND2], U_FAMILY, NUMBER_FAMILY]
 
 
 def ft(mm):
@@ -91,6 +94,7 @@ def find_types(doc):
     for shape, fam in STIRRUP_FAMILY.items():
         t['stirrup_' + shape] = symbol(doc, fam) if fam else None
     t['hoop'] = symbol(doc, HOOP_FAMILY)
+    t['u_round'] = symbol(doc, U_FAMILY)
     t['tie'] = None
     for fam in TIE_FAMILIES:
         t['tie'] = t['tie'] or symbol(doc, fam)
@@ -111,7 +115,8 @@ def find_types(doc):
     if t['text'] is None:
         t['text'] = doc.GetDefaultElementTypeId(ElementTypeGroup.TextNoteType)
     for key, name in (('col_tag', u'%s : %s' % COL_TAG), ('bar_tag', u'%s : %s' % BAR_TAG),
-                      ('hoop', HOOP_FAMILY), ('tie', TIE_FAMILIES[0]), ('number', NUMBER_FAMILY)):
+                      ('hoop', HOOP_FAMILY), ('tie', TIE_FAMILIES[0]), ('number', NUMBER_FAMILY),
+                      ('u_round', U_FAMILY)):
         if t[key] is None:
             t['missing'].append(name)
     return t
@@ -137,7 +142,13 @@ def bar_list(result, g):
     (horizontal) is the Shape 62 turned by 90 degrees."""
     shape, b, h, c = g['shape'], g['b'], g['h'], g.get('cover') or 25.0
     items = []
-    if shape != code466.ROUND2:
+    st = result.get('stirrup') or {}
+    if st.get('contour') == code466.CONTOUR_SPLIT:
+        # rounded, split: the rect hoop over the straight part + the U-bar(s), arc down
+        r_, u = st['rect'], st['u']
+        items.append(('stirrup', 'hoop', {'Rebar_A': r_['a'], 'Rebar_B': r_['b']}, 1, False))
+        items.append(('u', 'u_round', {'Rebar_A': u['a'], 'Rebar_B': u['b']}, u['count'], False))
+    else:
         items.append(('stirrup', 'stirrup_' + shape,
                       {'Rebar_A': b - 2 * c, 'Rebar_B': h - 2 * c}, 1, False))
     # one detail per hoop size: the same hoop standing and lying is one bar
@@ -191,7 +202,7 @@ def extent(g, result):
     left = max(DIM_OFFSET + 100, max([MARK_START + sum(i['width'] for i in r) for r in rows] or [0]))
     right, low, up = b, 0.0, h + 200
     i, top = 0, h + TOP_TIE_GAP
-    for kind, _, prm, _, rot in bar_list(result, g):
+    for kind, key, prm, _, rot in bar_list(result, g):
         w, hh = item_size(kind, prm, rot)
         if on_top(kind, rot):
             top += hh
@@ -201,7 +212,7 @@ def extent(g, result):
             continue
         right += (LIST_GAP if i == 0 else LIST_ITEM_GAP) + max(w, TAG_ROOM)
         i += 1
-        low = max(low, hh + TAG_DROP + TAG_HEIGHT + (ROUND_TAG_EXTRA if kind == 'stirrup' and g['shape'] == code466.ROUND1 else 0))
+        low = max(low, hh + TAG_DROP + TAG_HEIGHT + (ROUND_TAG_EXTRA if key in ROUND_KEYS else 0))
     down = max(TEXT_DROP + MARK_DROP + MARK_STEP * max(1, len(rows)), low - h)
     return {'left': left, 'right': right, 'down': down, 'up': up}
 
@@ -374,7 +385,7 @@ def draw_group(doc, view, g, result, values, origin, types, report):
         if box is not None:
             w = (box[2] - box[0]) * FT
             if types['bar_tag'] is not None:
-                drop = TAG_DROP + (ROUND_TAG_EXTRA if kind == 'stirrup' and g['shape'] == code466.ROUND1 else 0)
+                drop = TAG_DROP + (ROUND_TAG_EXTRA if key in ROUND_KEYS else 0)
                 tt = types['bar_tag_dense'] if dense_ok and types.get('bar_tag_dense') is not None else types['bar_tag']
                 tag = _tag(doc, view, el, tt, XYZ(box[0] + ft(100), box[1] - ft(drop), 0))
                 row_tags.append((tag, drop))
@@ -387,7 +398,8 @@ def draw_group(doc, view, g, result, values, origin, types, report):
                     w = max(w, TAG_ROOM)
         xs += w + LIST_ITEM_GAP
     # the tags of the row on one line, under the lowest detail
-    for tag, drop in row_tags:
+    drop = max([d_ for _, d_ in row_tags] or [0.0])
+    for tag, _ in row_tags:
         p = tag.TagHeadPosition
         tag.TagHeadPosition = XYZ(p.X, row_low - ft(drop), p.Z)
     if any(t.get('kind') == 'v' for t in result.get('ties') or []):

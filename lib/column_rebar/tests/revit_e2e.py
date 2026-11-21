@@ -45,6 +45,7 @@ COLUMNS = [
     (['8', '9'], 'R', 1500, 600, 5, 1, 20),
     (['10'], 'R', 300, 300, 3, 3, 25),            # red: too much steel - must be skipped
     (['11', '12', '13'], 'O', 500, 1250, 3, 6, 20),
+    (['16'], 'O', 600, 1200, 3, 4, 20),          # rounded, one stirrup along the outline (CONTOUR_ONE)
     (['14'], 'R', 500, 700, 2, 3, 20),
     (['15'], 'R', 400, 400, 2, 2, 16),            # same as 1-4 - joins their group
     ([''], 'R', 400, 400, 2, 2, 16),              # no mark - not drawn
@@ -73,7 +74,15 @@ def _bind_params(pd, folder):
         app.SharedParametersFilename = old
 
 
-def run(app, folder, out_folder):
+def _pick(extra, base, name):
+    """A family file: from extra (work copies being made) when it is there."""
+    if extra and os.path.exists(os.path.join(extra, name)):
+        return os.path.join(extra, name)
+    return os.path.join(base, name)
+
+
+def run(app, folder, out_folder, extra=None):
+    """extra: a folder of work copies of the detail / tag families, taken first."""
     if not os.path.isdir(out_folder):
         os.makedirs(out_folder)
     pd = app.NewProjectDocument(UnitSystem.Metric)
@@ -87,11 +96,13 @@ def run(app, folder, out_folder):
                 r = clr.Reference[Family]()
                 pd.LoadFamily(os.path.join(LIB3D, n + '.rfa'), r)
                 fams[key] = r.Value
-            for f in [os.path.join(folder, n + u'.rfa') for n in revit_draw.SECTION_FAMILY.values()] + \
-                    [os.path.join(WORK, n) for n in (u'PEER_Rebar_Shape 52.rfa', u'PEER_Rebar_Shape 60.rfa',
-                                                     u'PEER_Rebar_Shape 62.rfa', u'PR_Column Number.rfa')] + \
-                    [os.path.join(SHAPES, n) for n in (u'Detail items_Tag Rebar.rfa',
+            for f in [os.path.join(folder, n + u'.rfa') for n in revit_draw.SECTION_FAMILY.values()] +                     [_pick(extra, WORK, n) for n in (u'PEER_Rebar_Shape 52.rfa', u'PEER_Rebar_Shape 60.rfa',
+                                                     u'PEER_Rebar_Shape 62.rfa', u'PR_Column Number.rfa',
+                                                     u'PEER_Rebar_Shape 64.rfa', u'PEER_Rebar_Shape 65.rfa')] +                     [_pick(extra, SHAPES, n) for n in (u'Detail items_Tag Rebar.rfa',
                                                        u'Detail items_Tag Rebar(Text Quantity).rfa')]:
+                if not os.path.exists(f):
+                    lines.append(u'no family file: %s' % os.path.basename(f))
+                    continue
                 pd.LoadFamily(f, clr.Reference[Family]())
             lvl = Level.Create(pd, 0)
             types = {}
@@ -124,6 +135,9 @@ def run(app, folder, out_folder):
             lines.append('  %s %s %dx%d qb=%d qh=%d D%g cover=%g' % (g['shape'], ','.join(g['marks']), g['b'],
                                                                     g['h'], g['qb'], g['qh'], g['dia'], g['cover']))
         choice = {'level': u'L1', 'view': u'Column 150', 'width_cm': 59.4, 'groups': grouping.merge_groups(groups)}
+        for g in choice['groups']:             # as the window's Rounded contour column
+            if '16' in g['marks']:
+                g['contour'] = 'one'
         out = button.run(pd, choice, os.path.join(folder), lambda t: True, require_families=False)
         lines.append(button.summary(out, choice['view']))
         if out['ok']:

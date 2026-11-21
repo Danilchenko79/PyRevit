@@ -46,6 +46,13 @@ class Slots(unittest.TestCase):
         p = slots.params(r, 300, 300, 25, 12, 2, 2)
         self.assertEqual([k for k, v in p.items() if k.endswith('_Vis') and v], [])
 
+    def test_contour(self):
+        r = c.design(c.ROUND2, 500, 1250, 25, 20, 3, 6)
+        p = slots.params(r, 500, 1250, 25, 20, 3, 6, c.ROUND2)
+        self.assertEqual((p['Contour_Split'], p['U_Leg']), (1, 320))
+        r = c.design(c.ROUND2, 500, 1250, 25, 20, 3, 6, contour=c.CONTOUR_ONE)
+        self.assertEqual(slots.params(r, 500, 1250, 25, 20, 3, 6, c.ROUND2)['Contour_Split'], 0)
+
     def test_too_many(self):
         r = {'stirrup': {'dia': 8.0}, 'ties': [{'kind': 'straight', 'direction': 'vertical', 'at': 100.0}] * 13,
              'hoops': []}

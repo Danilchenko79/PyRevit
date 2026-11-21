@@ -72,6 +72,8 @@
                     <DataGridTextColumn Header="Stirrup D" Binding="{Binding Stirrup}" Width="70"/>
                     <DataGridComboBoxColumn x:Name="col_mode" Header="Hold bars by"
                                             SelectedItemBinding="{Binding Mode}" Width="95"/>
+                    <DataGridComboBoxColumn x:Name="col_contour" Header="Rounded contour"
+                                            SelectedItemBinding="{Binding Contour}" Width="110"/>
                     <DataGridTextColumn Header="Result" Binding="{Binding Result}" IsReadOnly="True" Width="2*"/>
                     <DataGridTemplateColumn Header="" Width="34">
                         <DataGridTemplateColumn.CellTemplate>

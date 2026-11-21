@@ -153,14 +153,18 @@ def check(case, inst, view, origin, result):
         face = (vert and (abs(a[0]) < 0.6 or abs(a[0] - b) < 0.6)) or (hor and (abs(a[1]) < 0.6 or abs(a[1] - h) < 0.6))
         if face:
             continue
-        ok = (vert and any(abs(a[0] - (x + s * o_)) < TOL for x in xs_bar for s in (-1, 1))) or \
+        # stirrup / hoop axis o_ off the bar axis; a half-round U-bar (contour split) a stirrup
+        # diameter further out
+        ok = (vert and any(abs(a[0] - (x + s * oo)) < TOL for x in xs_bar for s in (-1, 1)
+                           for oo in (o_, o_ + dw))) or \
              (hor and any(abs(a[1] - (y + s * o_)) < TOL for y in ys_bar for s in (-1, 1)))
         if not ok:
             problems.append('stray line %s-%s' % (_fmt([a]), _fmt([c])))
             if len(problems) > 12:
                 break
     for (cen, r) in other_arcs:
-        ok = abs(r - (b / 2.0 - 0.5)) < 1.0 or abs(r - (b / 2.0 - cr + o_)) < 1.0
+        ok = abs(r - (b / 2.0 - 0.5)) < 1.0 or abs(r - (b / 2.0 - cr + o_)) < 1.0 or \
+            abs(r - (b / 2.0 - cr + o_ + dw)) < 1.0
         if not ok:
             problems.append('arc r=%.1f at %s' % (r, _fmt([cen])))
     # inside

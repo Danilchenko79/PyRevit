@@ -126,6 +126,7 @@ def read(doc, col):
         'cover': inp['cover'] or 25.0,
         'stirrup_dia': inp['stirrup_dia'], 'spacing': inp['spacing'], 'dense': inp['dense'],
         'transverse': inp['transverse'],
+        'contour': inp.get('contour'),
         'top_level': top_level(doc, col),
         'level': level_of(col),
     }
@@ -149,11 +150,12 @@ def design_args(g):
     return dict(shape=shape, b=g['b'], h=g['h'], cover=g.get('cover') or 25.0,
                 bar_dia=g['dia'], nb=nb, nh=nh, stirrup_dia=g.get('stirrup_dia'),
                 spacing=g.get('spacing'), dense=g.get('dense'),
-                transverse=g.get('transverse') or code466.AUTO)
+                transverse=g.get('transverse') or code466.AUTO,
+                contour=g.get('contour') or code466.CONTOUR_SPLIT)
 
 
 def design(g):
     a = design_args(g)
     return code466.design(a['shape'], a['b'], a['h'], a['cover'], a['bar_dia'], a['nb'], a['nh'],
                           stirrup_dia=a['stirrup_dia'], spacing=a['spacing'], dense=a['dense'],
-                          transverse=a['transverse'])
+                          transverse=a['transverse'], contour=a['contour'])
