@@ -9,7 +9,7 @@
 Shape 60 is a closed U (half circle at the bottom, flat top with the hook
 marks). Its labels, parameters (shared Rebar_*, Rebar_Stirrup Spacing Dense)
 and look stay; only the geometry changes:
-    64  the top line and the hook marks out; Rebar_B = overall (leg + A / 2)
+    64  the top line, the hook marks and the arc length label out; Rebar_B = overall (leg + A / 2)
     65  legs end at a new plane A / 2 under the top, a half circle on top;
         Rebar_B = overall, the leg label shows the straight part B - A
     75  legs, arcs and the leg / arc labels out, a full circle of diameter A;
@@ -116,8 +116,10 @@ def _legs(d):
 
 
 def _u(d, P):
-    """64: open U - no top line, no hook marks."""
+    """64: open U - no top line, no hook marks, no arc length label (user
+    2026-11-21: the width and the leg say it all)."""
     d.delete(d.nested(u'TN_Re_Shape_01'))
+    d.delete(d.nested(u'Rebar_Dim Label_Round'))
     d.common(64)
 
 
