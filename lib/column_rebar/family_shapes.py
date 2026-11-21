@@ -243,3 +243,43 @@ def build(app, src, folder, shape):
 
 def build_all(app, src, folder):
     return dict((NAMES[s], build(app, src, folder, s)) for s in (64, 65, 75))
+
+
+QTY_TEXT = ('Rebar_Quantity Text', '9fd774e0-1a30-4bc0-8672-ecf64fa18113')   # as Shape 14 / 23 / 26
+
+
+def add_quantity_text(app, path, scratch):
+    """The shared instance parameter Rebar_Quantity Text (the tag 'Text
+    Quantity' writes it before the bar: 2D8@20) added to a detail family file,
+    saved in place. The user's shared parameter file setting is restored.
+    scratch: a folder for the temporary shared parameter file."""
+    from System import Guid
+    from Autodesk.Revit.DB import ExternalDefinitionCreationOptions, GroupTypeId, SpecTypeId
+    from peer_library import revit_family as rf
+    name, guid = QTY_TEXT
+    spf = os.path.join(scratch, 'qty_text_params.txt')
+    if os.path.exists(spf):
+        os.remove(spf)
+    open(spf, 'w').close()
+    old = app.SharedParametersFilename
+    fd = rf.open_quiet(app, path)
+    try:
+        app.SharedParametersFilename = spf
+        defs = app.OpenSharedParameterFile().Groups.Create('PEER').Definitions
+        o = ExternalDefinitionCreationOptions(name, SpecTypeId.String.Text)
+        o.GUID = Guid(guid)
+        ext = defs.Create(o)
+
+        def go():
+            if fd.FamilyManager.get_Parameter(name) is None:
+                fd.FamilyManager.AddParameter(ext, GroupTypeId.Text, True)
+            return True
+        res = run(fd, 'Rebar_Quantity Text', go)
+        if res[1] == 'Committed':
+            o2 = SaveAsOptions()
+            o2.OverwriteExistingFile = True
+            fd.SaveAs(path, o2)
+        return res
+    finally:
+        app.SharedParametersFilename = old
+        fd.Close(False)
